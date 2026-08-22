@@ -12,6 +12,7 @@ Stand: 23.08.2026
 - `OutputFileTypes` ist absichtlich nicht gesetzt. Laut Microsoft würde dieses Attribut die Queue als File Printer markieren und den Windows-Speichern-unter-Dialog aktivieren.
 - `PrintWorkflowConfiguration` liefert `SessionId`, `JobTitle` und `SourceAppDisplayName` über offizielle APIs.
 - `PrintWorkflowUILauncher.LaunchAndCompleteUIAsync` aktiviert die Companion-UI über `windows.printSupportJobUI`.
+- Für .NET 10 sind CsWinRT `2.3.1` und die Windows-SDK-Projektion `10.0.26100.87` festgesetzt. Damit werden die aktuellen stabilen Projektions- und WinRT-Event-Korrekturen verwendet, ohne das minimale Windows-Plattformziel anzuheben.
 
 ## Primärquellen
 
@@ -22,6 +23,7 @@ Stand: 23.08.2026
 - [PrintWorkflowConfiguration](https://learn.microsoft.com/uwp/api/windows.graphics.printing.workflow.printworkflowconfiguration?view=winrt-26100)
 - [Microsoft print-oem-samples – C# Windows App SDK](https://github.com/microsoft/print-oem-samples/tree/master/PSASamples/WinAppSdk/CSharp)
 - [PrintQueue.AddJob für XPS-Testjobs](https://learn.microsoft.com/dotnet/api/system.printing.printqueue.addjob?view=windowsdesktop-10.0)
+- [CsWinRT 2.3.1 Release Notes](https://github.com/microsoft/CsWinRT/releases/tag/2.3.1.260716.1)
 
 ## Noch auf Windows zu verifizieren
 
