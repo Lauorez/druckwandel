@@ -28,6 +28,12 @@ public partial class App : Application
         {
             frame.Navigate(typeof(CompanionPage), printJobArgs);
         }
+        else if (activation.Kind == ExtendedActivationKind.PrintSupportJobUI)
+        {
+            frame.Navigate(
+                typeof(CompanionPage),
+                "PrintSupportJobUI activation data could not be projected. The latest local job is shown.");
+        }
         else
         {
             frame.Navigate(typeof(CompanionPage));

@@ -15,6 +15,7 @@ public sealed partial class CompanionPage : Page
     private readonly PrintJobStore store;
     private PrintJobRecord? job;
     private Deferral? workflowDeferral;
+    private PrintWorkflowJobUISession? workflowSession;
 
     public CompanionPage()
     {
@@ -29,9 +30,22 @@ public sealed partial class CompanionPage : Page
 
         if (e.Parameter is PrintWorkflowJobActivatedEventArgs activationArgs)
         {
-            PrintWorkflowJobUISession session = activationArgs.Session;
-            session.VirtualPrinterUIDataAvailable += OnVirtualPrinterUiDataAvailable;
-            session.Start();
+            workflowSession = activationArgs.Session;
+            workflowSession.VirtualPrinterUIDataAvailable += OnVirtualPrinterUiDataAvailable;
+            try
+            {
+                workflowSession.Start();
+            }
+            catch (Exception exception)
+            {
+                workflowSession.VirtualPrinterUIDataAvailable -= OnVirtualPrinterUiDataAvailable;
+                workflowSession = null;
+                StatusText.Text = $"Workflow activation failed – {exception.Message}";
+            }
+        }
+        else if (e.Parameter is string activationWarning)
+        {
+            _ = LoadLatestWithWarningAsync(activationWarning);
         }
         else
         {
@@ -39,15 +53,22 @@ public sealed partial class CompanionPage : Page
         }
     }
 
+    private async Task LoadLatestWithWarningAsync(string warning)
+    {
+        await LoadJobAsync(store.GetLatest());
+        StatusText.Text = warning;
+    }
+
     private void OnVirtualPrinterUiDataAvailable(
         PrintWorkflowJobUISession sender,
         PrintWorkflowVirtualPrinterUIEventArgs args)
     {
         _ = sender;
+        workflowDeferral?.Complete();
         workflowDeferral = args.GetDeferral();
         PrintJobRecord? sessionJob = store.ResolveSession(args.Configuration.SessionId);
 
-        DispatcherQueue.TryEnqueue(async () =>
+        bool enqueued = DispatcherQueue.TryEnqueue(async () =>
         {
             await LoadJobAsync(sessionJob);
 
@@ -58,6 +79,11 @@ public sealed partial class CompanionPage : Page
                 StatusText.Text = "Job metadata not found";
             }
         });
+
+        if (!enqueued)
+        {
+            CompleteWorkflowDeferral();
+        }
     }
 
     private async Task LoadJobAsync(PrintJobRecord? record)
@@ -125,10 +151,21 @@ public sealed partial class CompanionPage : Page
     {
         _ = sender;
         _ = e;
-        if (job is not null && File.Exists(job.PdfPath))
+        try
         {
-            StorageFile file = await StorageFile.GetFileFromPathAsync(job.PdfPath);
-            await Launcher.LaunchFileAsync(file);
+            if (job is not null && File.Exists(job.PdfPath))
+            {
+                StorageFile file = await StorageFile.GetFileFromPathAsync(job.PdfPath);
+                bool launched = await Launcher.LaunchFileAsync(file);
+                if (!launched)
+                {
+                    StatusText.Text = "PDF could not be opened";
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"PDF could not be opened – {exception.Message}";
         }
     }
 
@@ -136,11 +173,22 @@ public sealed partial class CompanionPage : Page
     {
         _ = sender;
         _ = e;
-        string? folderPath = job is null ? null : Path.GetDirectoryName(job.PdfPath);
-        if (folderPath is not null && Directory.Exists(folderPath))
+        try
         {
-            StorageFolder folder = await StorageFolder.GetFolderFromPathAsync(folderPath);
-            await Launcher.LaunchFolderAsync(folder);
+            string? folderPath = job is null ? null : Path.GetDirectoryName(job.PdfPath);
+            if (folderPath is not null && Directory.Exists(folderPath))
+            {
+                StorageFolder folder = await StorageFolder.GetFolderFromPathAsync(folderPath);
+                bool launched = await Launcher.LaunchFolderAsync(folder);
+                if (!launched)
+                {
+                    StatusText.Text = "Folder could not be opened";
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Folder could not be opened – {exception.Message}";
         }
     }
 
@@ -154,6 +202,12 @@ public sealed partial class CompanionPage : Page
 
     public void CompleteWorkflowDeferral()
     {
+        if (workflowSession is not null)
+        {
+            workflowSession.VirtualPrinterUIDataAvailable -= OnVirtualPrinterUiDataAvailable;
+            workflowSession = null;
+        }
+
         workflowDeferral?.Complete();
         workflowDeferral = null;
     }

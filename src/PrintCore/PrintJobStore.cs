@@ -162,7 +162,30 @@ public sealed class PrintJobStore
     private static void AtomicWrite(string path, string content)
     {
         string temporaryPath = path + $".{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(temporaryPath, content);
-        File.Move(temporaryPath, path, true);
+        try
+        {
+            File.WriteAllText(temporaryPath, content);
+            File.Move(temporaryPath, path, true);
+        }
+        finally
+        {
+            TryDelete(temporaryPath);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup must not replace the original write/move result.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Best-effort cleanup must not replace the original write/move result.
+        }
     }
 }

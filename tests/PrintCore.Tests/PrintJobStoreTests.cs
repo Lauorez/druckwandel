@@ -91,6 +91,34 @@ public sealed class PrintJobStoreTests : IDisposable
         Assert.Equal(job.JobId, latest.JobId);
     }
 
+    [Fact]
+    public void Create_NormalizesMissingDisplayMetadata()
+    {
+        var store = new PrintJobStore(root);
+
+        PrintJobRecord job = store.Create("fallback-session", "  ", "", "\t");
+
+        Assert.Equal("E-Rechnung", job.PrinterName);
+        Assert.Equal("Unbenanntes Dokument", job.DocumentName);
+        Assert.Null(job.SourceApplication);
+    }
+
+    [Fact]
+    public void FailureTransition_PersistsMessageInMetadataAndEventLog()
+    {
+        var store = new PrintJobStore(root);
+        PrintJobRecord job = store.Create("failure-session", "E-Rechnung", "Defekt", null);
+
+        job = store.Transition(job, PrintJobStatus.PdfConversionFailed, "conversion exploded");
+
+        PrintJobRecord persisted = Assert.IsType<PrintJobRecord>(store.Get(job.JobId));
+        Assert.Equal(PrintJobStatus.PdfConversionFailed, persisted.Status);
+        Assert.Equal("conversion exploded", persisted.ErrorMessage);
+        Assert.Contains(
+            "conversion exploded",
+            File.ReadAllText(Path.Combine(store.LogsPath, $"{job.JobId:D}.jsonl")));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(root))
