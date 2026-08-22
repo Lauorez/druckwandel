@@ -6,5 +6,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PrintCore.Tests/PrintCore.Tests.csproj" />
+    <Project Path="tests/PrintSmokeSender/PrintSmokeSender.csproj" />
   </Folder>
 </Solution>
