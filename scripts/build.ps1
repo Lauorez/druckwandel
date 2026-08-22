@@ -1,0 +1,45 @@
+[CmdletBinding()]
+param(
+    [ValidateSet("Debug", "Release")]
+    [string]$Configuration = "Release",
+
+    [ValidateSet("x64", "ARM64")]
+    [string]$Platform = "x64",
+
+    [string]$CertificatePassword = "ERechnung-Dev-Only"
+)
+
+$ErrorActionPreference = "Stop"
+$repositoryRoot = Split-Path $PSScriptRoot -Parent
+
+& (Join-Path $PSScriptRoot "check-environment.ps1")
+& (Join-Path $PSScriptRoot "create-dev-cert.ps1") -Password $CertificatePassword
+
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+$msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" |
+    Select-Object -First 1
+
+$project = Join-Path $repositoryRoot "src\CompanionApp\CompanionApp.csproj"
+$certificate = Join-Path $repositoryRoot ".cert\ERechnung.Dev.pfx"
+$packageDirectory = Join-Path $repositoryRoot "artifacts\packages\"
+$runtimeIdentifier = if ($Platform -eq "ARM64") { "win-arm64" } else { "win-x64" }
+
+New-Item -ItemType Directory -Force -Path $packageDirectory | Out-Null
+
+& $msbuild $project `
+    /restore `
+    /m `
+    /p:Configuration=$Configuration `
+    /p:Platform=$Platform `
+    /p:RuntimeIdentifier=$runtimeIdentifier `
+    /p:GenerateAppxPackageOnBuild=true `
+    /p:AppxPackageSigningEnabled=true `
+    "/p:PackageCertificateKeyFile=$certificate" `
+    "/p:PackageCertificatePassword=$CertificatePassword" `
+    "/p:AppxPackageDir=$packageDirectory"
+
+if ($LASTEXITCODE -ne 0) {
+    throw "MSBuild failed with exit code $LASTEXITCODE."
+}
+
+Write-Host "Package output: $packageDirectory"

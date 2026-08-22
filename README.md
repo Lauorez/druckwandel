@@ -1,0 +1,156 @@
+# E-Rechnung Virtual PDF Printer PoC
+
+Lokaler virtueller PDF-Drucker für Windows 11. Der installierte Drucker **E-Rechnung** übernimmt einen normalen Windows-Printjob, erzeugt ohne Speichern-unter-Dialog ein PDF und öffnet eine minimale Companion-App mit Job-Metadaten.
+
+> Status: erster implementierter PoC, auf macOS statisch vorbereitet. Die Paketinstallation und der Print-Workflow müssen noch auf Windows 11 24H2 verifiziert werden.
+
+## Scope
+
+Enthalten:
+
+- moderner Print Support Virtual Printer ohne eigenen V3-/V4-Treiber,
+- OXPS-zu-PDF über Windows `PrintWorkflowPdlConverter`,
+- PDF-Passthrough für kompatible Anwendungen,
+- UUID-basierte PDF- und JSON-Ablage,
+- atomarer Job-Store und lokales JSONL-Logging,
+- native WinUI-3-Companion-App,
+- MSIX-Manifest, Entwicklungszertifikat und Installationsskripte.
+
+Nicht enthalten sind PDF-Analyse, OCR, Rechnungsfelder, EN 16931, ZUGFeRD, XRechnung, PDF/A, Datenbank, Cloud oder produktive UI.
+
+## Voraussetzungen
+
+- Windows 11 24H2 oder neuer, mindestens Build `26100`
+- x64; ARM64 ist vorbereitet, aber noch nicht getestet
+- Visual Studio 2026 mit:
+  - .NET Desktop Development
+  - Windows application development / WinUI
+  - MSIX Packaging Tools
+  - Windows 11 SDK `10.0.26100` oder neuer
+- .NET SDK 10
+- PowerShell 5.1 oder 7
+- Developer Mode ist für lokale MSIX-Tests empfohlen
+
+Das Projekt verwendet die aktuelle Virtual-Printer-API, die erst mit Build 26100 eingeführt wurde. Ältere Windows-11-Versionen werden bewusst nicht unterstützt.
+
+## Schnellstart auf Windows
+
+```powershell
+git clone https://github.com/Lauorez/erechnung.git
+cd erechnung
+Set-ExecutionPolicy -Scope Process Bypass
+./scripts/build.ps1
+./scripts/install.ps1
+```
+
+Danach prüfen:
+
+```powershell
+Get-Printer -Name "E-Rechnung"
+```
+
+Anschließend Notepad öffnen und über **Drucken → E-Rechnung** drucken. Windows darf keinen zusätzlichen Speichern-unter-Dialog anzeigen. Nach der Konvertierung öffnet sich die Companion-App.
+
+## Build
+
+Standardmäßig wird ein signiertes x64-Release-Paket erzeugt:
+
+```powershell
+./scripts/build.ps1
+```
+
+Weitere Varianten:
+
+```powershell
+./scripts/build.ps1 -Configuration Debug
+./scripts/build.ps1 -Platform ARM64
+```
+
+Das Skript:
+
+1. prüft Windows-Build, .NET und MSBuild,
+2. erzeugt bei Bedarf ein lokales Code-Signing-Zertifikat unter `.cert/`,
+3. restauriert die Pakete,
+4. baut Background-Task, WinUI-App und MSIX,
+5. legt die Pakete unter `artifacts/packages/` ab.
+
+`dotnet build` allein ist für den vollständigen MSIX-Build nicht der unterstützte Pfad. `scripts/build.ps1` verwendet das MSBuild aus Visual Studio.
+
+## Installation
+
+```powershell
+./scripts/install.ps1
+```
+
+Das Development-Zertifikat wird nur für den aktuellen Benutzer unter `TrustedPeople` importiert. Anschließend wird das neueste erzeugte MSIX installiert.
+
+## Lokale Dateien
+
+Die Dateien liegen im geschützten Local-State-Verzeichnis des Pakets:
+
+```text
+%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\ERechnung\
+├─ PrintJobs\
+│  ├─ <UUID>.pdf
+│  └─ <UUID>.json
+├─ Sessions\
+│  └─ <SHA256(SessionId)>.txt
+└─ Logs\
+   └─ <UUID>.jsonl
+```
+
+Die Companion-App öffnet diesen Speicherort über **Open Folder**.
+
+## Tests
+
+Plattformunabhängige Unit-Tests:
+
+```powershell
+./scripts/test.ps1
+```
+
+Der vollständige manuelle Windows-Test steht in [docs/testing.md](docs/testing.md). Er umfasst Notepad, Browser, Word/Excel, Hoch-/Querformat, mehrere Seiten und parallele Jobs.
+
+## Deinstallation
+
+```powershell
+./scripts/uninstall.ps1
+```
+
+Mit dem MSIX-Paket sollte Windows auch die zugehörige Queue entfernen. Kontrolle:
+
+```powershell
+Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue
+```
+
+## Architektur
+
+```text
+Anwendung → Windows Print Pipeline → OXPS/PDF
+          → VirtualPrinterBackgroundTask
+          → XPS-to-PDF / PDF copy
+          → lokaler atomarer Job-Store
+          → PrintWorkflowUILauncher
+          → Companion-App
+```
+
+Das Manifest enthält absichtlich kein `OutputFileTypes`. Dadurch wird die Queue nicht als klassischer File Printer registriert und Windows sollte keinen Speichern-unter-Dialog anzeigen.
+
+Details: [docs/architecture.md](docs/architecture.md) und [docs/windows-print-api-notes.md](docs/windows-print-api-notes.md).
+
+## Bekannte Einschränkungen
+
+- Installation und Druckpfad sind noch nicht auf realer Windows-Hardware ausgeführt worden.
+- Die aktuelle C#-WinRT-Projektion der `PrintSupportJobUI`-Aktivierungsargumente muss praktisch bestätigt werden.
+- Die PDC-Datei bietet zunächst A3, A4, A5, Hoch-/Querformat, Farbe und 600 dpi; weitere PrintTicket-Optionen fehlen.
+- Das Schließen der Companion-App beendet den Print-Workflow. Bleibt sie offen, bleibt auch die zugehörige UI-Aktivierung aktiv.
+- Die Development-Signatur ist nicht für Distribution geeignet.
+- Die mitgelieferten App-Icons sind Platzhalter aus dem Microsoft-Sample.
+
+## Sicherheits- und Datenschutzmodell
+
+- keine Netzwerkaufrufe im Produktcode,
+- keine Telemetrie oder Analytics,
+- keine externen PDF-Konverter,
+- keine vorhersehbaren Dateinamen aus Dokumenttiteln,
+- keine Rechnungsdaten außerhalb des lokalen Paketverzeichnisses.

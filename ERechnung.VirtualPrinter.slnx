@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PrintCore/PrintCore.csproj" />
+    <Project Path="src/VirtualPrinter.Tasks/VirtualPrinter.Tasks.csproj" />
+    <Project Path="src/CompanionApp/CompanionApp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PrintCore.Tests/PrintCore.Tests.csproj" />
+  </Folder>
+</Solution>
