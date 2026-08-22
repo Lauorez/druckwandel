@@ -111,6 +111,14 @@ Plattformunabhängige Unit-Tests:
 
 Der vollständige manuelle Windows-Test steht in [docs/testing.md](docs/testing.md). Er umfasst Notepad, Browser, Word/Excel, Hoch-/Querformat, mehrere Seiten und parallele Jobs.
 
+Für eine automatische Installation mit anschließender Deinstallation steht zusätzlich ein destruktiver Smoke-Test für CI- oder Wegwerf-Testsysteme bereit:
+
+```powershell
+./scripts/smoke-install.ps1
+```
+
+Das Skript installiert das Paket, wartet auf die Queue `E-Rechnung` und entfernt danach Paket, Queue und temporär vertrautes Zertifikat wieder.
+
 ## Deinstallation
 
 ```powershell

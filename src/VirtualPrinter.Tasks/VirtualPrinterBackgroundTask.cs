@@ -25,7 +25,15 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         PrintWorkflowVirtualPrinterSession session = triggerDetails.VirtualPrinterSession;
         printer = session.Printer;
         session.VirtualPrinterDataAvailable += OnVirtualPrinterDataAvailable;
-        session.Start();
+        try
+        {
+            session.Start();
+        }
+        catch
+        {
+            taskDeferral.Complete();
+            throw;
+        }
     }
 
     private async void OnVirtualPrinterDataAvailable(
@@ -121,8 +129,14 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                 // Cleanup must never prevent the print workflow from being completed.
             }
 
-            args.CompleteJob(submittedStatus);
-            taskDeferral?.Complete();
+            try
+            {
+                args.CompleteJob(submittedStatus);
+            }
+            finally
+            {
+                taskDeferral?.Complete();
+            }
         }
     }
 

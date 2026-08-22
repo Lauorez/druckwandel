@@ -1,4 +1,5 @@
 using ERechnung.PrintCore;
+using System.Text.Json;
 using Xunit;
 
 namespace ERechnung.PrintCore.Tests;
@@ -59,6 +60,35 @@ public sealed class PrintJobStoreTests : IDisposable
         Assert.DoesNotContain("/", key);
         Assert.DoesNotContain("\\", key);
         Assert.DoesNotContain("..", key);
+    }
+
+    [Fact]
+    public void JsonContract_UsesExpectedNamesAndExplicitNull()
+    {
+        var store = new PrintJobStore(root);
+        PrintJobRecord job = store.Create("json-session", "E-Rechnung", "Test 123", null);
+        string jsonPath = Path.Combine(store.JobsPath, $"{job.JobId:D}.json");
+
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
+        JsonElement rootElement = document.RootElement;
+
+        Assert.Equal(job.JobId, rootElement.GetProperty("jobId").GetGuid());
+        Assert.Equal("E-Rechnung", rootElement.GetProperty("printerName").GetString());
+        Assert.Equal("Test 123", rootElement.GetProperty("documentName").GetString());
+        Assert.Equal(JsonValueKind.Null, rootElement.GetProperty("sourceApplication").ValueKind);
+        Assert.Equal("printJobReceived", rootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void GetLatest_IgnoresCorruptMetadataFile()
+    {
+        var store = new PrintJobStore(root);
+        PrintJobRecord job = store.Create("valid-session", "E-Rechnung", "Valid", null);
+        File.WriteAllText(Path.Combine(store.JobsPath, "corrupt.json"), "{not json");
+
+        PrintJobRecord latest = Assert.IsType<PrintJobRecord>(store.GetLatest());
+
+        Assert.Equal(job.JobId, latest.JobId);
     }
 
     public void Dispose()

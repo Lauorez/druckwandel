@@ -78,7 +78,7 @@ public sealed partial class CompanionPage : Page
         PdfPathText.Text = record.PdfPath;
         SourceApplicationText.Text = record.SourceApplication ?? "–";
         JobIdText.Text = record.JobId.ToString("D");
-        StatusText.Text = File.Exists(record.PdfPath) ? "Ready" : record.Status.ToString();
+        StatusText.Text = FormatStatus(record);
         OpenPdfButton.IsEnabled = File.Exists(record.PdfPath);
         OpenFolderButton.IsEnabled = Directory.Exists(Path.GetDirectoryName(record.PdfPath));
 
@@ -102,6 +102,23 @@ public sealed partial class CompanionPage : Page
         {
             return "Unknown";
         }
+    }
+
+    private static string FormatStatus(PrintJobRecord record)
+    {
+        return record.Status switch
+        {
+            PrintJobStatus.PdfConversionSucceeded or
+            PrintJobStatus.CompanionLaunchSucceeded or
+            PrintJobStatus.JobCompleted => "Ready",
+            PrintJobStatus.PdfConversionFailed or
+            PrintJobStatus.CompanionLaunchFailed or
+            PrintJobStatus.JobFailed => string.IsNullOrWhiteSpace(record.ErrorMessage)
+                ? "Failed"
+                : $"Failed – {record.ErrorMessage}",
+            PrintJobStatus.JobCanceled => "Canceled",
+            _ => record.Status.ToString()
+        };
     }
 
     private async void OpenPdfButton_Click(object sender, RoutedEventArgs e)

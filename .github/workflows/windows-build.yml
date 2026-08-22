@@ -15,6 +15,10 @@ jobs:
       - name: Build signed MSIX package
         shell: pwsh
         run: ./scripts/build.ps1
+      - name: Smoke-test package installation and printer registration
+        continue-on-error: true
+        shell: pwsh
+        run: ./scripts/smoke-install.ps1
       - name: Upload development package
         uses: actions/upload-artifact@v5
         with:
