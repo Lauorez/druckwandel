@@ -42,4 +42,23 @@ if ($LASTEXITCODE -ne 0) {
     throw "MSBuild failed with exit code $LASTEXITCODE."
 }
 
+$package = Get-ChildItem -Path $packageDirectory -Recurse -File -Filter "*.msix" |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 1
+if (-not $package) {
+    throw "MSBuild meldete Erfolg, hat aber kein MSIX-Paket erzeugt."
+}
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
+try {
+    $signature = $archive.Entries | Where-Object { $_.FullName -eq "AppxSignature.p7x" }
+    if (-not $signature) {
+        throw "Das MSIX-Paket wurde erzeugt, enthält aber keine Signatur."
+    }
+} finally {
+    $archive.Dispose()
+}
+
+Write-Host "Signed package: $($package.FullName)"
 Write-Host "Package output: $packageDirectory"
