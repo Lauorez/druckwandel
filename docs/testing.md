@@ -3,7 +3,7 @@
 ## Smoke Test
 
 1. Windows mit `winver` prüfen: mindestens Windows 11 24H2, Build 26100.
-2. Repository klonen und PowerShell im Repository öffnen.
+2. Repository klonen und PowerShell **als Administrator** im Repository öffnen.
 3. `Set-ExecutionPolicy -Scope Process Bypass` ausführen, falls lokale Skripte blockiert werden.
 4. `.\scripts\build.ps1` ausführen.
 5. `.\scripts\install.ps1` ausführen.

@@ -38,6 +38,7 @@ Das Projekt verwendet die aktuelle Virtual-Printer-API, die erst mit Build 26100
 ```powershell
 git clone https://github.com/Lauorez/erechnung.git
 cd erechnung
+# PowerShell zuvor als Administrator öffnen
 Set-ExecutionPolicy -Scope Process Bypass
 ./scripts/build.ps1
 ./scripts/install.ps1
@@ -82,7 +83,7 @@ Das Skript:
 ./scripts/install.ps1
 ```
 
-Das Development-Zertifikat wird nur für den aktuellen Benutzer unter `TrustedPeople` importiert. Anschließend wird das neueste erzeugte MSIX installiert.
+Das Development-Zertifikat wird unter `LocalMachine\TrustedPeople` importiert; deshalb muss PowerShell für die Installation als Administrator laufen. Anschließend wird das neueste erzeugte MSIX installiert.
 
 ## Lokale Dateien
 

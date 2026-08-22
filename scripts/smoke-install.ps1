@@ -8,6 +8,12 @@ param(
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
 
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Der Installations-Smoke-Test muss als Administrator ausgeführt werden."
+}
+
 if (-not $PackageRoot) {
     $PackageRoot = Join-Path $repositoryRoot "artifacts\packages"
 }
@@ -58,19 +64,21 @@ function Wait-ForPrinter {
 $trustedCertificate = $null
 $removeTrustedCertificate = $false
 $installedPackage = $null
+$spoolerWasRunning = $null
 
 try {
     $spooler = Get-Service -Name "Spooler"
-    if ($spooler.Status -ne "Running") {
+    $spoolerWasRunning = $spooler.Status -eq "Running"
+    if (-not $spoolerWasRunning) {
         Start-Service -Name "Spooler"
     }
 
     $certificateInfo = Get-PfxCertificate -FilePath $CertificatePath
-    $trustedCertificatePath = "Cert:\CurrentUser\TrustedPeople\$($certificateInfo.Thumbprint)"
+    $trustedCertificatePath = "Cert:\LocalMachine\TrustedPeople\$($certificateInfo.Thumbprint)"
     if (-not (Test-Path $trustedCertificatePath)) {
         $trustedCertificate = Import-Certificate `
             -FilePath $CertificatePath `
-            -CertStoreLocation "Cert:\CurrentUser\TrustedPeople"
+            -CertStoreLocation "Cert:\LocalMachine\TrustedPeople"
         $removeTrustedCertificate = $true
     }
 
@@ -84,16 +92,24 @@ try {
     Write-Host "Package installed: $($installedPackage.PackageFullName)"
     Write-Host "Printer registered: $($printer.Name)"
 } finally {
-    if (-not $installedPackage) {
-        $installedPackage = Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC"
-    }
-    if ($installedPackage) {
-        Remove-AppxPackage -Package $installedPackage.PackageFullName
-        Wait-ForPrinter -ShouldExist $false -TimeoutSeconds $QueueTimeoutSeconds | Out-Null
-        Write-Host "Package removed and printer queue disappeared."
-    }
-
-    if ($removeTrustedCertificate -and $trustedCertificate) {
-        Remove-Item -Path "Cert:\CurrentUser\TrustedPeople\$($trustedCertificate.Thumbprint)" -Force
+    try {
+        if (-not $installedPackage) {
+            $installedPackage = Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC"
+        }
+        if ($installedPackage) {
+            Remove-AppxPackage -Package $installedPackage.PackageFullName
+            Wait-ForPrinter -ShouldExist $false -TimeoutSeconds $QueueTimeoutSeconds | Out-Null
+            Write-Host "Package removed and printer queue disappeared."
+        }
+    } finally {
+        try {
+            if ($removeTrustedCertificate -and $trustedCertificate) {
+                Remove-Item -Path "Cert:\LocalMachine\TrustedPeople\$($trustedCertificate.Thumbprint)" -Force
+            }
+        } finally {
+            if ($spoolerWasRunning -eq $false) {
+                Stop-Service -Name "Spooler"
+            }
+        }
     }
 }
