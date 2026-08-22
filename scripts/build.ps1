@@ -12,6 +12,7 @@ param(
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
 
+& (Join-Path $PSScriptRoot "check-version.ps1")
 & (Join-Path $PSScriptRoot "check-environment.ps1")
 & (Join-Path $PSScriptRoot "create-dev-cert.ps1") -Password $CertificatePassword
 

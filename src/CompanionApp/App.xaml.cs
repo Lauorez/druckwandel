@@ -19,7 +19,7 @@ public partial class App : Application
         AppActivationArguments activation = AppInstance.GetCurrent().GetActivatedEventArgs();
         window = new Window
         {
-            Title = "E-Rechnung – Print Companion"
+            Title = "E-Rechnung – Print Companion Beta 1"
         };
 
         var frame = new Frame();

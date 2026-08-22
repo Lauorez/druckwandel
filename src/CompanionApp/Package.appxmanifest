@@ -12,7 +12,7 @@
   <Identity
     Name="ERechnung.VirtualPrinter.PoC"
     Publisher="CN=ERechnung Development"
-    Version="0.1.0.0" />
+    Version="0.1.0.1" />
 
   <mp:PhoneIdentity
     PhoneProductId="93d1b886-f22c-4b9f-aa08-086c985cbb94"
@@ -41,7 +41,7 @@
       uap10:SupportsMultipleInstances="true">
       <uap:VisualElements
         DisplayName="E-Rechnung Print Companion"
-        Description="Lokaler virtueller PDF-Drucker Proof of Concept"
+        Description="Lokaler virtueller PDF-Drucker – Beta 1"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

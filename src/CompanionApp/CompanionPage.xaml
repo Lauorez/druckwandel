@@ -17,7 +17,7 @@
         <StackPanel Spacing="6">
             <TextBlock FontSize="28" FontWeight="SemiBold" Text="Print job received" />
             <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Text="Das lokale PDF wurde für die spätere E-Rechnungs-App bereitgestellt." />
+                       Text="Beta 1 · Das lokale PDF wurde für die spätere E-Rechnungs-App bereitgestellt." />
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,28,0,28" ColumnSpacing="18" RowSpacing="14">

@@ -1,8 +1,10 @@
-# E-Rechnung Virtual PDF Printer PoC
+# E-Rechnung Virtual PDF Printer – Beta 1
 
 Lokaler virtueller PDF-Drucker für Windows 11. Der installierte Drucker **E-Rechnung** übernimmt einen normalen Windows-Printjob, erzeugt ohne Speichern-unter-Dialog ein PDF und öffnet eine minimale Companion-App mit Job-Metadaten.
 
-> Status: installierbarer und signierter PoC. Build, MSIX-Inhalt, Installation, automatische Queue-Registrierung und Deinstallation sind auf einem frischen Windows-Build-26100-CI-System verifiziert. Der interaktive Print- und Companion-Pfad muss noch auf einem Windows-11-Desktop bestätigt werden.
+> Version: **0.1.0-beta.1**. Erste private Testversion. Build, MSIX-Inhalt, Installation, automatische Queue-Registrierung und Deinstallation sind auf einem frischen Windows-Build-26100-CI-System verifiziert. Der interaktive Print- und Companion-Pfad muss noch auf einem Windows-11-Desktop bestätigt werden.
+
+Diese Beta ist für einen ersten End-to-End-Test gedacht. Sie ist noch keine produktiv signierte oder allgemein verteilbare Anwendung.
 
 ## Scope
 
@@ -32,6 +34,19 @@ Nicht enthalten sind PDF-Analyse, OCR, Rechnungsfelder, EN 16931, ZUGFeRD, XRech
 - Developer Mode ist für lokale MSIX-Tests empfohlen
 
 Das Projekt verwendet die aktuelle Virtual-Printer-API, die erst mit Build 26100 eingeführt wurde. Ältere Windows-11-Versionen werden bewusst nicht unterstützt.
+
+## Beta-Paket installieren
+
+Die private GitHub-Prerelease `v0.1.0-beta.1` enthält ein x64-MSIX und das zugehörige öffentliche Entwicklungszertifikat. Beide Dateien in denselben Ordner herunterladen, PowerShell als Administrator öffnen und ausführen:
+
+```powershell
+Import-Certificate `
+  -FilePath .\ERechnung.Dev.cer `
+  -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+Add-AppxPackage .\CompanionApp_0.1.0.1_x64.msix
+```
+
+Das Zertifikat ist ausschließlich für diesen privaten Betatest bestimmt. Alternativ kann die Beta wie unten beschrieben aus dem Quellcode gebaut werden.
 
 ## Schnellstart auf Windows
 
@@ -163,6 +178,8 @@ Das Manifest enthält absichtlich kein `OutputFileTypes`. Dadurch wird die Queue
 
 Details: [docs/architecture.md](docs/architecture.md) und [docs/windows-print-api-notes.md](docs/windows-print-api-notes.md).
 
+Der vollständige aktuelle Arbeitsstand für die Fortsetzung auf einem anderen Gerät steht in [docs/PROGRESS.md](docs/PROGRESS.md).
+
 ## Bekannte Einschränkungen
 
 - Installation, Queue-Registrierung und Deinstallation sind automatisiert auf Windows Build 26100 verifiziert; der Druckpfad ist noch nicht in einer interaktiven Windows-11-Sitzung ausgeführt worden.
@@ -171,6 +188,8 @@ Details: [docs/architecture.md](docs/architecture.md) und [docs/windows-print-ap
 - Das Schließen der Companion-App beendet den Print-Workflow. Bleibt sie offen, bleibt auch die zugehörige UI-Aktivierung aktiv.
 - Die Development-Signatur ist nicht für Distribution geeignet.
 - Die mitgelieferten App-Icons sind Platzhalter aus dem Microsoft-Sample.
+
+Änderungen dieser und späterer Versionen stehen in [CHANGELOG.md](CHANGELOG.md).
 
 ## Sicherheits- und Datenschutzmodell
 
