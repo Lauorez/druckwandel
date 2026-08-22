@@ -33,9 +33,7 @@ New-Item -ItemType Directory -Force -Path $packageDirectory | Out-Null
     /p:Platform=$Platform `
     /p:RuntimeIdentifier=$runtimeIdentifier `
     /p:GenerateAppxPackageOnBuild=true `
-    /p:AppxPackageSigningEnabled=true `
-    "/p:PackageCertificateKeyFile=$certificate" `
-    "/p:PackageCertificatePassword=$CertificatePassword" `
+    /p:AppxPackageSigningEnabled=false `
     "/p:AppxPackageDir=$packageDirectory"
 
 if ($LASTEXITCODE -ne 0) {
@@ -47,6 +45,29 @@ $package = Get-ChildItem -Path $packageDirectory -Recurse -File -Filter "*.msix"
     Select-Object -First 1
 if (-not $package) {
     throw "MSBuild meldete Erfolg, hat aber kein MSIX-Paket erzeugt."
+}
+
+$nugetPackages = if ($env:NUGET_PACKAGES) {
+    $env:NUGET_PACKAGES
+} else {
+    Join-Path $env:USERPROFILE ".nuget\packages"
+}
+
+$signTool = Get-ChildItem `
+    -Path (Join-Path $nugetPackages "microsoft.windows.sdk.buildtools") `
+    -Recurse `
+    -File `
+    -Filter "signtool.exe" |
+    Where-Object { $_.DirectoryName -match "[\\/]x64$" } |
+    Sort-Object FullName -Descending |
+    Select-Object -First 1
+if (-not $signTool) {
+    throw "SignTool wurde in den restaurierten Windows SDK BuildTools nicht gefunden."
+}
+
+& $signTool.FullName sign /fd SHA256 /f $certificate /p $CertificatePassword $package.FullName
+if ($LASTEXITCODE -ne 0) {
+    throw "SignTool failed with exit code $LASTEXITCODE."
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
