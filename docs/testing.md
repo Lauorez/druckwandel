@@ -58,3 +58,11 @@ Applications and Services Logs
 ```
 
 Für einen Fehlerbericht bitte Windows-Build, Visual-Studio-Version, Buildausgabe, relevante Ereignisanzeige-Einträge und die JSONL-Datei des Jobs sichern. Rechnungsinhalte nicht veröffentlichen.
+
+Die systemnahen Informationen lassen sich ohne PDF-Inhalte automatisch sammeln:
+
+```powershell
+.\scripts\collect-diagnostics.ps1
+```
+
+Nur wenn die Job-Zuordnung untersucht werden muss, `-IncludeJobMetadata` ergänzen. JSON und JSONL können Dokumentnamen und Quellanwendungen enthalten; das Skript kopiert absichtlich niemals PDF-Dateien.

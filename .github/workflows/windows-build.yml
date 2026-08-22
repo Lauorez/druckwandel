@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
@@ -21,11 +24,17 @@ jobs:
       - name: Smoke-test install, printer registration, and uninstall
         shell: pwsh
         run: ./scripts/smoke-install.ps1
+      - name: Collect Windows diagnostics
+        if: always()
+        shell: pwsh
+        run: ./scripts/collect-diagnostics.ps1 -EventLookbackMinutes 10
       - name: Upload development package
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: erechnung-virtual-printer-x64
           path: |
             artifacts/packages/**/*.msix
+            artifacts/diagnostics/**
             .cert/ERechnung.Dev.cer
           if-no-files-found: error

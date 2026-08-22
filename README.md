@@ -128,6 +128,14 @@ Auf einer **interaktiven** Windows-Desktop-Sitzung kann derselbe Test zusätzlic
 
 Dabei werden die Jobdateien vor der Deinstallation zusätzlich unter `artifacts/smoke/` gesichert. Der verwendete gehostete GitHub-Windows-Runner hat den Druckjob in seiner nicht interaktiven Sitzung vor Aktivierung der Print-Workflow-Background-Task abgebrochen; CI prüft deshalb bewusst den installierbaren Paket- und Queue-Lifecycle, nicht die UI-Aktivierung.
 
+Bei einem Fehler sammelt folgendes Skript Paket-, Queue-, Spooler- und relevante Windows-Ereignisdaten, ohne PDFs zu kopieren:
+
+```powershell
+./scripts/collect-diagnostics.ps1
+```
+
+Mit `-IncludeJobMetadata` werden zusätzlich JSON-Metadaten und JSONL-Statuslogs aufgenommen. Diese können Dokumentnamen enthalten und sollten vor dem Teilen geprüft werden.
+
 ## Deinstallation
 
 ```powershell
