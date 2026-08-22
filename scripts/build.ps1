@@ -73,9 +73,36 @@ if ($LASTEXITCODE -ne 0) {
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
 try {
-    $signature = $archive.Entries | Where-Object { $_.FullName -eq "AppxSignature.p7x" }
-    if (-not $signature) {
-        throw "Das MSIX-Paket wurde erzeugt, enthält aber keine Signatur."
+    $packageEntries = $archive.Entries | ForEach-Object { $_.FullName.Replace("\", "/") }
+    $requiredEntries = @(
+        "AppxManifest.xml",
+        "Config/PrinterPdc.xml",
+        "VirtualPrinter.Tasks.dll",
+        "VirtualPrinter.Tasks.winmd",
+        "WinRT.Host.dll",
+        "resources.pri",
+        "AppxSignature.p7x"
+    )
+
+    $missingEntries = $requiredEntries | Where-Object { $_ -notin $packageEntries }
+    if ($missingEntries) {
+        throw "Dem MSIX-Paket fehlen erforderliche Dateien: $($missingEntries -join ', ')"
+    }
+
+    $manifestEntry = $archive.GetEntry("AppxManifest.xml")
+    $reader = [System.IO.StreamReader]::new($manifestEntry.Open())
+    try {
+        $manifestContent = $reader.ReadToEnd()
+    } finally {
+        $reader.Dispose()
+    }
+
+    if ($manifestContent -notmatch "windows\.printSupportVirtualPrinterWorkflow") {
+        throw "Das fertige MSIX-Manifest registriert keinen Print Support Virtual Printer."
+    }
+
+    if ($manifestContent -match "OutputFileTypes") {
+        throw "Das fertige MSIX-Manifest enthält OutputFileTypes und würde einen Speichern-unter-Dialog aktivieren."
     }
 } finally {
     $archive.Dispose()

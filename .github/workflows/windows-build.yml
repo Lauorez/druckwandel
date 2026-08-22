@@ -15,3 +15,11 @@ jobs:
       - name: Build signed MSIX package
         shell: pwsh
         run: ./scripts/build.ps1
+      - name: Upload development package
+        uses: actions/upload-artifact@v5
+        with:
+          name: erechnung-virtual-printer-x64
+          path: |
+            artifacts/packages/**/*.msix
+            .cert/ERechnung.Dev.cer
+          if-no-files-found: error
