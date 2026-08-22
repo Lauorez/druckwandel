@@ -1,42 +1,127 @@
-using System.Drawing;
-using System.Drawing.Printing;
+using System.IO;
+using System.Printing;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Markup;
+using System.Windows.Media;
+using System.Windows.Xps;
+using System.Windows.Xps.Packaging;
 
-const string printerName = "E-Rechnung";
-const string documentName = "E-Rechnung automated smoke test";
+namespace ERechnung.PrintSmokeSender;
 
-using var document = new PrintDocument
+internal static class Program
 {
-    DocumentName = documentName,
-    PrintController = new StandardPrintController()
-};
+    private const string PrinterName = "E-Rechnung";
+    private const string DocumentName = "E-Rechnung automated smoke test";
+    private const double A4Width = 793.7008;
+    private const double A4Height = 1122.5197;
 
-document.PrinterSettings.PrinterName = printerName;
-if (!document.PrinterSettings.IsValid)
-{
-    throw new InvalidOperationException($"Printer '{printerName}' is not available.");
+    [STAThread]
+    private static void Main()
+    {
+        string xpsPath = Path.Combine(Path.GetTempPath(), $"erechnung-smoke-{Guid.NewGuid():N}.xps");
+        try
+        {
+            CreateTestDocument(xpsPath);
+
+            using var server = new LocalPrintServer();
+            using PrintQueue queue = server.GetPrintQueue(PrinterName);
+            PrintTicket ticket = queue.DefaultPrintTicket;
+            ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
+            ticket.PageOrientation = PageOrientation.Portrait;
+
+            PrintSystemJobInfo job = queue.AddJob(DocumentName, xpsPath, false, ticket);
+            Console.WriteLine(
+                $"Submitted '{DocumentName}' to '{PrinterName}' as spooler job {job.JobIdentifier}.");
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(xpsPath);
+            }
+            catch (IOException)
+            {
+                // The smoke test must not hide its actual result behind temporary-file cleanup.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // The smoke test must not hide its actual result behind temporary-file cleanup.
+            }
+        }
+    }
+
+    private static void CreateTestDocument(string xpsPath)
+    {
+        FixedDocument document = new();
+        document.DocumentPaginator.PageSize = new Size(A4Width, A4Height);
+
+        FixedPage page = new()
+        {
+            Width = A4Width,
+            Height = A4Height,
+            Background = Brushes.White
+        };
+
+        AddText(page, "E-Rechnung Virtual Printer", 80, 80, 24, FontWeights.Bold, Brushes.DarkBlue);
+        AddText(
+            page,
+            "Automated local print-pipeline smoke test.\nNo invoice processing is performed.",
+            80,
+            140,
+            14,
+            FontWeights.Normal,
+            Brushes.Black);
+
+        Border outline = new()
+        {
+            Width = 500,
+            Height = 180,
+            BorderBrush = Brushes.DarkBlue,
+            BorderThickness = new Thickness(2)
+        };
+        FixedPage.SetLeft(outline, 80);
+        FixedPage.SetTop(outline, 220);
+        page.Children.Add(outline);
+
+        AddText(
+            page,
+            DateTimeOffset.UtcNow.ToString("O"),
+            100,
+            250,
+            14,
+            FontWeights.Normal,
+            Brushes.Black);
+
+        PageContent pageContent = new();
+        ((IAddChild)pageContent).AddChild(page);
+        document.Pages.Add(pageContent);
+
+        using var xpsDocument = new XpsDocument(xpsPath, FileAccess.ReadWrite);
+        XpsDocumentWriter writer = XpsDocument.CreateXpsDocumentWriter(xpsDocument);
+        writer.Write(document);
+    }
+
+    private static void AddText(
+        FixedPage page,
+        string text,
+        double left,
+        double top,
+        double fontSize,
+        FontWeight fontWeight,
+        Brush foreground)
+    {
+        TextBlock textBlock = new()
+        {
+            Text = text,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = fontSize,
+            FontWeight = fontWeight,
+            Foreground = foreground
+        };
+        FixedPage.SetLeft(textBlock, left);
+        FixedPage.SetTop(textBlock, top);
+        page.Children.Add(textBlock);
+    }
 }
-
-document.DefaultPageSettings.PaperSize = new PaperSize("A4", 827, 1169);
-document.DefaultPageSettings.Landscape = false;
-document.PrintPage += (_, args) =>
-{
-    Graphics graphics = args.Graphics
-        ?? throw new InvalidOperationException("The print controller did not provide a graphics surface.");
-    using var titleFont = new Font("Segoe UI", 18, FontStyle.Bold);
-    using var bodyFont = new Font("Segoe UI", 11);
-    using var pen = new Pen(Color.DarkBlue, 2);
-
-    graphics.DrawString("E-Rechnung Virtual Printer", titleFont, Brushes.DarkBlue, 80, 80);
-    graphics.DrawString(
-        "Automated local print-pipeline smoke test.\nNo invoice processing is performed.",
-        bodyFont,
-        Brushes.Black,
-        80,
-        140);
-    graphics.DrawRectangle(pen, 80, 220, 500, 180);
-    graphics.DrawString(DateTimeOffset.UtcNow.ToString("O"), bodyFont, Brushes.Black, 100, 250);
-    args.HasMorePages = false;
-};
-
-document.Print();
-Console.WriteLine($"Submitted '{documentName}' to '{printerName}'.");

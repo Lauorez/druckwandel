@@ -15,7 +15,7 @@ jobs:
       - name: Build signed MSIX package
         shell: pwsh
         run: ./scripts/build.ps1
-      - name: Smoke-test package installation and printer registration
+      - name: Smoke-test install, print pipeline, and uninstall
         continue-on-error: true
         shell: pwsh
         run: ./scripts/smoke-install.ps1 -TestPrint
@@ -25,5 +25,6 @@ jobs:
           name: erechnung-virtual-printer-x64
           path: |
             artifacts/packages/**/*.msix
+            artifacts/smoke/**
             .cert/ERechnung.Dev.cer
           if-no-files-found: error

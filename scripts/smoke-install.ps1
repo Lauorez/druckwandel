@@ -2,6 +2,7 @@
 param(
     [string]$PackageRoot,
     [string]$CertificatePath,
+    [string]$SmokeArtifactRoot,
     [int]$QueueTimeoutSeconds = 30,
     [int]$PrintTimeoutSeconds = 45,
     [switch]$TestPrint
@@ -21,6 +22,12 @@ if (-not $PackageRoot) {
 }
 if (-not $CertificatePath) {
     $CertificatePath = Join-Path $repositoryRoot ".cert\ERechnung.Dev.cer"
+}
+if (-not $SmokeArtifactRoot) {
+    $SmokeArtifactRoot = Join-Path $repositoryRoot "artifacts\smoke"
+}
+if ($TestPrint) {
+    New-Item -ItemType Directory -Force -Path $SmokeArtifactRoot | Out-Null
 }
 
 $package = Get-ChildItem -Path $PackageRoot -Recurse -File -Filter "*.msix" |
@@ -102,6 +109,8 @@ $trustedCertificate = $null
 $removeTrustedCertificate = $false
 $installedPackage = $null
 $spoolerWasRunning = $null
+$localStateRoot = $null
+$smokeStartedAt = [DateTimeOffset]::UtcNow
 
 try {
     $spooler = Get-Service -Name "Spooler"
@@ -124,15 +133,16 @@ try {
     if (-not $installedPackage) {
         throw "Add-AppxPackage meldete keinen Fehler, das Paket ist aber nicht registriert."
     }
+    $localStateRoot = Join-Path `
+        $env:LOCALAPPDATA `
+        "Packages\$($installedPackage.PackageFamilyName)\LocalState"
 
     $printer = Wait-ForPrinter -ShouldExist $true -TimeoutSeconds $QueueTimeoutSeconds
     Write-Host "Package installed: $($installedPackage.PackageFullName)"
     Write-Host "Printer registered: $($printer.Name)"
 
     if ($TestPrint) {
-        $printJobsPath = Join-Path `
-            $env:LOCALAPPDATA `
-            "Packages\$($installedPackage.PackageFamilyName)\LocalState\ERechnung\PrintJobs"
+        $printJobsPath = Join-Path $localStateRoot "ERechnung\PrintJobs"
         & dotnet run `
             --project (Join-Path $repositoryRoot "tests\PrintSmokeSender\PrintSmokeSender.csproj") `
             --configuration Release
@@ -149,6 +159,26 @@ try {
             $installedPackage = Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC"
         }
         if ($installedPackage) {
+            if ($TestPrint) {
+                $summary = [ordered]@{
+                    startedAt        = $smokeStartedAt
+                    collectedAt      = [DateTimeOffset]::UtcNow
+                    packageFullName  = $installedPackage.PackageFullName
+                    packageFamilyName = $installedPackage.PackageFamilyName
+                    printerPresent   = [bool](Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue)
+                    localStateRoot   = $localStateRoot
+                }
+                $summary | ConvertTo-Json | Set-Content `
+                    -Path (Join-Path $SmokeArtifactRoot "summary.json")
+
+                $productDataPath = if ($localStateRoot) {
+                    Join-Path $localStateRoot "ERechnung"
+                }
+                if ($productDataPath -and (Test-Path $productDataPath)) {
+                    Copy-Item -Path $productDataPath -Destination $SmokeArtifactRoot -Recurse -Force
+                }
+            }
+
             Get-Process -Name "CompanionApp" -ErrorAction SilentlyContinue | Stop-Process -Force
             Remove-AppxPackage -Package $installedPackage.PackageFullName
             Wait-ForPrinter -ShouldExist $false -TimeoutSeconds $QueueTimeoutSeconds | Out-Null
