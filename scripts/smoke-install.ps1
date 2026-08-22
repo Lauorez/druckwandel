@@ -84,18 +84,25 @@ function Wait-ForPrintArtifact {
         if ($pdf) {
             $jsonPath = [System.IO.Path]::ChangeExtension($pdf.FullName, ".json")
             if (Test-Path $jsonPath) {
-                $header = [System.IO.File]::ReadAllBytes($pdf.FullName) | Select-Object -First 5
-                $headerText = [System.Text.Encoding]::ASCII.GetString([byte[]]$header)
-                if ($headerText -ne "%PDF-") {
-                    throw "Die erzeugte Datei besitzt keinen gültigen PDF-Header: $($pdf.FullName)"
-                }
-
                 $metadata = Get-Content -Raw -Path $jsonPath | ConvertFrom-Json
                 if ($metadata.documentName -ne "E-Rechnung automated smoke test") {
                     throw "Der erzeugte Job enthält einen unerwarteten Dokumentnamen: $($metadata.documentName)"
                 }
 
-                return $pdf
+                $logPath = Join-Path `
+                    (Join-Path (Split-Path $PrintJobsPath -Parent) "Logs") `
+                    "$($metadata.jobId).jsonl"
+                $conversionSucceeded = (Test-Path $logPath) -and
+                    ((Get-Content -Raw -Path $logPath) -match '"status":"pdfConversionSucceeded"')
+                if ($conversionSucceeded) {
+                    $header = [System.IO.File]::ReadAllBytes($pdf.FullName) | Select-Object -First 5
+                    $headerText = [System.Text.Encoding]::ASCII.GetString([byte[]]$header)
+                    if ($headerText -ne "%PDF-") {
+                        throw "Die erzeugte Datei besitzt keinen gültigen PDF-Header: $($pdf.FullName)"
+                    }
+
+                    return $pdf
+                }
             }
         }
 

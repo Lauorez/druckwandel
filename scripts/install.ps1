@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [int]$QueueTimeoutSeconds = 30
+)
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
@@ -18,9 +20,18 @@ if (-not $package) {
 Add-AppxPackage -Path $package.FullName -ForceApplicationShutdown
 Write-Host "Installed: $($package.FullName)"
 
-$printer = Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue
+$deadline = [DateTimeOffset]::UtcNow.AddSeconds($QueueTimeoutSeconds)
+do {
+    $printer = Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue
+    if ($printer) {
+        break
+    }
+
+    Start-Sleep -Seconds 1
+} while ([DateTimeOffset]::UtcNow -lt $deadline)
+
 if (-not $printer) {
-    Write-Warning "Paket ist installiert, aber die Druckerwarteschlange wurde noch nicht gefunden. Prüfe Ereignisanzeige und docs/testing.md."
+    throw "Paket wurde installiert, aber die Druckerwarteschlange erschien nicht innerhalb von $QueueTimeoutSeconds Sekunden. Prüfe Ereignisanzeige und docs/testing.md."
 } else {
     Write-Host "Printer ready: $($printer.Name)"
 }

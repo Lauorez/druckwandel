@@ -14,6 +14,16 @@
 10. `Open PDF` und `Open Folder` testen.
 11. `.\scripts\uninstall.ps1` ausführen und prüfen, dass die Queue verschwindet.
 
+## Automatischer Desktop-Smoke-Test
+
+In einer interaktiven Windows-Sitzung führt folgender Befehl Installation, A4-XPS-Testdruck, PDF-/JSON-/Statusprüfung und Deinstallation automatisch aus:
+
+```powershell
+.\scripts\smoke-install.ps1 -TestPrint
+```
+
+Der Test verändert keine bereits vorhandene Installation oder gleichnamige Queue. Seine gesicherten Ergebnisse liegen anschließend unter `artifacts\smoke\`. Ohne `-TestPrint` prüft das Skript nur Paketinstallation und Queue-Lifecycle; genau diese Variante läuft in GitHub Actions, weil der verwendete gehostete Runner den Job in seiner nicht interaktiven Sitzung vor der Print-Workflow-Aktivierung abgebrochen hat.
+
 ## Testmatrix
 
 | Test | Quelle | Inhalt | Erwartung |

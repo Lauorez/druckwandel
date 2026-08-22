@@ -21,10 +21,12 @@ Stand: 23.08.2026
 - [PrintWorkflowVirtualPrinterDataAvailableEventArgs](https://learn.microsoft.com/uwp/api/windows.graphics.printing.workflow.printworkflowvirtualprinterdataavailableeventargs?view=winrt-26100)
 - [PrintWorkflowConfiguration](https://learn.microsoft.com/uwp/api/windows.graphics.printing.workflow.printworkflowconfiguration?view=winrt-26100)
 - [Microsoft print-oem-samples – C# Windows App SDK](https://github.com/microsoft/print-oem-samples/tree/master/PSASamples/WinAppSdk/CSharp)
+- [PrintQueue.AddJob für XPS-Testjobs](https://learn.microsoft.com/dotnet/api/system.printing.printqueue.addjob?view=windowsdesktop-10.0)
 
 ## Noch auf Windows zu verifizieren
 
 - Der aktuelle C#-Samplepfad nennt selbst eine noch zu testende Aktivierungsprojektion für `PrintWorkflowJobActivatedEventArgs`.
 - Verhalten von `LaunchAndCompleteUIAsync`, wenn mehrere Jobs nahezu gleichzeitig eintreffen.
-- Validität der minimalen PDC-Datei bei der Paketinstallation.
 - Ausgabequalität und PrintTicket-Übernahme bei Notepad, Browser, Word und Excel.
+
+Die minimale PDC-Datei, die automatische Queue-Registrierung sowie das Entfernen der Queue mit dem Paket wurden auf einem frischen Windows-Build-26100-CI-System praktisch bestätigt. Der eigentliche Print-Workflow benötigt weiterhin den interaktiven Windows-Desktop-Test.

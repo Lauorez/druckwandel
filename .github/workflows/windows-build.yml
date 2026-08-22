@@ -15,16 +15,17 @@ jobs:
       - name: Build signed MSIX package
         shell: pwsh
         run: ./scripts/build.ps1
-      - name: Smoke-test install, print pipeline, and uninstall
-        continue-on-error: true
+      - name: Build interactive print smoke sender
         shell: pwsh
-        run: ./scripts/smoke-install.ps1 -TestPrint
+        run: dotnet build tests/PrintSmokeSender/PrintSmokeSender.csproj --configuration Release
+      - name: Smoke-test install, printer registration, and uninstall
+        shell: pwsh
+        run: ./scripts/smoke-install.ps1
       - name: Upload development package
         uses: actions/upload-artifact@v7
         with:
           name: erechnung-virtual-printer-x64
           path: |
             artifacts/packages/**/*.msix
-            artifacts/smoke/**
             .cert/ERechnung.Dev.cer
           if-no-files-found: error

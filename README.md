@@ -2,7 +2,7 @@
 
 Lokaler virtueller PDF-Drucker für Windows 11. Der installierte Drucker **E-Rechnung** übernimmt einen normalen Windows-Printjob, erzeugt ohne Speichern-unter-Dialog ein PDF und öffnet eine minimale Companion-App mit Job-Metadaten.
 
-> Status: erster implementierter PoC, auf macOS statisch vorbereitet. Die Paketinstallation und der Print-Workflow müssen noch auf Windows 11 24H2 verifiziert werden.
+> Status: installierbarer und signierter PoC. Build, MSIX-Inhalt, Installation, automatische Queue-Registrierung und Deinstallation sind auf einem frischen Windows-Build-26100-CI-System verifiziert. Der interaktive Print- und Companion-Pfad muss noch auf einem Windows-11-Desktop bestätigt werden.
 
 ## Scope
 
@@ -120,6 +120,14 @@ Für eine automatische Installation mit anschließender Deinstallation steht zus
 
 Das Skript installiert das Paket, wartet auf die Queue `E-Rechnung` und entfernt danach Paket, Queue und temporär vertrautes Zertifikat wieder.
 
+Auf einer **interaktiven** Windows-Desktop-Sitzung kann derselbe Test zusätzlich eine A4-XPS-Testseite an die Queue senden und PDF, Metadaten sowie den erfolgreichen Konvertierungsstatus prüfen:
+
+```powershell
+./scripts/smoke-install.ps1 -TestPrint
+```
+
+Dabei werden die Jobdateien vor der Deinstallation zusätzlich unter `artifacts/smoke/` gesichert. Der verwendete gehostete GitHub-Windows-Runner hat den Druckjob in seiner nicht interaktiven Sitzung vor Aktivierung der Print-Workflow-Background-Task abgebrochen; CI prüft deshalb bewusst den installierbaren Paket- und Queue-Lifecycle, nicht die UI-Aktivierung.
+
 ## Deinstallation
 
 ```powershell
@@ -149,7 +157,7 @@ Details: [docs/architecture.md](docs/architecture.md) und [docs/windows-print-ap
 
 ## Bekannte Einschränkungen
 
-- Installation und Druckpfad sind noch nicht auf realer Windows-Hardware ausgeführt worden.
+- Installation, Queue-Registrierung und Deinstallation sind automatisiert auf Windows Build 26100 verifiziert; der Druckpfad ist noch nicht in einer interaktiven Windows-11-Sitzung ausgeführt worden.
 - Die aktuelle C#-WinRT-Projektion der `PrintSupportJobUI`-Aktivierungsargumente muss praktisch bestätigt werden.
 - Die PDC-Datei bietet zunächst A3, A4, A5, Hoch-/Querformat, Farbe und 600 dpi; weitere PrintTicket-Optionen fehlen.
 - Das Schließen der Companion-App beendet den Print-Workflow. Bleibt sie offen, bleibt auch die zugehörige UI-Aktivierung aktiv.
