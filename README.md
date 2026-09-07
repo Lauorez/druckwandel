@@ -25,7 +25,29 @@ Lokale Desktop-Anwendung zum Übernehmen, Prüfen, Erzeugen und Archivieren elek
 - nativer Windows-11-Print-Support-Virtual-Printer mit lokaler OXPS-zu-PDF-Konvertierung
 - positive und negative Testfälle
 
-## Start
+## Start auf dem Windows-Vorführrechner
+
+Das Produkt ist eine **Windows-11-Anwendung** (24H2, Build 26100 oder neuer, x64). Nach dem Klonen reicht ein Skript: es prüft bzw. installiert die Build-Werkzeuge, lädt das Validatorenpaket (Windows-JRE), erzeugt die Musterrechnung und baut den NSIS-Installer.
+
+In PowerShell im geklonten Projektordner:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\setup-windows.ps1
+```
+
+Fehlen Visual Studio, das Windows-SDK, Node, Rust oder das .NET-SDK, hebt das Skript die Werkzeuginstallation einmalig per UAC an. `npm install` und der Installer-Build laufen danach wieder im aktuellen Benutzerkonto.
+
+Ergebnis:
+
+- `artifacts\windows\E-Rechnungs-Assistent-0.3.0-x64-Setup.exe`
+- `artifacts\demo\muster-rechnung.pdf`
+
+Nur die Setup-Datei installieren – nicht `npm run desktop` und nicht ein macOS-DMG. Beim Entwicklungsbuild kann SmartScreen bzw. eine Zertifikatsabfrage erscheinen; das lokale Testzertifikat einmalig zulassen. Danach die Musterrechnung in der App öffnen, Angaben prüfen, die Übereinstimmung bestätigen, beide Ausgaben speichern, anschließend Archiv und DATEV. Optional denselben Beleg über den Drucker **E-Rechnung** drucken.
+
+`validators:fetch` muss auf Windows laufen: die gebündelte JRE ist plattformabhängig. Eine auf dem Mac geladene Darwin-JRE darf nicht in den Windows-Installer.
+
+Weitere CLI-Befehle für Entwicklung:
 
 ```powershell
 npm install
@@ -112,7 +134,7 @@ Manuell ergänzte oder korrigierte Angaben werden beim Speichern mit ihrer Posit
 
 Mit **Im PDF markieren** neben einem Feld lässt sich die Quelle gezielt bestimmen: Text anklicken oder einen Rahmen darum ziehen, den markierten Wert prüfen und **Übernehmen** wählen. Mitmarkierte Beschriftungen können vor dem Übernehmen entfernt werden. **Entwurf speichern** oder eine fertige Ausgabe bestätigt die Zuordnung dauerhaft. Die Feldregeln speichern den ausgewählten Textblock statt der ganzen Zeile; benachbarte Bank- und Steuerangaben gelangen dadurch nicht in die Anschrift. Feste Beschriftungen und Spalten dienen zusätzlich als Vorlagenkennung, sodass gleich aufgebaute Rechnungen auch mit einem anderen Absender erkannt werden. Bei mehrfach vorkommenden, gleich plausiblen Werten fordert das Speicherfeedback zur gezielten Markierung auf. Seiten ohne Textlayer lassen sich weiterhin nur manuell erfassen.
 
-Der ZUGFeRD-Export erhält die sichtbaren Seiten des geöffneten PDFs und bettet die berechneten EN-16931-CII-Daten als `factur-x.xml` mit der Beziehung `Alternative` ein. Ein beliebiges Eingabe-PDF wird dadurch nicht automatisch zu einer konformen PDF/A-3-Datei. Die Anwendung weist deshalb nach dem Export ausdrücklich auf die noch ausstehende externe PDF/A-Prüfung hin.
+Der ZUGFeRD-Export erzeugt eine neue PDF/A-3-Datei aus der geöffneten Rechnung, bettet die berechneten EN-16931-CII-Daten als `factur-x.xml` mit der Beziehung `Alternative` ein und prüft das Gesamtpaket lokal mit Mustang und veraPDF. Die Original-PDF bleibt unverändert. Schriften müssen bereits eingebettet sein; Formulare, Verschlüsselung und widersprüchliche vorhandene E-Rechnungsanhänge werden abgewiesen. Nicht jedes PDF kann umgewandelt werden. Vor der Fertigstellung müssen Sie bestätigen, dass die Angaben die Originalrechnung korrekt wiedergeben.
 
 ### Rechnungsarchiv
 
@@ -130,11 +152,11 @@ Der vollständige technische Datenfluss und die Sicherheitsgrenzen sind in [docs
 
 Der Lauf erzeugt das anonymisierte Referenzkorpus, prüft Felder, Positionen, Warnungen und blockierte Sonderfälle und testet zusätzlich 250 reproduzierbare, künstlich erzeugte Rechnungen. Die Reports liegen unter artifacts/corpus-report.json und artifacts/synthetic-fuzz-report.json. Das Gate ist Bestandteil von npm run check und des Desktop-Release-Builds. Seed-Reproduktion, lokale echte Rechnungen und Hinweise zur sicheren Anonymisierung sind in [docs/wp6-corpus.md](docs/wp6-corpus.md) beschrieben.
 
-Die ergänzenden Workspace-, Wiederanlauf- und echten Windows-Drucktests für 0.3.0 sind in [docs/wp7-acceptance.md](docs/wp7-acceptance.md) dokumentiert. Die verbindliche lokale XML-Prüfung vor der Fertigstellung steht in [docs/wp8-acceptance.md](docs/wp8-acceptance.md).
+Die ergänzenden Workspace-, Wiederanlauf- und echten Windows-Drucktests für 0.3.0 sind in [docs/wp7-acceptance.md](docs/wp7-acceptance.md) dokumentiert. Die verbindliche lokale XML-Prüfung vor der Fertigstellung steht in [docs/wp8-acceptance.md](docs/wp8-acceptance.md). Hybrid-PDF/PDF/A steht in [docs/wp9-acceptance.md](docs/wp9-acceptance.md).
 
 ## Externe Validierung
 
-Die interne Prüfung bleibt die schnelle Eingabehilfe. Fertige Ausgaben in der nativen App entstehen erst nach unabhängiger KoSIT- (XRechnung) bzw. Mustang-Prüfung (ZUGFeRD/Factur-X-XML) der tatsächlich erzeugten Bytes. Das gebündelte Paket, Versionen und Lizenzen liegen unter `apps/desktop/src-tauri/resources/validators/`. Entwicklungsadapter:
+Die interne Prüfung bleibt die schnelle Eingabehilfe. Fertige Ausgaben in der nativen App entstehen erst nach unabhängiger KoSIT- (XRechnung) bzw. Mustang-Prüfung (ZUGFeRD/Factur-X-XML) der tatsächlich erzeugten Bytes. PDF-Rechnungen brauchen zusätzlich veraPDF (PDF/A-3b) und einen bytegleichen XML-Extrakt aus der fertigen PDF. Das gebündelte Paket, Versionen und Lizenzen liegen unter `apps/desktop/src-tauri/resources/validators/`. Entwicklungsadapter:
 
 ```powershell
 $env:KOSIT_VALIDATOR_JAR = 'C:\validator\validator.jar'
@@ -142,7 +164,7 @@ $env:KOSIT_SCENARIOS = 'C:\xrechnung-config\scenarios.xml'
 npm run validate:external -- test/fixtures/generated/xrechnung-ubl.xml
 ```
 
-Für formal konforme Hybrid-PDFs gilt weiterhin: Das Eingabe-PDF muss bereits PDF/A-3 sein und das Ergebnis über veraPDF geprüft werden (WP9). Die XML-Prüfung von WP8 ersetzt diese PDF/A-Prüfung nicht.
+Für formal konforme Hybrid-PDFs gilt: Die Anwendung erzeugt eine neue PDF/A-3-Datei, bettet die geprüfte XML ein und prüft das Ergebnis mit veraPDF. Nicht jedes Eingabe-PDF ist umwandelbar. Die XML-Prüfung von WP8 ersetzt die PDF/A-Prüfung nicht.
 
 Die XML- und Geschäftsregeln des ZUGFeRD-/Factur-X-Profils:
 
@@ -159,6 +181,6 @@ Unterstützt sind normale Rechnungen mit positionsbezogener Umsatzsteuer. Noch n
 
 Standardstände:
 
-- XRechnung 3.0.2 / KoSIT-Konfiguration 2026-01-31
-- ZUGFeRD 2.5.2 / Factur-X 1.09.2 EN16931, Profilkennung `urn:cen.eu:en16931:2017`; XML-Prüfung über Mustang im gebündelten Paket, PDF/A-Nachweis folgt in WP9
+- XRechnung 3.0.2 / KoSIT-Konfiguration 2026-01-31, Prüfmotor 1.6.3
+- ZUGFeRD 2.5.2 / Factur-X 1.09.2 EN16931, Profilkennung `urn:cen.eu:en16931:2017`; XML-Prüfung über Mustang, PDF/A-3b über veraPDF im gebündelten Paket
 - UBL 2.1 und UN/CEFACT CII D16B Syntax

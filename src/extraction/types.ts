@@ -32,6 +32,7 @@ export type ExtractedFieldName =
   | "invoiceNumber" | "issueDate" | "dueDate" | "serviceDate"
   | "currency" | "buyerReference"
   | "sellerName" | "sellerAddressLine1" | "sellerPostalCode" | "sellerCity" | "sellerCountryCode" | "sellerVatId"
+  | "sellerContact" | "sellerPhone" | "sellerEmail"
   | "buyerName" | "buyerAddressLine1" | "buyerPostalCode" | "buyerCity" | "buyerCountryCode" | "buyerVatId"
   | "iban" | "bic" | "paymentTerms"
   | "lineNet" | "taxTotal" | "taxInclusive" | "payable";

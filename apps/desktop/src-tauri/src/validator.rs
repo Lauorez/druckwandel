@@ -96,10 +96,13 @@ pub(crate) struct ValidatorBundle {
     pub(crate) scenarios: PathBuf,
     pub(crate) repository: PathBuf,
     pub(crate) mustang_jar: PathBuf,
+    pub(crate) verapdf_jar: PathBuf,
     pub(crate) kosit_engine_version: String,
     pub(crate) kosit_rule_version: String,
     pub(crate) mustang_engine_version: String,
     pub(crate) mustang_rule_version: String,
+    pub(crate) verapdf_engine_version: String,
+    pub(crate) verapdf_rule_version: String,
 }
 
 #[derive(Default)]
@@ -161,6 +164,8 @@ struct ManifestFile {
     java: ManifestJava,
     kosit: ManifestTool,
     mustang: ManifestTool,
+    #[serde(default)]
+    verapdf: ManifestTool,
 }
 
 #[derive(Default, Deserialize)]
@@ -169,7 +174,8 @@ struct ManifestJava {
     relative_path: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct ManifestTool {
     engine_version: String,
     rule_version: String,
@@ -225,10 +231,13 @@ pub(crate) fn load_bundle(app: &AppHandle) -> Result<ValidatorBundle, String> {
             &manifest.kosit.repository
         }),
         mustang_jar: root.join(&manifest.mustang.jar),
+        verapdf_jar: root.join(&manifest.verapdf.jar),
         kosit_engine_version: manifest.kosit.engine_version,
         kosit_rule_version: manifest.kosit.rule_version,
         mustang_engine_version: manifest.mustang.engine_version,
         mustang_rule_version: manifest.mustang.rule_version,
+        verapdf_engine_version: manifest.verapdf.engine_version,
+        verapdf_rule_version: manifest.verapdf.rule_version,
     };
     for path in [
         &bundle.java,
@@ -256,41 +265,37 @@ fn attribute<'a>(source: &'a str, name: &str) -> Option<&'a str> {
 
 fn collect_inner<'a>(source: &'a str, tag: &str) -> Vec<&'a str> {
     let mut blocks = Vec::new();
-    let open = format!("<{tag}");
-    let close = format!("</{tag}>");
     let mut rest = source;
-    while let Some(start) = rest.find(&open).or_else(|| {
-        rest.find(&format!(":{}", tag.trim_start_matches(|c: char| c != ':')))
-            .and_then(|_| rest.find(tag))
-    }) {
+    let unprefixed_open = format!("<{tag}");
+    let prefixed_open = format!(":{tag}");
+    let unprefixed_close = format!("</{tag}>");
+    let prefixed_close = format!(":{tag}>");
+    while !rest.is_empty() {
+        let unprefixed = rest.find(&unprefixed_open);
+        let prefixed = rest.find(&prefixed_open).and_then(|rel| rest[..rel].rfind('<'));
+        let start = match (unprefixed, prefixed) {
+            (Some(left), Some(right)) => left.min(right),
+            (Some(left), None) => left,
+            (None, Some(right)) => right,
+            (None, None) => break,
+        };
         let slice = &rest[start..];
-        if let Some(end) = slice.find(&close) {
-            blocks.push(&slice[..end + close.len()]);
-            rest = &slice[end + close.len()..];
-        } else if let Some(end) = slice.find("/>") {
-            blocks.push(&slice[..end + 2]);
-            rest = &slice[end + 2..];
-        } else {
-            break;
-        }
-    }
-    if blocks.is_empty() {
-        let mut rest = source;
-        let needle = format!(":{tag}");
-        while let Some(rel) = rest.find(&needle) {
-            let start = rest[..rel].rfind('<').unwrap_or(rel);
-            let slice = &rest[start..];
-            let close_tag = format!(":{tag}>");
-            if let Some(end) = slice.find(&close_tag) {
-                blocks.push(&slice[..end + close_tag.len()]);
-                rest = &slice[end + close_tag.len()..];
-            } else if let Some(end) = slice.find("/>") {
-                blocks.push(&slice[..end + 2]);
-                rest = &slice[end + 2..];
-            } else {
+        let close = match (slice.find(&unprefixed_close), slice.find(&prefixed_close)) {
+            (Some(left), Some(right)) if left <= right => left + unprefixed_close.len(),
+            (Some(left), None) => left + unprefixed_close.len(),
+            (None, Some(right)) => right + prefixed_close.len(),
+            (Some(_), Some(right)) => right + prefixed_close.len(),
+            (None, None) => {
+                if let Some(end) = slice.find("/>") {
+                    blocks.push(&slice[..end + 2]);
+                    rest = &slice[end + 2..];
+                    continue;
+                }
                 break;
             }
-        }
+        };
+        blocks.push(&slice[..close]);
+        rest = &slice[close..];
     }
     blocks
 }
@@ -493,6 +498,57 @@ pub(crate) fn evaluate_mustang(outcome: &ProcessOutcome, rule_version: &str, eng
     }
 }
 
+pub(crate) fn evaluate_verapdf(outcome: &ProcessOutcome, rule_version: &str, engine_version: &str) -> OfficialReport {
+    if outcome.cancelled {
+        return failed("cancelled", "verapdf", engine_version, rule_version, "CANCELLED", "Die PDF/A-Prüfung wurde abgebrochen.");
+    }
+    if outcome.timed_out {
+        return failed("timeout", "verapdf", engine_version, rule_version, "TIMEOUT", "Die PDF/A-Prüfung hat zu lange gedauert.");
+    }
+    let report = outcome.report_xml.clone().unwrap_or_else(|| outcome.output.clone());
+    if !report.contains("<report") && !report.contains("<validationReport") {
+        let status = if outcome.output.trim().is_empty() { "missing-report" } else { "unreadable-report" };
+        return failed(status, "verapdf", engine_version, rule_version, "VERAPDF-REPORT", "Der maschinenlesbare PDF/A-Bericht fehlt. Die Datei gilt nicht als PDF/A-geprüft.");
+    }
+    let validation_tag = report.find("<validationReport").and_then(|index| {
+        report[index..].find('>').map(|end| report[index..=index + end].to_string())
+    }).unwrap_or_default();
+    let compliant = attribute(&validation_tag, "isCompliant").map(str::to_ascii_lowercase);
+    let flavour = attribute(&validation_tag, "flavour").unwrap_or_default().to_ascii_uppercase();
+    let failed_parse = report.contains("failedToParse=\"1\"") || report.contains("encrypted=\"1\"");
+    let details_tag = report.find("<details").and_then(|index| {
+        report[index..].find('>').map(|end| report[index..=index + end].to_string())
+    }).unwrap_or_default();
+    let failed_checks = attribute(&details_tag, "failedChecks").unwrap_or("0").parse::<i32>().unwrap_or(1);
+    let passed = outcome.code == 0 && compliant.as_deref() == Some("true") && flavour.contains("3B") && !failed_parse && failed_checks == 0;
+    if !passed {
+        return OfficialReport {
+            schema_version: 1,
+            status: if compliant.is_some() { "failed" } else { "unreadable-report" }.into(),
+            valid: false,
+            engine: "verapdf".into(),
+            engine_version: engine_version.into(),
+            rule_version: rule_version.into(),
+            xml_sha256: String::new(),
+            pdf_sha256: String::new(),
+            report_sha256: Some(sha256_hex(report.as_bytes())),
+            issues: vec![issue("PDFA", "", "Die PDF/A-3-Prüfung ist fehlgeschlagen. Nicht jedes PDF kann umgewandelt werden.")],
+        };
+    }
+    OfficialReport {
+        schema_version: 1,
+        status: "passed".into(),
+        valid: true,
+        engine: "verapdf".into(),
+        engine_version: engine_version.into(),
+        rule_version: rule_version.into(),
+        xml_sha256: String::new(),
+        pdf_sha256: String::new(),
+        report_sha256: Some(sha256_hex(report.as_bytes())),
+        issues: Vec::new(),
+    }
+}
+
 fn failed(status: &str, engine: &str, engine_version: &str, rule_version: &str, code: &str, message: &str) -> OfficialReport {
     OfficialReport {
         schema_version: 1,
@@ -539,10 +595,10 @@ fn spawn_limited(mut command: Command, cancel: &AtomicBool) -> Result<ProcessOut
     thread::spawn(move || {
         let mut out = Vec::new();
         let mut err = Vec::new();
-        if let Some(mut stream) = stdout.take() {
+        if let Some(stream) = stdout.take() {
             let _ = stream.take(MAX_OUTPUT_BYTES as u64 + 1).read_to_end(&mut out);
         }
-        if let Some(mut stream) = stderr.take() {
+        if let Some(stream) = stderr.take() {
             let _ = stream.take(MAX_OUTPUT_BYTES as u64 + 1).read_to_end(&mut err);
         }
         let _ = sender.send((out, err));
@@ -632,6 +688,59 @@ fn run_mustang(bundle: &ValidatorBundle, xml: &[u8], cancel: &AtomicBool) -> Res
     Ok(outcome)
 }
 
+fn run_mustang_extract(bundle: &ValidatorBundle, pdf: &[u8], expected_xml: &[u8], cancel: &AtomicBool) -> Result<(), String> {
+    let work = std::env::temp_dir().join(format!("erechnung-extract-{}", Uuid::new_v4()));
+    fs::create_dir_all(&work).map_err(|error| error.to_string())?;
+    let invoice = work.join("invoice.pdf");
+    let extracted = work.join("extracted.xml");
+    fs::write(&invoice, pdf).map_err(|error| error.to_string())?;
+    let mut command = Command::new(&bundle.java);
+    command.args(java_offline_args()).arg("-jar").arg(&bundle.mustang_jar).args([
+        "--action",
+        "extract",
+        "--source",
+    ]).arg(&invoice).arg("--out").arg(&extracted).arg("--disable-file-logging");
+    let outcome = spawn_limited(command, cancel)?;
+    let bytes = fs::read(&extracted).unwrap_or_default();
+    let _ = fs::remove_dir_all(&work);
+    if outcome.cancelled {
+        return Err("Die Prüfung wurde abgebrochen.".into());
+    }
+    if outcome.timed_out {
+        return Err("Das Auslesen der eingebetteten Rechnungsdaten hat zu lange gedauert.".into());
+    }
+    if bytes != expected_xml {
+        return Err("Die aus der PDF gelesenen Rechnungsdaten sind nicht mit der geprüften XML-Datei identisch.".into());
+    }
+    Ok(())
+}
+
+fn run_verapdf(bundle: &ValidatorBundle, pdf: &[u8], cancel: &AtomicBool) -> Result<ProcessOutcome, String> {
+    let work = std::env::temp_dir().join(format!("erechnung-verapdf-{}", Uuid::new_v4()));
+    fs::create_dir_all(&work).map_err(|error| error.to_string())?;
+    let invoice = work.join("invoice.pdf");
+    fs::write(&invoice, pdf).map_err(|error| error.to_string())?;
+    let mut command = Command::new(&bundle.java);
+    command.args(java_offline_args()).arg("-jar").arg(&bundle.verapdf_jar).args([
+        "--flavour",
+        "3b",
+        "--format",
+        "xml",
+        "--maxfailures",
+        "20",
+        "--loglevel",
+        "0",
+    ]).arg(&invoice);
+    let mut outcome = spawn_limited(command, cancel)?;
+    if let Some(start) = outcome.output.find("<?xml").or_else(|| outcome.output.find("<report")) {
+        if let Some(end) = outcome.output[start..].find("</report>") {
+            outcome.report_xml = Some(outcome.output[start..start + end + "</report>".len()].to_string());
+        }
+    }
+    let _ = fs::remove_dir_all(&work);
+    Ok(outcome)
+}
+
 fn emit_progress(app: &AppHandle, phase: &str) {
     let _ = app.emit("invoice-validation-progress", serde_json::json!({ "phase": phase }));
 }
@@ -663,7 +772,16 @@ pub(crate) fn validate_prepared_invoice(
     } else {
         ("mustang", bundle.mustang_engine_version.clone(), bundle.mustang_rule_version.clone())
     };
-    emit_progress(&app, "Unabhängige Prüfung läuft");
+    if request.format == "zugferd" && !bundle.verapdf_jar.exists() {
+        return Ok(ValidateInvoiceResult {
+            status: "unavailable".into(),
+            valid: false,
+            ticket_id: None,
+            rule_version: bundle.verapdf_rule_version.clone(),
+            engine: "verapdf".into(),
+            issues: vec![issue("VERAPDF", "", "Das PDF/A-Prüfprogramm ist in dieser Installation nicht enthalten. Eine fertige PDF-Rechnung kann nicht erzeugt werden.")],
+        });
+    }
     let cancel = std::sync::Arc::new(AtomicBool::new(false));
     *CANCEL_FLAG.lock().map_err(|_| "Eine Prüfung läuft bereits.".to_string())? = Some(cancel.clone());
     let xml = request.xml_contents.as_bytes().to_vec();
@@ -685,13 +803,36 @@ pub(crate) fn validate_prepared_invoice(
     };
     report.xml_sha256 = sha256_hex(request.xml_contents.as_bytes());
     report.pdf_sha256 = sha256_hex(&pdf);
+    let mut combined_report = outcome.report_xml.clone().filter(|value| !value.trim().is_empty());
+    if request.format == "zugferd" && report.valid {
+        emit_progress(&app, "Eingebettete Rechnungsdaten werden geprüft");
+        if let Err(message) = run_mustang_extract(&bundle, &pdf, request.xml_contents.as_bytes(), &cancel) {
+            report.valid = false;
+            report.status = if message.contains("abgebrochen") { "cancelled" } else { "failed" }.into();
+            report.issues = vec![issue("XML_MISMATCH", "", &message)];
+        }
+    }
+    if request.format == "zugferd" && report.valid {
+        emit_progress(&app, "PDF/A-Prüfung läuft");
+        let pdfa_outcome = run_verapdf(&bundle, &pdf, &cancel)?;
+        let pdfa = evaluate_verapdf(&pdfa_outcome, &bundle.verapdf_rule_version, &bundle.verapdf_engine_version);
+        let pdfa_xml = pdfa_outcome.report_xml.clone().filter(|value| !value.trim().is_empty());
+        if !pdfa.valid {
+            report = pdfa;
+            report.xml_sha256 = sha256_hex(request.xml_contents.as_bytes());
+            report.pdf_sha256 = sha256_hex(&pdf);
+            combined_report = pdfa_xml;
+        } else if let (Some(xml_report), Some(pdfa_report)) = (combined_report.as_ref(), pdfa_xml.as_ref()) {
+            combined_report = Some(format!("{xml_report}\n{pdfa_report}"));
+        } else {
+            report.valid = false;
+            report.status = "missing-report".into();
+            report.issues = vec![issue("VERAPDF-REPORT", "", "Der maschinenlesbare PDF/A-Bericht fehlt. Die Datei gilt nicht als PDF/A-geprüft.")];
+        }
+    }
     let mut ticket_id = None;
     if report.valid {
-        let report_xml = outcome
-            .report_xml
-            .clone()
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| {
+        let report_xml = combined_report.filter(|value| !value.trim().is_empty()).ok_or_else(|| {
                 "Der maschinenlesbare Prüfbericht fehlt. Die Datei gilt nicht als geprüft.".to_string()
             })?;
         report.report_sha256 = Some(sha256_hex(report_xml.as_bytes()));
@@ -786,6 +927,14 @@ mod tests {
         let failed = evaluate_mustang(&outcome(include_str!("../../../../test/fixtures/validation/mustang-invalid.xml"), 1), "factur-x", "2.16.2");
         assert!(!failed.valid);
         assert!(failed.issues.iter().any(|issue| issue.path == "totals.taxInclusive"));
+    }
+
+    #[test]
+    fn verapdf_requires_compliant_3b_report() {
+        let passed = evaluate_verapdf(&outcome(include_str!("../../../../test/fixtures/validation/verapdf-valid.xml"), 0), "pdfa-3b", "1.28.2");
+        assert!(passed.valid);
+        let failed = evaluate_verapdf(&outcome(include_str!("../../../../test/fixtures/validation/verapdf-invalid.xml"), 1), "pdfa-3b", "1.28.2");
+        assert!(!failed.valid);
     }
 
     #[test]

@@ -6,7 +6,7 @@ import { reviewDraftFromExtraction } from "../src/review/draft.js";
 function fixture(): WorkspaceSnapshot {
   const extraction = analyzeDocumentPages([{ page: 1,width: 600,height: 800,tokens: [] }]);
   const draft = reviewDraftFromExtraction(extraction);
-  return { schemaVersion: 1,extractionVersion: "text-layout-v1",sourceExtraction: extraction,extraction,draft,initialDraft: draft,sourceSelections: {},pendingSourceFields: [],completed: false };
+  return { schemaVersion: 1,extractionVersion: "text-layout-v1",sourceExtraction: extraction,extraction,draft,initialDraft: draft,sourceSelections: {},pendingSourceFields: [],completed: false,hybridConfirmed: false };
 }
 const document: WorkDocument = { id: "test",name: "invoice.pdf",sourceKey: null,jobId: null,originalSha256: "test",revision: 1,status: "draft",updatedAtMs: 0,error: null };
 const change = (s: WorkspaceSnapshot, name: string) => ({ ...s,draft: { ...s.draft,invoiceNumber: name } });

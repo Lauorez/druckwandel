@@ -56,12 +56,26 @@ pub(crate) struct ExportFileRequest {
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DocumentFileRequest {
+    archive_id: String,
+    guid: String,
+    pdf_name: String,
+    xml_name: String,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentPackageRequest {
+    xml: String,
+    files: Vec<DocumentFileRequest>,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ExportRequest {
     id: String,
     profile: String,
     files: Vec<ExportFileRequest>,
     repeat_reason: String,
-    include_documents: bool,
+    document_package: DocumentPackageRequest,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -193,6 +207,107 @@ fn prepare(
         tx.execute("INSERT INTO export_invoices(export_id,archive_id,document_id,content_hash,original_hash,business_key) VALUES(?1,?2,?3,?4,?5,?6)",params![id,r.archive_id,r.document_id,r.content_hash,r.original_hash,r.business_key]).map_err(|e|e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())
+}
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xffffffffu32;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xedb88320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+fn push_u16(buf: &mut Vec<u8>, value: u16) {
+    buf.extend_from_slice(&value.to_le_bytes());
+}
+fn push_u32(buf: &mut Vec<u8>, value: u32) {
+    buf.extend_from_slice(&value.to_le_bytes());
+}
+fn zip_store(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    if files.is_empty() {
+        return Err("Das Belegpaket enthält keine Dateien.".into());
+    }
+    let mut local = Vec::new();
+    let mut central = Vec::new();
+    for (name, bytes) in files {
+        if name.len() > 80
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            || name.contains("..")
+        {
+            return Err("Ungültiger Dateiname im Belegpaket.".into());
+        }
+        let offset = local.len() as u32;
+        let crc = crc32(bytes);
+        let size = bytes.len() as u32;
+        local.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04]);
+        push_u16(&mut local, 20);
+        push_u16(&mut local, 0);
+        push_u16(&mut local, 0);
+        push_u16(&mut local, 0);
+        push_u16(&mut local, 0);
+        push_u32(&mut local, crc);
+        push_u32(&mut local, size);
+        push_u32(&mut local, size);
+        push_u16(&mut local, name.len() as u16);
+        push_u16(&mut local, 0);
+        local.extend_from_slice(name.as_bytes());
+        local.extend_from_slice(bytes);
+        central.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02]);
+        push_u16(&mut central, 20);
+        push_u16(&mut central, 20);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u32(&mut central, crc);
+        push_u32(&mut central, size);
+        push_u32(&mut central, size);
+        push_u16(&mut central, name.len() as u16);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u16(&mut central, 0);
+        push_u32(&mut central, 0);
+        push_u32(&mut central, offset);
+        central.extend_from_slice(name.as_bytes());
+    }
+    let mut zip = local;
+    let central_offset = zip.len() as u32;
+    zip.extend_from_slice(&central);
+    zip.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06]);
+    push_u16(&mut zip, 0);
+    push_u16(&mut zip, 0);
+    push_u16(&mut zip, files.len() as u16);
+    push_u16(&mut zip, files.len() as u16);
+    push_u32(&mut zip, central.len() as u32);
+    push_u32(&mut zip, central_offset);
+    push_u16(&mut zip, 0);
+    Ok(zip)
+}
+fn guid_file(guid: &str, extension: &str) -> Result<String, String> {
+    if guid.len() != 36
+        || guid.as_bytes()[14] != b'5'
+        || !guid.bytes().enumerate().all(|(i, b)| {
+            if [8, 13, 18, 23].contains(&i) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+    {
+        return Err("Ungültige Belegkennung.".into());
+    }
+    Ok(format!("{guid}.{extension}"))
+}
+fn readme() -> Vec<u8> {
+    "Paket für die Steuerkanzlei\r\n\r\nDieses Paket wurde lokal erstellt. Es wurde nichts an DATEV übertragen.\r\n\r\nImportreihenfolge:\r\n1. Belege.zip mit DATEV Belegtransfer hochladen. Die ZIP-Datei nicht entpacken.\r\n2. Danach die EXTF-Dateien als Buchungsstapel in DATEV Rechnungswesen importieren.\r\n\r\nDie Spalte Beleglink verweist auf dieselbe GUID wie document.xml im ZIP. Nur so hängen Buchung und Belegbild zusammen.\r\nDer Importstatus in DATEV ist dieser Anwendung nicht bekannt.\r\n".as_bytes().to_vec()
 }
 fn artifact_path(root: &Path, id: &str, name: &str) -> Result<PathBuf, String> {
     Uuid::parse_str(id).map_err(|_| "Ungültige Exportkennung.".to_string())?;
@@ -424,6 +539,7 @@ pub(crate) fn datev_create_export(
             .map_err(|e| e.to_string())?;
         if !bytes.starts_with(b"\"EXTF\";700;21;\"Buchungsstapel\";13;")
             || !bytes.ends_with(b"\r\n")
+            || !bytes.windows(5).any(|w| w == b"BEDI ")
         {
             return Err("Unbekanntes DATEV-Dateiformat.".into());
         }
@@ -434,32 +550,60 @@ pub(crate) fn datev_create_export(
             if !ids.insert(id.clone()) {
                 return Err("Eine Rechnung wurde mehreren Stapeln zugeordnet.".into());
             }
-            let source = super::archive::datev_evidence(&app, id)?;
-            references.push(reference(&source)?);
-            if request.include_documents {
-                let (pdf, xml) = super::archive::datev_attachments(&app, id)?;
-                artifacts.push(Artifact {
-                    path: format!("Belege/{id}.pdf"),
-                    bytes: pdf,
-                });
-                artifacts.push(Artifact {
-                    path: format!("Belege/{id}.xml"),
-                    bytes: xml,
-                });
-            }
-            if ids.len() > 100
-                || artifacts.iter().map(|a| a.bytes.len()).sum::<usize>() > 128 * 1024 * 1024
-            {
+            references.push(reference(&super::archive::datev_evidence(&app, id)?)?);
+            if ids.len() > 100 {
                 return Err("Der Export überschreitet 100 Rechnungen oder 128 MB. Bitte eine kleinere Auswahl verwenden.".into());
             }
         }
     }
-    if ids.len() > 100 || artifacts.iter().map(|a| a.bytes.len()).sum::<usize>() > 128 * 1024 * 1024
+    let package = &request.document_package;
+    if package.xml.len() > 256 * 1024
+        || package.files.len() != ids.len()
+        || !package
+            .xml
+            .starts_with("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+        || !package
+            .xml
+            .contains("http://xml.datev.de/bedi/tps/document/v06.0")
     {
+        return Err("Das Belegpaket ist unvollständig oder hat ein unbekanntes Format.".into());
+    }
+    let mut zip_files = vec![("document.xml".into(), package.xml.as_bytes().to_vec())];
+    let mut package_ids = std::collections::HashSet::new();
+    for file in &package.files {
+        if !ids.contains(&file.archive_id) || !package_ids.insert(file.archive_id.clone()) {
+            return Err("Das Belegpaket passt nicht zu den ausgewählten Rechnungen.".into());
+        }
+        let pdf_name = guid_file(&file.guid, "pdf")?;
+        let xml_name = guid_file(&file.guid, "xml")?;
+        if file.pdf_name != pdf_name
+            || file.xml_name != xml_name
+            || !package.xml.contains(&file.guid)
+            || !package.xml.contains(&pdf_name)
+            || !package.xml.contains(&xml_name)
+        {
+            return Err("Belegkennung und Dateinamen im Paket stimmen nicht überein.".into());
+        }
+        let (pdf, xml) = super::archive::datev_attachments(&app, &file.archive_id)?;
+        zip_files.push((pdf_name, pdf));
+        zip_files.push((xml_name, xml));
+    }
+    let zip = zip_store(&zip_files)?;
+    let readme = readme();
+    file_info.push(json!({"name":"Belege.zip","sha256":hash(&zip),"documentCount":package.files.len()}));
+    file_info.push(json!({"name":"LiesMich.txt","sha256":hash(&readme)}));
+    artifacts.push(Artifact {
+        path: "Belege.zip".into(),
+        bytes: zip,
+    });
+    artifacts.push(Artifact {
+        path: "LiesMich.txt".into(),
+        bytes: readme,
+    });
+    if artifacts.iter().map(|a| a.bytes.len()).sum::<usize>() > 128 * 1024 * 1024 {
         return Err("Der Export überschreitet 100 Rechnungen oder 128 MB. Bitte eine kleinere Auswahl verwenden.".into());
     }
-    let manifest=json!({"schemaVersion":1,"id":request.id,"format":"EXTF-700-21-13","encoding":"windows-1252","timestampConvention":"UTC","profile":profile,"profileSha256":hash(request.profile.as_bytes()),"repeatReason":request.repeat_reason,"externalImportStatus":"unknown","validation":"Lokale Prüfung; DATEV-Testimport durch die Steuerkanzlei ausstehend","files":file_info,
-      "attachments":artifacts.iter().filter(|a|a.path.starts_with("Belege/")).map(|a|json!({"name":a.path,"sha256":hash(&a.bytes)})).collect::<Vec<_>>(),
+    let manifest=json!({"schemaVersion":2,"id":request.id,"format":"EXTF-700-21-13","encoding":"windows-1252","timestampConvention":"UTC","documentPackage":{"format":"DATEV-XML-document-v06","file":"Belege.zip","importOrder":["Belege.zip","EXTF"]},"profile":profile,"profileSha256":hash(request.profile.as_bytes()),"repeatReason":request.repeat_reason,"externalImportStatus":"unknown","validation":"Lokale Prüfung; DATEV-Testimport durch die Steuerkanzlei ausstehend","files":file_info,
       "invoices":references.iter().map(|r|json!({"archiveId":r.archive_id,"documentId":r.document_id,"contentHash":r.content_hash,"originalHash":r.original_hash})).collect::<Vec<_>>()}).to_string();
     artifacts.push(Artifact {
         path: "Begleitinformationen.json".into(),
@@ -707,5 +851,37 @@ mod tests {
                 .unwrap()
                 .starts_with(s.0.canonicalize().unwrap())
         );
+    }
+    fn zip_names(bytes: &[u8]) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut i = 0;
+        while i + 30 <= bytes.len() && bytes[i..i + 4] == [0x50, 0x4b, 0x03, 0x04] {
+            let name_len = u16::from_le_bytes(bytes[i + 26..i + 28].try_into().unwrap()) as usize;
+            let extra = u16::from_le_bytes(bytes[i + 28..i + 30].try_into().unwrap()) as usize;
+            let size = u32::from_le_bytes(bytes[i + 18..i + 22].try_into().unwrap()) as usize;
+            names.push(String::from_utf8(bytes[i + 30..i + 30 + name_len].to_vec()).unwrap());
+            i += 30 + name_len + extra + size;
+        }
+        names
+    }
+    #[test]
+    fn packs_document_xml_and_named_files_into_an_uncompressed_zip() {
+        let zip = zip_store(&[
+            ("document.xml".into(), b"<archive/>".to_vec()),
+            (
+                "AAAAAAAA-BBBB-5CCC-ADDD-EEEEEEEEEEEE.pdf".into(),
+                b"%PDF".to_vec(),
+            ),
+        ])
+        .unwrap();
+        assert_eq!(&zip[..2], &[0x50, 0x4b]);
+        assert_eq!(
+            zip_names(&zip),
+            [
+                "document.xml",
+                "AAAAAAAA-BBBB-5CCC-ADDD-EEEEEEEEEEEE.pdf"
+            ]
+        );
+        assert!(zip_store(&[("../x".into(), vec![])]).is_err());
     }
 }

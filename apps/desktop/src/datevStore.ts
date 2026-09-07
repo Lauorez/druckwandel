@@ -3,8 +3,9 @@ import type { DatevProfile, DatevSource } from "../../../src/export/datev/types.
 export interface DatevExport { id:string;createdAtMs:number;state:"pending"|"complete";manifest:string;error:string|null }
 export interface DatevExportPage { entries:DatevExport[];total:number }
 export interface DatevExportRequest {
-  id:string;profile:string;repeatReason:string;includeDocuments:boolean;
+  id:string;profile:string;repeatReason:string;
   files:Array<{contentsBase64:string;dateFrom:string;dateTo:string;gross:string;bookingCount:number;archiveIds:string[]}>;
+  documentPackage:{xml:string;files:Array<{archiveId:string;guid:string;pdfName:string;xmlName:string}>};
 }
 export const datevStore = {
   profile:()=>invoke<string|null>("datev_get_profile"),

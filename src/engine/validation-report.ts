@@ -1,6 +1,6 @@
 import type { ValidationIssue } from "../domain/types.js";
 
-export type OfficialEngine = "kosit" | "mustang";
+export type OfficialEngine = "kosit" | "mustang" | "verapdf";
 export type OfficialValidationStatus =
   | "passed"
   | "failed"
@@ -42,6 +42,11 @@ const FIELD_HINTS: Array<[RegExp, string]> = [
   [/IssueDate|BT-2\b/i, "issueDate"],
   [/DueDate|BT-9\b/i, "dueDate"],
   [/DocumentCurrency|BT-5\b|BR-05/i, "currency"],
+  [/EndpointID|BT-34|electronic address|elektronische Adresse/i, "seller.vatId"],
+  [/BT-49|Buyer.*Endpoint/i, "buyer.vatId"],
+  [/BR-DE-2|BR-DE-5|Contact|Ansprechpartner|BT-41/i, "seller.contact.name"],
+  [/BR-DE-6|BT-42|Telephone/i, "seller.contact.phone"],
+  [/BR-DE-7|BT-43|ElectronicMail|E-Mail/i, "seller.contact.email"],
   [/AccountingSupplier|SellerTradeParty|seller.*name|BR-06/i, "seller.name"],
   [/Seller.*Street|Seller.*Line|seller.*address\.line1/i, "seller.address.line1"],
   [/Seller.*City|seller.*address\.city/i, "seller.address.city"],
@@ -94,6 +99,10 @@ export function germanFieldLabel(path: string): string {
     "seller.address.city": "Absender: Ort",
     "seller.address.postalCode": "Absender: Postleitzahl",
     "seller.address.countryCode": "Absender: Land",
+    "seller.vatId": "Absender: Umsatzsteuer-ID",
+    "seller.contact.name": "Absender: Ansprechpartner",
+    "seller.contact.phone": "Absender: Telefon",
+    "seller.contact.email": "Absender: E-Mail",
     "buyer.name": "Empfänger: Name",
     "buyer.address.line1": "Empfänger: Straße und Hausnummer",
     "buyer.address.city": "Empfänger: Ort",
@@ -105,6 +114,32 @@ export function germanFieldLabel(path: string): string {
     "totals.payable": "Zahlbetrag",
     document: "Rechnung",
   }[path] ?? path;
+}
+
+export function evaluateVeraPdfOutcome(outcome: ProcessOutcome, ruleVersion: string, engineVersion = ""): Omit<OfficialValidationReport, "xmlSha256" | "pdfSha256" | "reportSha256"> {
+  if (outcome.cancelled) {
+    return { schemaVersion: 1, status: "cancelled", valid: false, engine: "verapdf", engineVersion, ruleVersion, issues: [{ engine: "verapdf", severity: "error", code: "CANCELLED", path: "document", message: "Die PDF/A-Prüfung wurde abgebrochen." }] };
+  }
+  if (outcome.timedOut) {
+    return { schemaVersion: 1, status: "timeout", valid: false, engine: "verapdf", engineVersion, ruleVersion, issues: [{ engine: "verapdf", severity: "error", code: "TIMEOUT", path: "document", message: "Die PDF/A-Prüfung hat zu lange gedauert." }] };
+  }
+  const report = outcome.reportXml?.trim() || outcome.output;
+  if (!/<(?:[\w.-]+:)?report\b/i.test(report) && !/<(?:[\w.-]+:)?validationReport\b/i.test(report)) {
+    return { schemaVersion: 1, status: outcome.output.trim() ? "unreadable-report" : "missing-report", valid: false, engine: "verapdf", engineVersion, ruleVersion, issues: [{ engine: "verapdf", severity: "error", code: "VERAPDF-REPORT", path: "document", message: "Der maschinenlesbare PDF/A-Bericht fehlt. Die Datei gilt nicht als PDF/A-geprüft." }] };
+  }
+  const validationTag = report.match(/<(?:[\w.-]+:)?validationReport\b[^>]*>/i)?.[0] ?? "";
+  const compliant = attribute(validationTag, "isCompliant")?.toLowerCase();
+  const flavour = attribute(validationTag, "flavour") ?? "";
+  const failedParse = /failedToParse\s*=\s*"([1-9]\d*)"/i.test(report) || /encrypted\s*=\s*"([1-9]\d*)"/i.test(report);
+  const failedChecks = Number(attribute(report.match(/<(?:[\w.-]+:)?details\b[^>]*>/i)?.[0] ?? "", "failedChecks") ?? "0");
+  const issues = collectTags(report, "rule").filter((block) => attribute(block, "status")?.toLowerCase() === "failed")
+    .map((block) => issue("verapdf", attribute(block, "clause") ?? "PDFA", flavour, innerText(block, "description") || innerText(block, "message") || "Die PDF erfüllt PDF/A-3 nicht.", "error"));
+  const passed = outcome.code === 0 && compliant === "true" && /3b/i.test(flavour) && !failedParse && failedChecks === 0;
+  if (!passed) {
+    if (!issues.length) issues.push({ engine: "verapdf", severity: "error", code: "PDFA", path: "document", message: "Die PDF/A-3-Prüfung ist fehlgeschlagen. Nicht jedes PDF kann umgewandelt werden." });
+    return { schemaVersion: 1, status: compliant ? "failed" : "unreadable-report", valid: false, engine: "verapdf", engineVersion, ruleVersion, issues };
+  }
+  return { schemaVersion: 1, status: "passed", valid: true, engine: "verapdf", engineVersion, ruleVersion, issues: [] };
 }
 
 function attribute(source: string, name: string): string | undefined {

@@ -7,6 +7,7 @@ import type { ValidationResult } from "../domain/types.js";
 import {
   evaluateKositOutcome,
   evaluateMustangOutcome,
+  evaluateVeraPdfOutcome,
   type OfficialEngine,
   type OfficialValidationReport,
   type ProcessOutcome,
@@ -126,11 +127,16 @@ export class KositValidator implements ArtifactValidator {
 
 export class VeraPdfValidator implements ArtifactValidator {
   readonly name = "veraPDF PDF/A";
-  constructor(private readonly executable = "verapdf") {}
+  readonly engine = "verapdf" as const;
+  constructor(private readonly executable = "verapdf", private readonly java?: string, private readonly jar?: string, private readonly ruleVersion = "pdfa-3b") {}
   async validate(path: string): Promise<ValidationResult> {
-    const result = await run(this.executable, ["--format", "text", path]);
-    const valid = result.code === 0 && /PASS/i.test(result.output) && !/FAIL/i.test(result.output);
-    return { valid, issues: valid ? [] : [{ severity: "error", code: "VERAPDF", path, message: result.output.trim() || "PDF/A-Prüfung fehlgeschlagen." }] };
+    const outcome = this.jar && this.java
+      ? await run(this.java, [...JAVA_OFFLINE_FLAGS, "-jar", this.jar, "--flavour", "3b", "--format", "xml", "--maxfailures", "20", path])
+      : await run(this.executable, ["--flavour", "3b", "--format", "xml", "--maxfailures", "20", path]);
+    const reportXml = outcome.output.match(/<\?xml[\s\S]*<\/report>/i)?.[0] ?? outcome.output.match(/<report[\s\S]*<\/report>/i)?.[0];
+    if (reportXml) outcome.reportXml = reportXml;
+    const evaluated = evaluateVeraPdfOutcome(outcome, this.ruleVersion);
+    return { valid: evaluated.valid, issues: evaluated.issues };
   }
 }
 

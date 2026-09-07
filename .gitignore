@@ -38,4 +38,5 @@ artifacts/windows/
 apps/desktop/src-tauri/resources/validators/jre/
 apps/desktop/src-tauri/resources/validators/kosit/
 apps/desktop/src-tauri/resources/validators/mustang/
+apps/desktop/src-tauri/resources/validators/verapdf/
 apps/desktop/src-tauri/resources/validators/checksums.json

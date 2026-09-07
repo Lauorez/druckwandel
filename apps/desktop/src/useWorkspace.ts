@@ -61,7 +61,7 @@ export function useWorkspace(options: Options) {
         // Old JSON has no original hash or extraction version. Preserve values,
         // but never attach old token IDs to a newly reconstructed text layer.
         const draft = { ...legacyDraft.draft, lines: legacyDraft.draft.lines.map(l => ({ ...l,sourceTokenIds: [] })) };
-        snapshot = { ...snapshot,draft,initialDraft: draft,sourceSelections: {},pendingSourceFields: [],completed: false };
+        snapshot = { ...snapshot,draft,initialDraft: draft,sourceSelections: {},pendingSourceFields: [],completed: false,hybridConfirmed: false };
       }
       let currentDoc = detail.document;
       if (!detail.snapshot || legacyDraft) currentDoc = await workStore.save(doc.id,currentDoc.revision,JSON.stringify(snapshot));

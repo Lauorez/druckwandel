@@ -9,13 +9,13 @@
     "source": "https://adoptium.net/"
   },
   "kosit": {
-    "engineVersion": "1.5.0",
+    "engineVersion": "1.6.3",
     "ruleVersion": "xrechnung-3.0.2-2026-01-31",
-    "jar": "kosit/validator-1.5.0-standalone.jar",
+    "jar": "kosit/validator-1.6.3-standalone.jar",
     "scenarios": "kosit/xrechnung/scenarios.xml",
     "repository": "kosit/xrechnung",
     "license": "EUPL-1.2",
-    "source": "https://github.com/itplr-kosit/validator/releases/tag/v1.5.0",
+    "source": "https://github.com/itplr-kosit/validator/releases/tag/v1.6.3",
     "configurationSource": "https://github.com/itplr-kosit/validator-configuration-xrechnung"
   },
   "mustang": {
@@ -24,5 +24,12 @@
     "jar": "mustang/Mustang-CLI-2.16.2.jar",
     "license": "Apache-2.0",
     "source": "https://repo1.maven.org/maven2/org/mustangproject/Mustang-CLI/2.16.2/"
+  },
+  "verapdf": {
+    "engineVersion": "1.28.2",
+    "ruleVersion": "pdfa-3b",
+    "jar": "verapdf/greenfield-apps-1.28.2.jar",
+    "license": "GPL-3.0-or-later OR MPL-2.0",
+    "source": "https://repo1.maven.org/maven2/org/verapdf/apps/greenfield-apps/1.28.2/"
   }
 }

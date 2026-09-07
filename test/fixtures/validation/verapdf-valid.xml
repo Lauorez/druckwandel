@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<report>
+  <jobs>
+    <job>
+      <validationReport statement="PDF file is compliant with Validation Profile requirements." isCompliant="true" flavour="PDF/A-3B">
+        <details passedRules="140" failedRules="0" passedChecks="400" failedChecks="0"/>
+      </validationReport>
+    </job>
+  </jobs>
+  <batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0">
+    <validationReports compliant="1" nonCompliant="0" failedJobs="0">1</validationReports>
+  </batchSummary>
+</report>

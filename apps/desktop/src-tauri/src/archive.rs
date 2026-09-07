@@ -83,6 +83,8 @@ pub(crate) struct InvoiceEvidence {
     original_hash: String,
     #[serde(default)]
     content_hash: String,
+    #[serde(default)]
+    hybrid_confirmed: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -316,12 +318,40 @@ fn migrate_database(connection: &Connection) -> Result<(), String> {
             })?;
     }
     if version < 2 {
-        connection.execute_batch("BEGIN IMMEDIATE; ALTER TABLE archive_entries ADD COLUMN evidence_json TEXT; PRAGMA user_version=2; COMMIT;").map_err(|e| format!("Das Archiv konnte nicht erweitert werden: {e}"))?;
+        if !table_has_column(connection, "archive_entries", "evidence_json")? {
+            connection
+                .execute_batch("BEGIN IMMEDIATE; ALTER TABLE archive_entries ADD COLUMN evidence_json TEXT; COMMIT;")
+                .map_err(|error| format!("Das Archiv konnte nicht erweitert werden: {error}"))?;
+        }
+        connection
+            .execute_batch("PRAGMA user_version=2;")
+            .map_err(|error| error.to_string())?;
     }
     if version < 3 {
-        connection.execute_batch("BEGIN IMMEDIATE; ALTER TABLE archive_entries ADD COLUMN validation_json TEXT; PRAGMA user_version=3; COMMIT;").map_err(|e| format!("Das Archiv konnte nicht um Prüfnachweise erweitert werden: {e}"))?;
+        if !table_has_column(connection, "archive_entries", "validation_json")? {
+            connection
+                .execute_batch("BEGIN IMMEDIATE; ALTER TABLE archive_entries ADD COLUMN validation_json TEXT; COMMIT;")
+                .map_err(|error| format!("Das Archiv konnte nicht um Prüfnachweise erweitert werden: {error}"))?;
+        }
+        connection
+            .execute_batch("PRAGMA user_version=3;")
+            .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+fn table_has_column(connection: &Connection, table: &str, column: &str) -> Result<bool, String> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|error| error.to_string())?;
+    let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        let name: String = row.get(1).map_err(|error| error.to_string())?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn validate_plain_field(
@@ -409,6 +439,9 @@ fn validate_request(request: &SaveAndArchiveRequest, pdf: &[u8]) -> Result<(), S
             return Err(
                 "Archivangaben und bestätigter Rechnungsstand stimmen nicht überein.".into(),
             );
+        }
+        if !evidence.hybrid_confirmed {
+            return Err("Bitte bestätigen Sie, dass die Angaben die Originalrechnung korrekt wiedergeben.".into());
         }
     }
     Ok(())
@@ -1734,6 +1767,7 @@ mod tests {
             original_hash: sha256_hex(b"original"),
             content_hash: sha256_hex(snapshot.as_bytes()),
             snapshot,
+            hybrid_confirmed: true,
         });
         let new = save_and_archive_to(&paths, &documents, req).unwrap();
         assert_eq!(
@@ -1993,6 +2027,7 @@ mod tests {
             original_hash: sha256_hex(b"original"),
             content_hash: sha256_hex(snapshot.as_bytes()),
             snapshot,
+            hybrid_confirmed: true,
         });
         let first = save_and_archive_to(&paths, &documents, req.clone()).unwrap();
         let db = open_database(&paths).unwrap();

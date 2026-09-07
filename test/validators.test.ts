@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateKositOutcome,
   evaluateMustangOutcome,
+  evaluateVeraPdfOutcome,
   germanFieldLabel,
   mapOfficialLocationToPath,
 } from "../src/engine/validation-report.js";
@@ -56,5 +57,23 @@ describe("official XML validation reports", () => {
 
   it("maps invoice line locations", () => {
     expect(mapOfficialLocationToPath("/Invoice/InvoiceLine[1]/InvoicedQuantity", "BT-129")).toBe("lines.0.quantity");
+  });
+
+  it("accepts veraPDF only with a compliant PDF/A-3b report", () => {
+    const passed = evaluateVeraPdfOutcome({ code: 0, output: "", reportXml: fixture("verapdf-valid.xml") }, "pdfa-3b");
+    expect(passed).toMatchObject({ status: "passed", valid: true, engine: "verapdf" });
+    const failed = evaluateVeraPdfOutcome({ code: 1, output: "", reportXml: fixture("verapdf-invalid.xml") }, "pdfa-3b");
+    expect(failed.valid).toBe(false);
+    const missing = evaluateVeraPdfOutcome({ code: 0, output: "" }, "pdfa-3b");
+    expect(missing.status).toBe("missing-report");
+  });
+});
+
+describe("validator fetch packaging", () => {
+  it("entpackt Archive mit tar, damit Windows ohne unzip auskommt", () => {
+    const script = readFileSync(resolve(import.meta.dirname, "../scripts/fetch-validators.mjs"), "utf8");
+    expect(script).toContain('spawnSync("tar"');
+    expect(script).toContain("--force-local");
+    expect(script).not.toContain('spawnSync("unzip"');
   });
 });

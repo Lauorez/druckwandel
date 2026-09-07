@@ -4,6 +4,7 @@ import { calculateInvoice } from "../src/domain/calculate.js";
 import { EInvoiceEngine } from "../src/engine/e-invoice-engine.js";
 import { generateCii, ZUGFERD_EN16931_GUIDELINE } from "../src/engine/cii.js";
 import { generateUbl, XRECHNUNG_CUSTOMIZATION_ID } from "../src/engine/ubl.js";
+import { embedCiiInPdf } from "../src/engine/hybrid-pdf.js";
 import { generateSyntheticInvoice } from "../src/evaluation/synthetic-invoice.js";
 import { extractInvoicePdf } from "../src/extraction/index.js";
 import { invoiceInputFromReview, reviewDraftFromExtraction, validateReviewDraft } from "../src/review/draft.js";
@@ -65,7 +66,7 @@ describe("e-invoice formats", () => {
 
     const engine = new EInvoiceEngine();
     const reviewedInvoice = engine.calculate(invoiceInputFromReview(draft));
-    const hybridPdf = await engine.zugferd(fixture.pdf, reviewedInvoice);
+    const hybridPdf = await embedCiiInPdf(fixture.pdf, generateCii(reviewedInvoice));
     const hybridExtraction = await extractInvoicePdf(hybridPdf);
 
     expect(hybridExtraction.fields.invoiceNumber?.value).toBe(sourceExtraction.fields.invoiceNumber?.value);

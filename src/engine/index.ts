@@ -5,5 +5,6 @@ export * from "./e-invoice-engine.js";
 export * from "./cii.js";
 export * from "./ubl.js";
 export * from "./pdf.js";
+export * from "./consistency.js";
 export * from "./validators.js";
 export * from "./validation-report.js";

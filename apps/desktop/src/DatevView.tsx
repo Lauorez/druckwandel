@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatGermanDecimal } from "../../../src/domain/localized-decimal.js";
 import { canonicalJson, partyIdentity, readInvoiceSnapshot } from "../../../src/export/invoice-snapshot.js";
+import { documentPackage } from "../../../src/export/datev/documents.js";
 import { previewDatev, serializeDatev, validateDatevProfile } from "../../../src/export/datev/export.js";
 import type { DatevPreview, DatevProfile, DatevSource, InvoiceAssignment } from "../../../src/export/datev/types.js";
 import { listArchiveEntries, type ArchiveEntrySummary } from "./archiveStore.js";
@@ -33,7 +34,6 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
   const [repeated,setRepeated]=useState<string[]>([]);
   const [repeatReason,setRepeatReason]=useState("");
   const [repeatConfirmed,setRepeatConfirmed]=useState(false);
-  const [includeDocuments,setIncludeDocuments]=useState(false);
   const [history,setHistory]=useState<DatevExportPage>({entries:[],total:0});
   const [historyOffset,setHistoryOffset]=useState(0);
   const [refresh,setRefresh]=useState(0);
@@ -89,9 +89,22 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
     if(!preview || preview.issues.length || !preview.batches.length || dirty)throw new Error("Bitte zuerst eine aktuelle Vorschau erstellen.");
     if(repeated.length&&(!repeatConfirmed||repeatReason.trim().length<10))throw new Error("Bitte den erneuten Export bestätigen und begründen.");
     const createdAt=new Date();
-    request.current??={id:crypto.randomUUID(),profile:profileJson,repeatReason:repeated.length?repeatReason:"",includeDocuments,files:preview.batches.map(batch=>({contentsBase64:toBase64(serializeDatev(profile,batch,createdAt)),dateFrom:batch.dateFrom,dateTo:batch.dateTo,gross:batch.gross,bookingCount:batch.bookings.length,archiveIds:[...new Set(batch.bookings.map(b=>b.archiveId))]}))};
+    request.current??={
+      id:crypto.randomUUID(),
+      profile:profileJson,
+      repeatReason:repeated.length?repeatReason:"",
+      files:preview.batches.map(batch=>({
+        contentsBase64:toBase64(serializeDatev(profile,batch,createdAt)),
+        dateFrom:batch.dateFrom,
+        dateTo:batch.dateTo,
+        gross:batch.gross,
+        bookingCount:batch.bookings.length,
+        archiveIds:[...new Set(batch.bookings.map(b=>b.archiveId))],
+      })),
+      documentPackage:documentPackage(preview.batches.flatMap(batch=>batch.bookings),createdAt),
+    };
     const result=await datevStore.create(request.current);
-    setFeedback("Datei erstellt. Die Dateien liegen in der Exporthistorie bereit. Es wurde nichts an DATEV übertragen; der dortige Importstatus ist unbekannt.");
+    setFeedback("Paket erstellt. Zuerst Belege.zip über DATEV Belegtransfer importieren und nicht entpacken, danach die EXTF-Dateien. Es wurde nichts an DATEV übertragen; der dortige Importstatus ist unbekannt.");
     setPreview(undefined);setSelected(new Map());request.current=undefined;
     setHistoryOffset(0);setRefresh(v=>v+1);
     if(result.state!=="complete")throw new Error("Der Export wurde vorbereitet, aber noch nicht abgeschlossen. Bitte in der Exporthistorie fortsetzen.");
@@ -99,7 +112,7 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
   const friendly=(message:string)=>{for(const [id,e] of selected)message=message.replaceAll(id,`Rechnung ${e.invoiceNumber}`);return message;};
   const detailAssignment=assignments.find(a=>a.archiveId===detail?.archiveId);
   return <section className="datev-view">
-    <div className="archive-heading"><div><h2>Für die Steuerkanzlei exportieren</h2><p>DATEV-Dateien aus fertig gespeicherten Ausgangsrechnungen</p></div><button className="secondary" disabled={busy||dirty} onClick={onBack}>Zurück zum Archiv</button></div>
+    <div className="archive-heading"><div><h2>Für die Steuerkanzlei exportieren</h2><p>Buchungsstapel und Belegpaket aus fertig gespeicherten Ausgangsrechnungen</p></div><button className="secondary" disabled={busy||dirty} onClick={onBack}>Zurück zum Archiv</button></div>
     {error&&<div className="error-banner" role="alert">{friendly(error)}</div>}
     {feedback&&<div className="datev-feedback" role="status">{feedback}</div>}
     <div className="datev-scroll">
@@ -133,18 +146,18 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
       <button className="primary" disabled={busy||dirty||!ready||!selected.size} onClick={()=>void buildPreview()}>{busy?"Wird geprüft …":"Vorschau erstellen"}</button>
       {preview&&<section className="datev-preview"><h3>Exportvorschau</h3>
         {preview.issues.length>0?<ul role="alert">{preview.issues.map((p,i)=><li key={i}>{friendly(p)}</li>)}</ul>:<>
-          <p>{preview.invoiceCount} Rechnungen · {preview.batches.length} Dateien · {amount(preview.gross)}. XML- und PDF-Ausgaben desselben Rechnungsstands werden nur einmal berücksichtigt.</p>
+          <p>{preview.invoiceCount} Rechnungen · {preview.batches.length} Buchungsstapel und ein Belegpaket · {amount(preview.gross)}. XML- und PDF-Ausgaben desselben Rechnungsstands werden nur einmal berücksichtigt.</p>
           {preview.batches.map(batch=><div key={batch.dateFrom}><h4>{batch.dateFrom} bis {batch.dateTo}</h4><div className="datev-table-scroll"><table><thead><tr><th>Rechnung</th><th>Kundenkonto (Soll)</th><th>Erlöskonto</th><th>Steuersatz</th><th>Netto</th><th>Steuer</th><th>Brutto</th></tr></thead><tbody>{batch.bookings.map((r,i)=><tr key={i}><td>{r.invoiceNumber}</td><td>{r.debtor}</td><td>{r.revenueAccount}{r.taxKey?` / ${r.taxKey}`:" (automatisch)"}</td><td>{r.taxRate} %</td><td>{amount(r.net)}</td><td>{amount(r.tax)}</td><td>{amount(r.gross)}</td></tr>)}</tbody></table></div></div>)}
           <p>Festschreibung beim Import: {profile.locking==="1"?"Ja":"Nein"}. Steuerperiode: {profile.periodRule==="service-date"?"Leistungsdatum":"Rechnungsdatum"}.</p>
           {repeated.length>0&&<div className="datev-notice"><strong>Achtung: Bereits ausgegebene Rechnungen oder mögliche Kopien in der Auswahl.</strong><p>Ein erneuter Import kann doppelte Buchungen erzeugen. Für dieselbe Übergabe bitte die bestehenden Dateien aus der Exporthistorie verwenden.</p><label className="datev-check"><input type="checkbox" checked={repeatConfirmed} disabled={busy} onChange={e=>{setRepeatConfirmed(e.target.checked);request.current=undefined;}}/>Ich möchte bewusst eine neue Ausgabe erzeugen.</label><label><span>Begründung (mindestens 10 Zeichen)</span><input value={repeatReason} disabled={busy} onChange={e=>{setRepeatReason(e.target.value);request.current=undefined;}}/></label></div>}
-          <label className="datev-check"><input type="checkbox" checked={includeDocuments} disabled={busy} onChange={e=>{setIncludeDocuments(e.target.checked);request.current=undefined;}}/>PDFs und Rechnungsdaten als getrennte Begleitdateien mit ablegen (kein DATEV-Belegtransfer).</label>
-          <button className="primary" disabled={busy||dirty||(repeated.length>0&&(!repeatConfirmed||repeatReason.trim().length<10))} onClick={()=>void createExport()}>Datei für die Steuerkanzlei erstellen</button>
+          <p>Das Paket enthält die EXTF-Buchungsstapel und <code>Belege.zip</code> mit DATEV-Verwaltungsdatei, PDF und Rechnungs-XML. Die Kanzlei importiert zuerst das ZIP über DATEV Belegtransfer, danach die CSV-Dateien. Ein lokaler Dateipfad wird nicht als Beleglink verwendet.</p>
+          <button className="primary" disabled={busy||dirty||(repeated.length>0&&(!repeatConfirmed||repeatReason.trim().length<10))} onClick={()=>void createExport()}>Paket für die Steuerkanzlei erstellen</button>
         </>}
       </section>}
       <section className="datev-history"><h3>Exporthistorie</h3><p>Eine vorhandene Ausgabe bleibt unverändert. „Ordner öffnen“ prüft die gespeicherten Dateien und erzeugt keinen neuen Stapel.</p>
-        {history.entries.length===0&&<p>Noch keine Dateien für die Kanzlei erstellt.</p>}
-        {history.entries.map(e=>{let title="Gespeicherte Ausgabe";try{const m=JSON.parse(e.manifest);title=`${m.profile.name} · ${m.invoices.length} Rechnungen · ${m.files.length} Dateien`;}catch{/* damaged manifest remains visible */}
-          return <div className="datev-history-entry" key={e.id}><div><strong>{title}</strong><span>{new Date(e.createdAtMs).toLocaleString("de-DE")} · {e.state==="complete"?"Datei erstellt":"Noch nicht abgeschlossen"}</span>{e.error&&<p role="alert">{e.error}</p>}</div><button className="secondary" disabled={busy} onClick={()=>void action(async()=>{if(e.state==="pending"){await datevStore.resume(e.id);setFeedback("Die vorbereitete Ausgabe wurde abgeschlossen.");}else await datevStore.open(e.id);})}>{e.state==="pending"?"Ausgabe fortsetzen":"Ordner öffnen"}</button></div>;})}
+        {history.entries.length===0&&<p>Noch keine Pakete für die Kanzlei erstellt.</p>}
+        {history.entries.map(e=>{let title="Gespeichertes Paket";try{const m=JSON.parse(e.manifest);title=`${m.profile.name} · ${m.invoices.length} Rechnungen · ${m.files.length} Dateien`;}catch{/* damaged manifest remains visible */}
+          return <div className="datev-history-entry" key={e.id}><div><strong>{title}</strong><span>{new Date(e.createdAtMs).toLocaleString("de-DE")} · {e.state==="complete"?"Paket erstellt":"Noch nicht abgeschlossen"}</span>{e.error&&<p role="alert">{e.error}</p>}</div><button className="secondary" disabled={busy} onClick={()=>void action(async()=>{if(e.state==="pending"){await datevStore.resume(e.id);setFeedback("Die vorbereitete Ausgabe wurde abgeschlossen.");}else await datevStore.open(e.id);})}>{e.state==="pending"?"Ausgabe fortsetzen":"Ordner öffnen"}</button></div>;})}
         {history.total>100&&<div className="inbox-pagination"><button disabled={busy||historyOffset===0} onClick={()=>setHistoryOffset(Math.max(0,historyOffset-100))}>Neuere</button><span>{historyOffset+1}–{Math.min(historyOffset+100,history.total)} von {history.total}</span><button disabled={busy||historyOffset+100>=history.total} onClick={()=>setHistoryOffset(historyOffset+100)}>Ältere</button></div>}
       </section>
     </div>

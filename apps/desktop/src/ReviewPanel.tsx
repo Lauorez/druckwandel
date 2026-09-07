@@ -1,3 +1,4 @@
+import type { ContentConsistency } from "../../../src/engine/consistency.js";
 import type { CalculatedInvoice } from "../../../src/domain/types.js";
 import { germanFieldLabel } from "../../../src/engine/validation-report.js";
 import type { OfficialCheckIssue } from "./archiveStore.js";
@@ -18,6 +19,9 @@ interface ReviewPanelProps {
   validation: ReviewValidation;
   zugferdValidation: ReviewValidation;
   calculated?: CalculatedInvoice;
+  consistency?: ContentConsistency;
+  hybridConfirmed: boolean;
+  onHybridConfirmedChange: (confirmed: boolean) => void;
   unsupportedCases: UnsupportedCase[];
   activeAction?: "draft" | "authority" | "pdf";
   validationPhase?: string;
@@ -93,6 +97,9 @@ export function ReviewPanel({
   validation,
   zugferdValidation,
   calculated,
+  consistency,
+  hybridConfirmed,
+  onHybridConfirmedChange,
   unsupportedCases,
   activeAction,
   validationPhase,
@@ -185,6 +192,12 @@ export function ReviewPanel({
           {sourceField("sellerCity", "Ort", <input required value={draft.seller.city} onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, city: event.target.value } })} />)}
           {sourceField("sellerCountryCode", "Land (zum Beispiel DE)", <input required maxLength={2} value={draft.seller.countryCode} onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, countryCode: event.target.value.toUpperCase() } })} />)}
           {sourceField("sellerVatId", "Umsatzsteuer-ID", <input value={draft.seller.vatId} onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, vatId: event.target.value } })} />)}
+          <label id={reviewFieldId("seller.contact.name")}><span>Ansprechpartner</span>
+            <input value={draft.seller.contactName ?? ""} placeholder="Für Rechnungen an Behörden" onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, contactName: event.target.value } })} /></label>
+          <label id={reviewFieldId("seller.contact.phone")}><span>Telefon</span>
+            <input value={draft.seller.phone ?? ""} placeholder="+49 …" onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, phone: event.target.value } })} /></label>
+          <label id={reviewFieldId("seller.contact.email")}><span>E-Mail</span>
+            <input value={draft.seller.email ?? ""} placeholder="rechnung@firma.example" onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, email: event.target.value } })} /></label>
         </div></div>
         <div><h3>Empfänger</h3><div className="field-grid single">
           {sourceField("buyerName", "Name", <input required value={draft.buyer.name} onChange={(event) => onDraftChange({ ...draft, buyer: { ...draft.buyer, name: event.target.value } })} />)}
@@ -227,11 +240,22 @@ export function ReviewPanel({
       </div>
       <div className="field-grid single wide-field">{sourceField("paymentTerms", "Zahlungsbedingungen", <textarea value={draft.payment.terms} onChange={(event) => onDraftChange({ ...draft, payment: { ...draft.payment, terms: event.target.value } })} />)}</div>
       <div className="totals">
-        <span>Nettobetrag <b>{calculated ? formatGermanDecimal(calculated.totals.lineNet) : "—"}</b></span>
-        <span>Umsatzsteuer <b>{calculated ? formatGermanDecimal(calculated.totals.taxTotal) : "—"}</b></span>
-        <span>Rechnungsbetrag <b>{calculated ? formatGermanDecimal(calculated.totals.payable) : "—"} {draft.currency}</b></span>
+        <span>Nettobetrag <b>{calculated ? formatGermanDecimal(calculated.totals.lineNet) : "—"}</b><small>Original: {extraction.fields.lineNet?.value || "nicht gelesen"}</small></span>
+        <span>Umsatzsteuer <b>{calculated ? formatGermanDecimal(calculated.totals.taxTotal) : "—"}</b><small>Original: {extraction.fields.taxTotal?.value || "nicht gelesen"}</small></span>
+        <span>Rechnungsbetrag <b>{calculated ? formatGermanDecimal(calculated.totals.payable) : "—"} {draft.currency}</b><small>Original: {extraction.fields.payable?.value || extraction.fields.taxInclusive?.value || "nicht gelesen"}</small></span>
       </div>
     </section>
+
+    {consistency && consistency.mismatches.length > 0 && <section className="validation-panel official" aria-live="polite">
+      <h2>Angaben weichen von der Originalrechnung ab</h2>
+      <p>Bitte die Widersprüche auflösen oder die Rechnung im Ursprungsprogramm korrigieren. Eine fertige E-Rechnung wird nicht erzeugt.</p>
+      <ul>{consistency.mismatches.slice(0, 8).map((item) => <li key={item.path}><button type="button" className="issue-link" onClick={() => onFocusPath(item.path)}><strong>{item.label}:</strong> Original „{item.sourceValue}“, Ausgabe „{item.outputValue}“</button></li>)}</ul>
+    </section>}
+    {consistency && consistency.supplemented.length > 0 && consistency.mismatches.length === 0 && <section className="validation-panel" aria-live="polite">
+      <h2>Diese Angaben stehen so nicht in der Originalrechnung</h2>
+      <p>Bitte prüfen Sie, ob die Ausgabe die ausgestellte Rechnung korrekt wiedergibt. Inhaltliche Änderungen gehören ins Ursprungsprogramm.</p>
+      <ul>{consistency.supplemented.slice(0, 8).map((item) => <li key={item.path}><button type="button" className="issue-link" onClick={() => onFocusPath(item.path)}><strong>{item.label}:</strong> {item.outputValue}</button></li>)}</ul>
+    </section>}
 
     {!validation.valid && <section className="validation-panel" aria-live="polite">
       <h2>{zugferdValidation.valid ? "Für eine Rechnung an Behörden fehlt noch" : "Bitte ergänzen Sie diese Angaben"}</h2>
@@ -246,16 +270,20 @@ export function ReviewPanel({
       <span>{feedback.message}</span>
       <button type="button" aria-label="Meldung schließen" onClick={onDismissFeedback}>Schließen</button>
     </div>}
-    <div className="export-note"><strong>Wie möchten Sie die Rechnung weitergeben?</strong><span>Behörden benötigen meist die reine E-Rechnungsdatei. Für andere Kunden können Sie die Rechnung als PDF speichern.</span></div>
+    <div className="export-note"><strong>Wie möchten Sie die Rechnung weitergeben?</strong><span>Behörden benötigen meist die reine E-Rechnungsdatei. Für andere Kunden können Sie die Rechnung als PDF speichern. Die Original-PDF bleibt unverändert; für die PDF-Rechnung wird eine neue PDF/A-3-Datei erzeugt.</span></div>
+    <label className="confirm-original">
+      <input type="checkbox" checked={hybridConfirmed} disabled={Boolean(activeAction) || Boolean(consistency?.blocked)} onChange={(event) => onHybridConfirmedChange(event.target.checked)} />
+      <span>Ich bestätige, dass die Angaben die Originalrechnung korrekt wiedergeben. Änderungen am Rechnungsinhalt gehören ins Ursprungsprogramm.</span>
+    </label>
 
     <footer>
       <button className="secondary" disabled={Boolean(activeAction)} onClick={onSave}>
         {activeAction === "draft" ? "Entwurf wird gespeichert …" : "Entwurf speichern"}
       </button>
-      <button className="secondary" disabled={Boolean(activeAction) || !validation.valid} title={validation.valid ? "E-Rechnungsdatei für Behörden speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateXRechnung}>
+      <button className="secondary" disabled={Boolean(activeAction) || !validation.valid || Boolean(consistency?.blocked) || !hybridConfirmed} title={!hybridConfirmed ? "Bitte zuerst die Übereinstimmung mit der Originalrechnung bestätigen" : validation.valid ? "E-Rechnungsdatei für Behörden speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateXRechnung}>
         {activeAction === "authority" ? "Wird für Behörden gespeichert …" : "Für Behörden speichern"}
       </button>
-      <button className="primary" disabled={Boolean(activeAction) || !zugferdValidation.valid} title={zugferdValidation.valid ? "Lesbare PDF-Rechnung speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateZugferd}>
+      <button className="primary" disabled={Boolean(activeAction) || !zugferdValidation.valid || Boolean(consistency?.blocked) || !hybridConfirmed} title={!hybridConfirmed ? "Bitte zuerst die Übereinstimmung mit der Originalrechnung bestätigen" : zugferdValidation.valid ? "Lesbare PDF-Rechnung speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateZugferd}>
         {activeAction === "pdf" ? "PDF-Rechnung wird gespeichert …" : "Als PDF-Rechnung speichern"}
       </button>
     </footer>

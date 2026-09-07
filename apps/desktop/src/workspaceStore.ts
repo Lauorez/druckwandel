@@ -14,6 +14,7 @@ export interface WorkspaceSnapshot {
   sourceSelections: FieldSourceSelections;
   pendingSourceFields: LearnableFieldName[];
   completed: boolean;
+  hybridConfirmed: boolean;
 }
 export interface WorkDocument {
   id: string; name: string; sourceKey: string | null; jobId: string | null;
@@ -61,9 +62,11 @@ export function parseWorkspaceSnapshot(contents: string): WorkspaceSnapshot {
     || !object(v.sourceSelections) || !Object.entries(v.sourceSelections).every(([k, ids]) => LEARNABLE_FIELD_NAMES.includes(k as LearnableFieldName) && strings(ids))
     || !strings(v.pendingSourceFields) || !v.pendingSourceFields.every(k => LEARNABLE_FIELD_NAMES.includes(k as LearnableFieldName))
     || typeof v.completed !== "boolean") throw new Error("Der gespeicherte Entwurf ist beschädigt oder benötigt eine neuere Programmversion.");
+  const snapshot = v as unknown as WorkspaceSnapshot;
+  snapshot.hybridConfirmed = v.hybridConfirmed === true;
   const ids = new Set(v.extraction.pages.flatMap(p => p.tokens.map(t => t.id)));
   if (!Object.values(v.sourceSelections).every(tokens => (tokens as string[]).every(id => ids.has(id)))) throw new Error("Die gespeicherten Markierungen passen nicht zu dieser Rechnung.");
-  return v as unknown as WorkspaceSnapshot;
+  return snapshot;
 }
 export function parseLegacyDraft(contents: string): LegacyDraft {
   if (contents.length > 5 * 1024 * 1024) throw new Error("Der Entwurf ist zu groß.");

@@ -32,6 +32,8 @@ import { useWorkspace } from "./useWorkspace.js";
 import { InboxView } from "./InboxView.js";
 import { parseLegacyDraft, type LegacyDraft, type WorkspaceSnapshot } from "./workspaceStore.js";
 import { invoiceSnapshot, readInvoiceSnapshot } from "../../../src/export/invoice-snapshot.js";
+import { compareInvoiceToSource, assertExportableConsistency } from "../../../src/engine/consistency.js";
+import { HybridPdfError } from "../../../src/engine/hybrid-pdf.js";
 import { germanFieldLabel } from "../../../src/engine/validation-report.js";
 
 function safeFileStem(value: string): string {
@@ -101,6 +103,7 @@ export function App() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<ActionFeedback>();
   const [completed, setCompleted] = useState(false);
+  const [hybridConfirmed, setHybridConfirmed] = useState(false);
   const [legacyDraft, setLegacyDraft] = useState<LegacyDraft>();
   const learningMemory = useRef<CorrectionMemory>(emptyCorrectionMemory());
   const learningMemoryPromise = useRef<Promise<CorrectionMemory> | null>(null);
@@ -109,10 +112,11 @@ export function App() {
   const validation = useMemo(() => draft ? validateReviewDraft(draft, unsupportedCases) : undefined, [draft, unsupportedCases]);
   const zugferdValidation = useMemo(() => draft ? validateReviewDraft(draft, unsupportedCases, "zugferd") : undefined, [draft, unsupportedCases]);
   const calculated = useMemo(() => draft ? calculateReviewDraft(draft) : undefined, [draft]);
+  const consistency = useMemo(() => extraction && draft ? compareInvoiceToSource(extraction, draft, calculated) : undefined, [extraction, draft, calculated]);
   const snapshot = useMemo<WorkspaceSnapshot | undefined>(() => sourceExtraction && extraction && draft && initialDraft ? {
     schemaVersion: 1, extractionVersion: "text-layout-v1", sourceExtraction, extraction, draft, initialDraft,
-    sourceSelections, pendingSourceFields, completed,
-  } : undefined, [sourceExtraction,extraction,draft,initialDraft,sourceSelections,pendingSourceFields,completed]);
+    sourceSelections, pendingSourceFields, completed, hybridConfirmed,
+  } : undefined, [sourceExtraction,extraction,draft,initialDraft,sourceSelections,pendingSourceFields,completed,hybridConfirmed]);
   const work = useWorkspace({ snapshot, build: buildSnapshot, load: restoreDocument, error: setError, isActionActive: Boolean(activeAction) || datevBusy, isImportActive: analyzing });
   const printStatus = work.printStatus;
 
@@ -151,7 +155,7 @@ export function App() {
     let stop: (() => void) | undefined;
     void listen<{ phase: string }>("invoice-validation-progress", (event) => {
       setValidationPhase(event.payload.phase);
-    }).then((unlisten) => { stop = unlisten; });
+    }).then((unlisten) => { stop = unlisten; }).catch(() => undefined);
     return () => { stop?.(); };
   }, []);
 
@@ -173,7 +177,7 @@ export function App() {
     const nextDraft = reviewDraftFromExtraction(remembered.extraction);
     return { schemaVersion: 1,extractionVersion: "text-layout-v1",sourceExtraction: nextSourceExtraction,
       extraction: remembered.extraction,draft: nextDraft,initialDraft: nextDraft,
-      sourceSelections: {},pendingSourceFields: [],completed: false };
+      sourceSelections: {},pendingSourceFields: [],completed: false,hybridConfirmed: false };
   }
 
   function restoreDocument(data: Uint8Array, name: string, next: WorkspaceSnapshot) {
@@ -181,7 +185,7 @@ export function App() {
     setSourceExtraction(next.sourceExtraction); setExtraction(next.extraction);
     setDraft(next.draft); setInitialDraft(next.initialDraft);
     setSourceSelections(next.sourceSelections); setPendingSourceFields(next.pendingSourceFields);
-    setCompleted(next.completed); setSelectedTokenIds([]); setSourceTarget(undefined);
+    setCompleted(next.completed); setHybridConfirmed(next.hybridConfirmed); setSelectedTokenIds([]); setSourceTarget(undefined);
     setSourceValue(""); setSourceError(""); setPageNumber(1); setError(""); setFeedback(undefined); setOfficialIssues([]);
     setView("editor");
     document.title = `${name} – E-Rechnungs-Assistent`;
@@ -360,8 +364,9 @@ export function App() {
   }
 
   function createXRechnung() {
-    if (!draft || !pdfBytes || !validation?.valid) return;
+    if (!draft || !pdfBytes || !validation?.valid || !consistency) return;
     void runAction("authority", async () => {
+      assertExportableConsistency(consistency, hybridConfirmed);
       const { EInvoiceEngine } = await import("../../../src/engine/e-invoice-engine.js");
       const engine = new EInvoiceEngine();
       const invoice = engine.calculate(invoiceInputFromReview(draft));
@@ -378,12 +383,19 @@ export function App() {
   }
 
   function createZugferd() {
-    if (!draft || !pdfBytes || !zugferdValidation?.valid) return;
+    if (!draft || !pdfBytes || !zugferdValidation?.valid || !consistency) return;
     void runAction("pdf", async () => {
+      assertExportableConsistency(consistency, hybridConfirmed);
       const { EInvoiceEngine } = await import("../../../src/engine/e-invoice-engine.js");
       const engine = new EInvoiceEngine();
       const invoice = engine.calculate(invoiceInputFromReview(draft));
-      const { pdf: hybridPdf, xml } = await engine.zugferdPackage(pdfBytes, invoice);
+      let hybridPdf: Uint8Array;
+      let xml: string;
+      try {
+        ({ pdf: hybridPdf, xml } = await engine.zugferdPackage(pdfBytes, invoice));
+      } catch (error) {
+        throw error instanceof HybridPdfError ? error : new Error(error instanceof Error ? error.message : String(error));
+      }
       const file = `${safeFileStem(draft.invoiceNumber || fileName)}-e-rechnung.pdf`;
       let message: string;
       if (isTauri()) {
@@ -428,7 +440,7 @@ export function App() {
       pdfContentsBase64: encodeBase64(pdf),
       xmlContents: xml,
       metadata: archiveMetadata(invoice),
-      evidence: { schemaVersion: 1, ...reference, snapshot },
+      evidence: { schemaVersion: 1, ...reference, snapshot, hybridConfirmed: true },
       ticketId: check.ticketId,
     });
     setArchiveRevision((revision) => revision + 1);
@@ -534,6 +546,9 @@ export function App() {
         validation={validation}
         zugferdValidation={zugferdValidation}
         calculated={calculated}
+        consistency={consistency}
+        hybridConfirmed={hybridConfirmed}
+        onHybridConfirmedChange={setHybridConfirmed}
         unsupportedCases={unsupportedCases}
         activeAction={activeAction}
         validationPhase={validationPhase}
@@ -542,7 +557,7 @@ export function App() {
         onDismissFeedback={() => setFeedback(undefined)}
         learningRuleCount={learningRuleCount}
         onClearLearningMemory={() => void clearLearningMemory()}
-        onDraftChange={next => { setCompleted(false); setOfficialIssues([]); setDraft(next); }}
+        onDraftChange={next => { setCompleted(false); setHybridConfirmed(false); setOfficialIssues([]); setDraft(next); }}
         onSelectField={selectSource}
         onSelectTokens={selectTokens}
         sourceSelections={sourceSelections}

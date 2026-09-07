@@ -5,6 +5,7 @@ import type { InvoiceInput } from "../src/domain/types.js";
 import { generateUbl } from "../src/engine/ubl.js";
 import { generateCii } from "../src/engine/cii.js";
 import { invoiceSnapshot, readInvoiceSnapshot } from "../src/export/invoice-snapshot.js";
+import { documentPackage } from "../src/export/datev/documents.js";
 import { previewDatev, serializeDatev, validateDatevProfile } from "../src/export/datev/export.js";
 import { encodeWindows1252 } from "../src/export/datev/encoding.js";
 import type { DatevProfile, DatevSource } from "../src/export/datev/types.js";
@@ -44,7 +45,28 @@ describe("DATEV immutable source and EXTF adapter",()=>{
     expect(header!.slice(10,16)).toEqual(["1001","12345","20260101","4","20260820","20260820"]);
     expect(row!.slice(0,3)).toEqual(["282,08","S","EUR"]);
     expect(row!.slice(6,11)).toEqual(["10000","8400","","2008","RE-2026-0001"]);
-    expect(row![13]).toBe('Müller; "Öl" €');expect(row!.slice(113,117)).toEqual(["0","19082026","20082026","03092026"]);
+    expect(row![13]).toBe('Müller; "Öl" €');expect(row![19]).toBe(`BEDI "${v.batches[0]!.bookings[0]!.belegGuid}"`);expect(row!.slice(113,117)).toEqual(["0","19082026","20082026","03092026"]);
+  });
+  it("uses one Beleg GUID per invoice and a DATEV document.xml package",()=>{
+    const first=source(), pdf=source(standardInvoice,"zugferd");
+    const shared=previewDatev(profile(),[first,pdf]);
+    expect(shared.issues).toEqual([]);expect(shared.invoiceCount).toBe(1);
+    const guid=shared.batches[0]!.bookings[0]!.belegGuid;
+    expect(guid).toMatch(/^[0-9A-F]{8}-[0-9A-F]{4}-5[0-9A-F]{3}-A[0-9A-F]{3}-[0-9A-F]{12}$/);
+    const p=profile();p.revenueAccounts.push({...p.revenueAccounts[0]!,id:"other",account:"8410"});
+    const s=source({...standardInvoice,lines:[...standardInvoice.lines,{...standardInvoice.lines[0]!,id:"3",quantity:"1",netUnitPrice:"10",tax:{categoryCode:"S",rate:"7"}}]});
+    const v=previewDatev(p,[s],[{archiveId:s.archiveId,lineAccounts:{"1":"19","2":"other"}}]);
+    expect(v.issues).toEqual([]);
+    expect(new Set(v.batches[0]!.bookings.map(b=>b.belegGuid)).size).toBe(1);
+    const created=new Date("2026-09-07T10:11:12.345Z");
+    const pack=documentPackage(v.batches[0]!.bookings,created);
+    expect(pack.files).toHaveLength(1);
+    expect(pack.files[0]).toEqual({archiveId:s.archiveId,guid:v.batches[0]!.bookings[0]!.belegGuid,pdfName:`${v.batches[0]!.bookings[0]!.belegGuid}.pdf`,xmlName:`${v.batches[0]!.bookings[0]!.belegGuid}.xml`});
+    expect(pack.xml).toContain('xmlns="http://xml.datev.de/bedi/tps/document/v06.0"');
+    expect(pack.xml).toContain(`guid="${v.batches[0]!.bookings[0]!.belegGuid}"`);
+    expect(pack.xml).toContain('type="2"');
+    expect(pack.xml).toContain('processID="1"');
+    expect(pack.xml).toContain("<date>2026-09-07T10:11:12</date>");
   });
   it("deduplicates XML and PDF, but blocks separate documents with the same invoice number",()=>{
     expect(previewDatev(profile(),[source(),source(standardInvoice,"zugferd")]).invoiceCount).toBe(1);
@@ -84,7 +106,7 @@ describe("DATEV immutable source and EXTF adapter",()=>{
     expect(previewDatev(profile(),[next]).issues.join()).toContain("Wirtschaftsjahres");
   });
   it("requires service dates when chosen, and separates explicit tax keys from automatic accounts",()=>{
-    const p=profile();p.periodRule="service-date";expect(previewDatev(p,[source({...standardInvoice,serviceDate:undefined})]).issues.join()).toContain("Leistungsdatum");
+    const p=profile();p.periodRule="service-date";const {serviceDate:_ignored,...withoutServiceDate}=standardInvoice;expect(previewDatev(p,[source(withoutServiceDate)]).issues.join()).toContain("Leistungsdatum");
     p.revenueAccounts[0]!.taxKey="0003";expect(validateDatevProfile(p).length).toBeGreaterThan(0);
     p.revenueAccounts[0]!.mode="tax-key";expect(validateDatevProfile(p)).toEqual([]);
     const v=previewDatev(p,[source()]);expect(csv(serializeDatev(p,v.batches[0]!,new Date()))[2]![8]).toBe("0003");

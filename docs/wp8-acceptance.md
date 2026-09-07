@@ -22,4 +22,4 @@ Echte KoSIT-/Mustang-Läufe gegen Fixtures erfordern das Paket aus `npm run vali
 
 ## Bewusste Grenzen
 
-PDF/A-Konvertierung und veraPDF bleiben WP9. DATEV-Stapel und ältere Rechnungsrevisionen wurden nicht nachträglich als geprüft gekennzeichnet. Eine technische XML-Prüfung ist keine sachliche oder steuerliche Richtigkeitsgarantie.
+PDF/A-Konvertierung und veraPDF sind in WP9 beschrieben. DATEV-Stapel und ältere Rechnungsrevisionen wurden nicht nachträglich als geprüft gekennzeichnet. Eine technische XML-Prüfung ist keine sachliche oder steuerliche Richtigkeitsgarantie.

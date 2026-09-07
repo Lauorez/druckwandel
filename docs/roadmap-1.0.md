@@ -2,7 +2,7 @@
 
 Stand: 07.09.2026. Ausgangspunkt: Version 0.2.2.
 
-Status: Umsetzung vom Nutzer freigegeben. WP7, WP15 und WP8 sind implementiert; Abnahme siehe [WP7-Protokoll](wp7-acceptance.md) und [WP8-Protokoll](wp8-acceptance.md). Die übrigen Pakete bleiben geplant. Keine 1.0- oder fachliche Produktionsfreigabe. Die Nummerierung führt die bisherigen WP1–WP6 fort. Der ursprüngliche MVP-Projektplan bleibt als historische Produktbeschreibung bestehen.
+Status: Umsetzung vom Nutzer freigegeben. WP7, WP15, WP8 und WP9 sind implementiert; Abnahme siehe [WP7-Protokoll](wp7-acceptance.md), [WP8-Protokoll](wp8-acceptance.md) und [WP9-Protokoll](wp9-acceptance.md). Die übrigen Pakete bleiben geplant. Keine 1.0- oder fachliche Produktionsfreigabe. Die Nummerierung führt die bisherigen WP1–WP6 fort. Der ursprüngliche MVP-Projektplan bleibt als historische Produktbeschreibung bestehen.
 
 ## Ziel und Grenzen
 
@@ -211,4 +211,4 @@ Kundenfreigabe 1.0 zusätzlich: Produktionssignaturen vorhanden, vereinbarter Re
 
 ## Erster ausführbarer Auftrag
 
-Der Einstieg **WP7**, der DATEV-Basisexport **WP15** und die verbindliche lokale XML-Prüfung **WP8** sind umgesetzt. Nächster Auftrag ist **WP9** (Hybrid-PDF/PDF/A), sofern ein tragfähiger Konverter feststeht.
+Der Einstieg **WP7**, der DATEV-Basisexport **WP15**, die verbindliche lokale XML-Prüfung **WP8** und die Hybrid-PDF/PDF/A-Prüfung **WP9** sind umgesetzt. Nächster Auftrag ist **WP10** (Erkennungsqualität), danach WP11–WP14.

@@ -36,6 +36,16 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(installer).toContain("Wait-ForPrinter");
   });
 
+  it("stellt den Windows-Vorführrechner mit einem Setup-Skript auf", () => {
+    const setup = readFileSync(resolve(root, "scripts/setup-windows.ps1"), "utf8");
+    expect(setup).toContain("26100");
+    expect(setup).toContain("create-dev-cert.ps1");
+    expect(setup).toContain("validators:fetch");
+    expect(setup).toContain("demo:invoice");
+    expect(setup).toContain("build-windows-installer.ps1");
+    expect(setup).toContain("java.exe");
+  });
+
   it("verhindert einen unsignierten Produktionsbuild", () => {
     const buildScript = readFileSync(
       resolve(root, "scripts/build-windows-installer.ps1"),

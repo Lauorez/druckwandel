@@ -19,7 +19,7 @@ export interface SaveAndArchiveRequest {
   pdfContentsBase64: string;
   xmlContents: string;
   metadata: ArchiveMetadata;
-  evidence: { schemaVersion: 1; documentId: string; sourceRevision: number; snapshot: string };
+  evidence: { schemaVersion: 1; documentId: string; sourceRevision: number; snapshot: string; hybridConfirmed: boolean };
   ticketId: string;
 }
 
