@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "standard-header-merged",
+      "description": "Normale Rechnung mit Tabellenkopf und zusammengezogenem Beschreibung-Menge-Token",
+      "pdf": "pdf/standard-header-merged.pdf",
+      "expected": {
+        "fields": {
+          "invoiceNumber": "RE-2026-001",
+          "issueDate": "2026-08-30",
+          "dueDate": "2026-09-13",
+          "serviceDate": "2026-08-30",
+          "currency": "EUR",
+          "buyerReference": "04011000-12345-03",
+          "sellerName": "Anbieter GmbH",
+          "sellerAddressLine1": "Beispielstrasse 12",
+          "sellerPostalCode": "10115",
+          "sellerCity": "Berlin",
+          "sellerCountryCode": "DE",
+          "sellerVatId": "DE123456789",
+          "buyerName": "Kunde AG",
+          "buyerAddressLine1": "Kundenweg 5",
+          "buyerPostalCode": "20095",
+          "buyerCity": "Hamburg",
+          "buyerCountryCode": "DE",
+          "iban": "DE89370400440532013000",
+          "bic": "COBADEFFXXX",
+          "lineNet": "1100.00",
+          "taxTotal": "209.00",
+          "taxInclusive": "1309.00",
+          "payable": "1309.00"
+        },
+        "lineItems": [
+          {
+            "description": "Softwareentwicklung",
+            "quantity": "10.000",
+            "unit": "Std",
+            "netUnitPrice": "95.00",
+            "netAmount": "950.00",
+            "taxRate": "19.00"
+          },
+          {
+            "description": "Einrichtung und Konfiguration",
+            "quantity": "1.000",
+            "unit": "Stk",
+            "netUnitPrice": "150.00",
+            "netAmount": "150.00",
+            "taxRate": "19.00"
+          }
+        ],
+        "warningCodes": [],
+        "unsupportedCaseCodes": []
+      }
+    },
+    {
+      "id": "legacy-columns",
+      "description": "Positionsliste ohne Tabellenkopf mit Datum in der Beschreibung",
+      "pdf": "pdf/legacy-columns.pdf",
+      "expected": {
+        "fields": {
+          "invoiceNumber": "1367098",
+          "currency": "EUR",
+          "sellerVatId": "DE812968520",
+          "lineNet": "30.00",
+          "taxTotal": "5.70",
+          "taxInclusive": "35.70",
+          "payable": "35.70"
+        },
+        "lineItems": [
+          {
+            "description": "mtl. Grundgebuehr",
+            "serviceDate": "2026-07-31",
+            "quantity": "1.000",
+            "unit": "Stk",
+            "netUnitPrice": "10.00",
+            "netAmount": "10.00",
+            "taxRate": "19.00"
+          },
+          {
+            "description": "mtl. Grundgebuehr",
+            "serviceDate": "2026-08-31",
+            "quantity": "1.000",
+            "unit": "Stk",
+            "netUnitPrice": "10.00",
+            "netAmount": "10.00",
+            "taxRate": "19.00"
+          },
+          {
+            "description": "mtl. Grundgebuehr",
+            "serviceDate": "2026-09-30",
+            "quantity": "1.000",
+            "unit": "Stk",
+            "netUnitPrice": "10.00",
+            "netAmount": "10.00",
+            "taxRate": "19.00"
+          }
+        ],
+        "warningCodes": [],
+        "unsupportedCaseCodes": []
+      }
+    },
+    {
+      "id": "unsupported-credit-note",
+      "description": "Gutschrift wird erkannt, aber bewusst nicht konvertiert",
+      "pdf": "pdf/credit-note.pdf",
+      "expected": {
+        "fields": {
+          "invoiceNumber": "GS-2026-003",
+          "issueDate": "2026-08-30",
+          "currency": "EUR",
+          "taxInclusive": "119.00",
+          "payable": "119.00"
+        },
+        "lineItems": [],
+        "warningCodes": [],
+        "unsupportedCaseCodes": ["CREDIT_NOTE"]
+      }
+    },
+    {
+      "id": "unsupported-reverse-charge",
+      "description": "Reverse Charge wird als blockierender Sonderfall erkannt",
+      "pdf": "pdf/reverse-charge.pdf",
+      "expected": {
+        "fields": {
+          "invoiceNumber": "RE-RC-001",
+          "buyerReference": "04011000-12345-03",
+          "currency": "EUR",
+          "lineNet": "200.00",
+          "taxTotal": "0.00",
+          "payable": "200.00"
+        },
+        "lineItems": [
+          {
+            "description": "Beratungsleistung",
+            "quantity": "2.000",
+            "unit": "Std",
+            "netUnitPrice": "100.00",
+            "netAmount": "200.00",
+            "taxRate": "0.00"
+          }
+        ],
+        "warningCodes": [],
+        "unsupportedCaseCodes": ["REVERSE_CHARGE"]
+      }
+    },
+    {
+      "id": "unsupported-invoice-discount",
+      "description": "Belegweiter Rabatt wird erkannt und Summenabweichung bleibt sichtbar",
+      "pdf": "pdf/invoice-discount.pdf",
+      "expected": {
+        "fields": {
+          "invoiceNumber": "RE-RABATT-001",
+          "currency": "EUR",
+          "lineNet": "90.00",
+          "taxTotal": "17.10",
+          "payable": "107.10"
+        },
+        "lineItems": [
+          {
+            "description": "Wartung",
+            "quantity": "1.000",
+            "unit": "Stk",
+            "netUnitPrice": "100.00",
+            "netAmount": "100.00",
+            "taxRate": "19.00"
+          }
+        ],
+        "warningCodes": ["LINE_TOTAL_MISMATCH"],
+        "unsupportedCaseCodes": ["ALLOWANCE_OR_DISCOUNT"]
+      }
+    },
+    {
+      "id": "unsupported-scan",
+      "description": "Bild-PDF ohne Textlayer verlangt OCR und wird blockiert",
+      "pdf": "pdf/scan-without-text.pdf",
+      "expected": {
+        "fields": {},
+        "lineItems": [],
+        "warningCodes": ["OCR_REQUIRED"],
+        "unsupportedCaseCodes": ["OCR_REQUIRED"]
+      }
+    }
+  ]
+}

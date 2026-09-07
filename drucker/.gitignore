@@ -1,0 +1,14 @@
+.DS_Store
+.vs/
+.idea/
+.vscode/
+**/bin/
+**/obj/
+**/AppPackages/
+artifacts/
+.cert/
+*.pfx
+*.cer
+*.user
+*.suo
+TestResults/

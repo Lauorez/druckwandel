@@ -1,0 +1,56 @@
+{
+  "name": "erechnungs-assistent",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first desktop assistant for extracting, creating, and archiving German e-invoices",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run build && npm test && npm run wp6:check",
+    "desktop": "tauri dev --config apps/desktop/src-tauri/tauri.conf.json",
+    "desktop:build": "npm run check && tauri build --config apps/desktop/src-tauri/tauri.conf.json",
+    "desktop:web:dev": "vite --config apps/desktop/vite.config.ts --host 127.0.0.1",
+    "desktop:web:build": "tsc -p apps/desktop/tsconfig.json && vite build --config apps/desktop/vite.config.ts",
+    "installer:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1",
+    "wp5:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-build-reference.ps1",
+    "wp5:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-clean-install.ps1",
+    "wp5:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-repair-spooler.ps1",
+    "wp5:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File drucker/scripts/uninstall.ps1",
+    "extract:pdf": "tsx scripts/extract-pdf.ts",
+    "corpus:generate": "tsx scripts/generate-corpus.ts",
+    "corpus:evaluate": "tsx scripts/evaluate-corpus.ts",
+    "corpus:fuzz": "tsx scripts/fuzz-invoices.ts",
+    "wp6:check": "npm run corpus:generate && npm run corpus:evaluate && npm run corpus:fuzz",
+    "generate:fixtures": "tsx scripts/generate-fixtures.ts",
+    "validate:external": "tsx scripts/validate-external.ts",
+    "validate:zugferd": "tsx scripts/validate-zugferd.ts"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.8",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-deep-link": "2.4.10",
+    "decimal.js": "^10.6.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^5.1.4",
+    "jsdom": "^26.1.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.4"
+  }
+}

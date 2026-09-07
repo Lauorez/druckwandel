@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "E-Rechnungs-Assistent",
+  "version": "0.3.0",
+  "identifier": "de.erechnung.converter",
+  "build": {
+    "beforeDevCommand": "npm run desktop:web:dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run desktop:web:build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "title": "E-Rechnungs-Assistent",
+      "width": 1380,
+      "height": 900,
+      "minWidth": 900,
+      "minHeight": 650,
+      "dragDropEnabled": false
+    }],
+    "security": { "csp": "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src ipc: http://ipc.localhost" }
+  },
+  "plugins": {
+    "deep-link": { "desktop": { "schemes": ["erechnung-review"] } }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "windows": {
+      "wix": {
+        "language": {
+          "de-DE": {
+            "localePath": "wix/de-DE.wxl"
+          }
+        },
+        "upgradeCode": "150a13ad-5783-5f47-accf-affb87f37405"
+      },
+      "nsis": {
+        "installerHooks": "nsis/installer-hooks.nsh",
+        "languages": ["German"],
+        "customLanguageFiles": {
+          "German": "nsis/German.nsh"
+        }
+      }
+    }
+  }
+}

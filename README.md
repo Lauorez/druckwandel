@@ -1,200 +1,164 @@
-# E-Rechnung Virtual PDF Printer – Beta 1
+# E-Rechnungs-Assistent
 
-Lokaler virtueller PDF-Drucker für Windows 11. Der installierte Drucker **E-Rechnung** übernimmt einen normalen Windows-Printjob, erzeugt ohne Speichern-unter-Dialog ein PDF und öffnet eine minimale Companion-App mit Job-Metadaten.
+Lokale Desktop-Anwendung zum Übernehmen, Prüfen, Erzeugen und Archivieren elektronischer Rechnungen. Die Verarbeitung arbeitet lokal und sendet keine Rechnungsdaten an externe Dienste.
 
-> Version: **0.1.0-beta.1**. Erste private Testversion. Build, MSIX-Inhalt, Installation, automatische Queue-Registrierung und Deinstallation sind auf einem frischen Windows-Build-26100-CI-System verifiziert. Der interaktive Print- und Companion-Pfad muss noch auf einem Windows-11-Desktop bestätigt werden.
+## Funktionsumfang
 
-Diese Beta ist für einen ersten End-to-End-Test gedacht. Sie ist noch keine produktiv signierte oder allgemein verteilbare Anwendung.
+- kanonisches, formatunabhängiges Rechnungsmodell
+- exakte Dezimalarithmetik und deterministische kaufmännische Rundung
+- Steuergruppierung, Summenberechnung und verständliche Geschäftsregelfehler
+- ZUGFeRD/Factur-X EN16931 als UN/CEFACT CII
+- XRechnung 3.0 als UBL 2.1
+- Einbettung von `factur-x.xml` in ein vorhandenes PDF/A-3 mit AFRelationship `Alternative` und Factur-X-XMP-Metadaten
+- austauschbare Adapter für KoSIT und veraPDF
+- PDF-Textlayer-Extraktion mit Bounding Boxes und Seitenbezug
+- Zeilen- und einfache Tabellenspalten-Rekonstruktion
+- regelbasierte Feldklassifikation mit Confidence, Quelle und Transformationshistorie
+- lokaler OCR-Fallback über eine austauschbare Schnittstelle
+- nativer E-Rechnungs-Assistent mit Quellenmarkierung, vollständigen Rechnungsparteien und editierbaren Positionen
+- dauerhafter Posteingang mit eigenen Original-PDFs, automatischer Entwurfssicherung und Wiederaufnahme nach Neustart
+- deutsche Betragsdarstellung und -eingabe bei kanonischen, exakten Dezimalwerten im Core
+- lokales Vorlagengedächtnis für bestätigte Ergänzungen und zuvor nicht erkannte Positionstabellen
+- integriertes Rechnungsarchiv mit PDF/XML-Ablage, SQLite-Suche und verketteten SHA-256-Prüfsummen
+- optionale digitale Bestätigung neuer Archiveinträge mit einem lokalen Ed25519-Schlüssel
+- sichtbare Pflichtfeldvalidierung, atomare Entwürfe sowie XRechnung- und ZUGFeRD-Ausgabe
+- nativer Windows-11-Print-Support-Virtual-Printer mit lokaler OXPS-zu-PDF-Konvertierung
+- positive und negative Testfälle
 
-## Scope
-
-Enthalten:
-
-- moderner Print Support Virtual Printer ohne eigenen V3-/V4-Treiber,
-- OXPS-zu-PDF über Windows `PrintWorkflowPdlConverter`,
-- PDF-Passthrough für kompatible Anwendungen,
-- UUID-basierte PDF- und JSON-Ablage,
-- atomarer Job-Store und lokales JSONL-Logging,
-- native WinUI-3-Companion-App,
-- MSIX-Manifest, Entwicklungszertifikat und Installationsskripte.
-
-Nicht enthalten sind PDF-Analyse, OCR, Rechnungsfelder, EN 16931, ZUGFeRD, XRechnung, PDF/A, Datenbank, Cloud oder produktive UI.
-
-## Voraussetzungen
-
-- Windows 11 24H2 oder neuer, mindestens Build `26100`
-- x64; ARM64 ist vorbereitet, aber noch nicht getestet
-- Visual Studio 2026 mit:
-  - .NET Desktop Development
-  - Windows application development / WinUI
-  - MSIX Packaging Tools
-  - Windows 11 SDK `10.0.26100` oder neuer
-- .NET SDK 10
-- PowerShell 5.1 oder 7
-- Developer Mode ist für lokale MSIX-Tests empfohlen
-
-Das Projekt verwendet die aktuelle Virtual-Printer-API, die erst mit Build 26100 eingeführt wurde. Ältere Windows-11-Versionen werden bewusst nicht unterstützt.
-
-## Beta-Paket installieren
-
-Die private GitHub-Prerelease `v0.1.0-beta.1` enthält ein x64-MSIX und das zugehörige öffentliche Entwicklungszertifikat. Beide Dateien in denselben Ordner herunterladen, PowerShell als Administrator öffnen und ausführen:
+## Start
 
 ```powershell
-Import-Certificate `
-  -FilePath .\ERechnung.Dev.cer `
-  -CertStoreLocation Cert:\LocalMachine\TrustedPeople
-Add-AppxPackage .\CompanionApp_0.1.0.1_x64.msix
+npm install
+npm run check
+npm run generate:fixtures
+npm run extract:pdf -- C:\Rechnungen\beispiel.pdf
+npm run extract:pdf -- C:\Rechnungen\scan.pdf --ocr
+npm run desktop
 ```
 
-Das Zertifikat ist ausschließlich für diesen privaten Betatest bestimmt. Alternativ kann die Beta wie unten beschrieben aus dem Quellcode gebaut werden.
+### Gemeinsamer Windows-Installer
 
-## Schnellstart auf Windows
+Der auslieferbare Windows-Build besteht für Anwender aus genau einer Setup-Datei. Sie enthält die Tauri-Anwendung, den E-Rechnungsdrucker, dessen kleine Windows-Druckbrücke und die benötigte Windows App Runtime:
 
 ```powershell
-git clone https://github.com/Lauorez/erechnung.git
-cd erechnung
-# PowerShell zuvor als Administrator öffnen
-Set-ExecutionPolicy -Scope Process Bypass
-./scripts/build.ps1
-./scripts/install.ps1
+npm run installer:windows
 ```
 
-Danach prüfen:
+Das Ergebnis liegt unter `artifacts/windows/E-Rechnungs-Assistent-<Version>-x64-Setup.exe`; daneben wird eine SHA-256-Prüfsumme erzeugt. Das Setup prüft vor der Installation Windows 11 24H2, Paketidentität und Signaturen, richtet den Drucker für den aktuellen Windows-Benutzer ein und wartet auf seine betriebsbereite Registrierung. Bei einer normalen Deinstallation wird auch der Drucker entfernt. Bei einem Programm-Update bleibt er bestehen und wird nur aktualisiert, wenn das eingebettete Paket neuer ist.
+
+Der aktuelle Entwicklungsbuild enthält ausschließlich den öffentlichen Teil des lokalen Testzertifikats und kann bei der ersten Installation eine Windows-Sicherheitsabfrage auslösen. Für eine Kundenfreigabe müssen Druckerpaket, Anwendung und Setup vertrauenswürdig signiert werden; ein Produktionsbuild lehnt selbstsignierte Druckerpakete und eine unsignierte Setup-Datei ab.
+
+### WP5: virtueller E-Rechnungsdrucker
+
+Die folgenden Einzelbefehle bleiben nur für die Entwicklung und gezielte Druckerdiagnose erhalten. Normale Anwender verwenden ausschließlich den gemeinsamen Windows-Installer. Voraussetzung ist Windows 11 24H2 (Build 26100 oder neuer). Das Entwicklungspaket wird lokal signiert. Build in einer normalen PowerShell:
 
 ```powershell
-Get-Printer -Name "E-Rechnung"
+npm run wp5:build
 ```
 
-Anschließend Notepad öffnen und über **Drucken → E-Rechnung** drucken. Windows darf keinen zusätzlichen Speichern-unter-Dialog anzeigen. Nach der Konvertierung öffnet sich die Companion-App.
+Den E-Rechnungs-Assistenten zuerst einmal starten oder einen der mit `npm run desktop:build` erzeugten Installer installieren. Dadurch wird das lokale Protokoll `erechnung-review://` registriert.
 
-## Build
-
-Standardmäßig wird ein signiertes x64-Release-Paket erzeugt:
+Die einmalige Druckerinstallation muss wegen des Entwicklungszertifikats in einer **als Administrator gestarteten PowerShell** erfolgen:
 
 ```powershell
-./scripts/build.ps1
+# Falls das frühere PoC-Paket aus dem Ordner drucker noch installiert ist:
+.\drucker\scripts\uninstall.ps1
+npm run wp5:install
 ```
 
-Weitere Varianten:
+Danach steht in Windows der Drucker **E-Rechnung** zur Verfügung. Der native Print-Support-Workflow nimmt den Druckdatenstrom entgegen und wandelt OXPS lokal in PDF um. Die paketierte WinUI-Companion übergibt PDF und versionierte Job-Metadaten anschließend atomar an `Dokumente\E-Rechnung Druckeingang`, startet den exakten Job über `erechnung-review://print-job/<UUID>` in der Tauri-App und beendet den Windows-Print-Workflow.
 
-```powershell
-./scripts/build.ps1 -Configuration Debug
-./scripts/build.ps1 -Platform ARM64
-```
-
-Das Skript:
-
-1. prüft Windows-Build, .NET und MSBuild,
-2. erzeugt bei Bedarf ein lokales Code-Signing-Zertifikat unter `.cert/`,
-3. restauriert die Pakete,
-4. baut Background-Task, WinUI-App und MSIX,
-5. legt die Pakete unter `artifacts/packages/` ab.
-
-`dotnet build` allein ist für den vollständigen MSIX-Build nicht der unterstützte Pfad. `scripts/build.ps1` verwendet das MSBuild aus Visual Studio.
-
-## Installation
-
-```powershell
-./scripts/install.ps1
-```
-
-Das Development-Zertifikat wird unter `LocalMachine\TrustedPeople` importiert; deshalb muss PowerShell für die Installation als Administrator laufen. Anschließend wird das neueste erzeugte MSIX installiert.
-
-## Lokale Dateien
-
-Die Dateien liegen im geschützten Local-State-Verzeichnis des Pakets:
+Der Übergabevertrag besteht nach abgeschlossener Verarbeitung aus drei lokalen Dateien. Die Druckbrücke legt zunächst PDF und Metadaten an; erst der Assistent ergänzt die Bestätigung:
 
 ```text
-%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\ERechnung\
-├─ PrintJobs\
-│  ├─ <UUID>.pdf
-│  └─ <UUID>.json
-├─ Sessions\
-│  └─ <SHA256(SessionId)>.txt
-└─ Logs\
-   └─ <UUID>.jsonl
+<UUID>.pdf             vollständiges Druck-PDF
+<UUID>.printjob.json   schemaVersion 1 und Druckjob-Metadaten
+<UUID>.review.json     Bestätigung des Assistenten: opened oder failed
 ```
 
-Die Companion-App öffnet diesen Speicherort über **Open Folder**.
+Für einen kompletten Test:
 
-## Tests
+1. Notepad öffnen und einen kurzen Testtext eingeben.
+2. Auf **E-Rechnung** drucken.
+3. Prüfen, dass kein Speichern-unter-Dialog erscheint und sich der **E-Rechnungs-Assistent** direkt mit dem gedruckten Dokument öffnet.
+4. In `<UUID>.review.json` muss nach erfolgreicher Extraktion `"status": "opened"` stehen.
 
-Plattformunabhängige Unit-Tests:
+Entfernen lässt sich das Entwicklungspaket mit `npm run wp5:uninstall`. Für eine Verteilung muss das Entwicklungszertifikat durch ein vertrauenswürdiges Codesigning-Zertifikat beziehungsweise Store-Signing ersetzt werden.
+
+### Fallback-Drucktest ohne WP5
+
+1. `npm run desktop` starten.
+2. In einer beliebigen Anwendung **Microsoft Print to PDF** wählen.
+3. Als Ziel den in der App angezeigten Ordner `Dokumente\E-Rechnung Druckeingang` wählen.
+4. Die App übernimmt die neue PDF beim nächsten Abgleich (etwa alle 1,5 Sekunden) in den Posteingang. Ohne aktive Rechnung öffnet sie den Eingang; andernfalls bleibt die aktuelle Bearbeitung erhalten. Beim allerersten Einrichten vorhandene Dateien werden als ältere Dateien zur ausdrücklichen Übernahme angeboten.
+
+Dieser Weg testet nur den überwachten Druckeingang, falls WP5 auf einem älteren Windows-Build nicht installiert werden kann.
+
+Die E-Rechnungs-API liegt in `src/engine/index.ts`, die PDF-Pipeline in `src/extraction/index.ts`. Beträge und Mengen werden absichtlich als Dezimal-Strings angenommen; JavaScript-`number` ist für Geldwerte nicht Teil des Domain-Modells.
+
+`--ocr` aktiviert den lokalen Tesseract-CLI-Fallback, wenn der Textlayer weniger als 20 Zeichen enthält. Dafür müssen Tesseract und die Sprachdaten `deu`/`eng` lokal installiert und über `PATH` erreichbar sein. Ohne `--ocr` werden gescannte Dokumente sichtbar mit `OCR_REQUIRED` markiert.
+
+### Prüfen und Speichern
+
+Erkannte Werte lassen sich direkt korrigieren. Positionen können über **Hinzufügen** ergänzt und über **Entfernen** gelöscht werden. Beträge erscheinen deutsch formatiert, zum Beispiel 1.234,56; intern bleiben sie kanonische Dezimalstrings.
+
+Seit 0.3.0 hält **Posteingang** alle übernommenen Rechnungen und ihre Entwürfe dauerhaft bereit. Änderungen werden nach kurzer Eingabepause automatisch gespeichert; der Speicherstand ist sichtbar. Beim nächsten Start wird die zuletzt geöffnete Rechnung einschließlich ihrer Markierungen wiederhergestellt. Neue Druckaufträge ersetzen sie nicht. Vor einem Rechnungswechsel oder normalen Schließen sichert die App noch ausstehende Änderungen. Bei einem Speicherfehler bleibt das Fenster geöffnet. Ein harter Abbruch kann noch nicht als gespeichert bestätigte Eingaben verlieren.
+
+Der Arbeitsbestand liegt unter `%LOCALAPPDATA%\de.erechnung.converter\workspace`: `workspace.sqlite3` enthält die Entwürfe, `originals` eigene unveränderte PDF-Kopien. **Entwurf speichern** sichert sofort und bestätigt zusätzlich die Ergänzungen für das Vorlagengedächtnis; das automatische Speichern lernt ausdrücklich nichts. Alte Dateien aus `Dokumente\E-Rechnung Entwürfe` können über **Entwurf öffnen** zusammen mit ihrer ursprünglichen PDF übernommen werden. Die alten Dateien werden nicht gelöscht. Im Browser-Entwicklungsmodus bleibt es beim JSON-Download ohne dauerhaften Posteingang.
+
+**Für Behörden speichern** und **Als PDF-Rechnung speichern** werden jeweils freigegeben, sobald die für den gewählten Zweck erforderlichen Pflichtangaben vollständig und alle Positionen berechenbar sind. Die Leitweg-ID/Käuferreferenz ist nur bei Rechnungen an Behörden erforderlich. Beide fertigen Ausgaben liegen unter Dokumente\E-Rechnung Ausgaben. Im Browser-Entwicklungsmodus werden die Dateien stattdessen heruntergeladen.
+
+Manuell ergänzte oder korrigierte Angaben werden beim Speichern mit ihrer Position und Beschriftung in der geöffneten Rechnung verknüpft. Bei einer ähnlich aufgebauten Folgerechnung desselben Absenders liest der Assistent den neuen Wert an dieser Stelle automatisch aus. Auch eine vollständig übersehene, manuell nachgetragene Positionstabelle kann über ihre Spaltenanordnung gelernt werden. Das Vorlagengedächtnis speichert keine konkreten Rechnungswerte, sondern Positionsdaten, Beschriftungen und nicht umkehrbare Absenderkennungen. Es liegt ausschließlich im lokalen Anwendungsordner und kann in der Oberfläche über **Gemerkte Ergänzungen löschen** zurückgesetzt werden.
+
+Mit **Im PDF markieren** neben einem Feld lässt sich die Quelle gezielt bestimmen: Text anklicken oder einen Rahmen darum ziehen, den markierten Wert prüfen und **Übernehmen** wählen. Mitmarkierte Beschriftungen können vor dem Übernehmen entfernt werden. **Entwurf speichern** oder eine fertige Ausgabe bestätigt die Zuordnung dauerhaft. Die Feldregeln speichern den ausgewählten Textblock statt der ganzen Zeile; benachbarte Bank- und Steuerangaben gelangen dadurch nicht in die Anschrift. Feste Beschriftungen und Spalten dienen zusätzlich als Vorlagenkennung, sodass gleich aufgebaute Rechnungen auch mit einem anderen Absender erkannt werden. Bei mehrfach vorkommenden, gleich plausiblen Werten fordert das Speicherfeedback zur gezielten Markierung auf. Seiten ohne Textlayer lassen sich weiterhin nur manuell erfassen.
+
+Der ZUGFeRD-Export erhält die sichtbaren Seiten des geöffneten PDFs und bettet die berechneten EN-16931-CII-Daten als `factur-x.xml` mit der Beziehung `Alternative` ein. Ein beliebiges Eingabe-PDF wird dadurch nicht automatisch zu einer konformen PDF/A-3-Datei. Die Anwendung weist deshalb nach dem Export ausdrücklich auf die noch ausstehende externe PDF/A-Prüfung hin.
+
+### Rechnungsarchiv
+
+Jede in der installierten Anwendung fertig gespeicherte E-Rechnung wird automatisch unter `Dokumente\E-Rechnungsarchiv` archiviert. Zu jedem Eintrag liegen eine PDF und die maschinenlesbaren XML-Rechnungsdaten vor: Bei einer Behörden-Datei wird die geöffnete Quell-PDF zusammen mit der XRechnung abgelegt, bei einer PDF-Rechnung die fertige ZUGFeRD-PDF zusammen mit ihren CII-Daten. Metadaten und Suchindex liegen in `archiv.sqlite3`; die eigentlichen Rechnungen bleiben normale Dateien in nach Jahr und Monat gegliederten Ordnern. Gleichnamige Ausgaben werden nicht überschrieben.
+
+SHA-256-Prüfsummen schützen beide Dateien. Jeder Eintrag enthält zusätzlich die Prüfsumme seines Vorgängers und bildet dadurch eine fortlaufende Kette. **Archiv prüfen** kontrolliert SQLite-Datenbank, laufende Nummern, Kettenanschlüsse, PDF/XML-Dateien und vorhandene Signaturen und schreibt einen verständlichen Bericht nach `E-Rechnungsarchiv\Prüfberichte`. Optional können neue Einträge mit einem lokal erzeugten Ed25519-Schlüssel digital bestätigt werden. Der private Schlüssel liegt ausschließlich im lokalen Anwendungsordner; das Aktivieren oder Deaktivieren verändert frühere Einträge nicht.
+
+Die Funktion erkennt lokale Veränderungen, ersetzt aber weder eine gesetzliche Aufbewahrungsrichtlinie noch unveränderbaren Speicher, externe Zeitstempel oder eine qualifizierte elektronische Signatur. Für belastbare Langzeitaufbewahrung müssen Archivordner, SQLite-Datenbank und lokaler Schlüssel regelmäßig gemeinsam gesichert und organisatorische Lösch- und Zugriffsregeln ergänzt werden.
+
+Der vollständige technische Datenfluss und die Sicherheitsgrenzen sind in [docs/architecture.md](docs/architecture.md) beschrieben.
+
+### WP6-Qualitätsgate
+
+    npm run wp6:check
+
+Der Lauf erzeugt das anonymisierte Referenzkorpus, prüft Felder, Positionen, Warnungen und blockierte Sonderfälle und testet zusätzlich 250 reproduzierbare, künstlich erzeugte Rechnungen. Die Reports liegen unter artifacts/corpus-report.json und artifacts/synthetic-fuzz-report.json. Das Gate ist Bestandteil von npm run check und des Desktop-Release-Builds. Seed-Reproduktion, lokale echte Rechnungen und Hinweise zur sicheren Anonymisierung sind in [docs/wp6-corpus.md](docs/wp6-corpus.md) beschrieben.
+
+Die ergänzenden Workspace-, Wiederanlauf- und echten Windows-Drucktests für 0.3.0 sind in [docs/wp7-acceptance.md](docs/wp7-acceptance.md) dokumentiert. Der DATEV-EXTF-Export ist der nächste vorgezogene Meilenstein, noch kein Bestandteil dieser Version; Reihenfolge und Umfang stehen in [docs/roadmap-1.0.md](docs/roadmap-1.0.md).
+
+## Externe Validierung
+
+Die interne Prüfung ist schnell und verständlich, ersetzt aber keine offizielle Schema-/Schematron-Prüfung. Für XRechnung wird die KoSIT-Konfiguration 3.0.2 (Release 2026-01-31) unterstützt:
 
 ```powershell
-./scripts/test.ps1
+$env:KOSIT_VALIDATOR_JAR = 'C:\validator\validator.jar'
+$env:KOSIT_SCENARIOS = 'C:\xrechnung-config\scenarios.xml'
+npm run validate:external -- test/fixtures/generated/xrechnung-ubl.xml
 ```
 
-Der vollständige manuelle Windows-Test steht in [docs/testing.md](docs/testing.md). Er umfasst Notepad, Browser, Word/Excel, Hoch-/Querformat, mehrere Seiten und parallele Jobs.
+Für formal konforme Hybrid-PDFs gilt: Das Eingabe-PDF muss bereits PDF/A-3 sein. Nach dem Einbetten muss das Ergebnis über `VeraPdfValidator` mit veraPDF geprüft werden. Die Engine und der E-Rechnungs-Assistent behaupten ohne diese unabhängige Prüfung ausdrücklich keine PDF/A-Konformität. Der aktuelle offizielle FeRD-Release ist ZUGFeRD 2.5.2/Factur-X 1.09.2; dessen versionierte Schema- und Schematron-Artefakte sind noch nicht Bestandteil dieses Prototyps.
 
-Für eine automatische Installation mit anschließender Deinstallation steht zusätzlich ein destruktiver Smoke-Test für CI- oder Wegwerf-Testsysteme bereit:
+Die XML- und Geschäftsregeln des ZUGFeRD-/Factur-X-Profils lassen sich separat mit Mustang prüfen:
 
 ```powershell
-./scripts/smoke-install.ps1
+$env:MUSTANG_VALIDATOR_JAR = 'C:\validator\Mustang-CLI.jar'
+npm run validate:zugferd -- test/fixtures/generated/zugferd-en16931.xml
 ```
 
-Das Skript installiert das Paket, wartet auf die Queue `E-Rechnung` und entfernt danach Paket, Queue und temporär vertrautes Zertifikat wieder.
+KoSIT und Mustang prüfen unterschiedliche Profile. Eine Factur-X-CII darf deshalb nicht als XRechnung-Ergebnis des KoSIT-Szenarios bewertet werden.
 
-Auf einer **interaktiven** Windows-Desktop-Sitzung kann derselbe Test zusätzlich eine A4-XPS-Testseite an die Queue senden und PDF, Metadaten sowie den erfolgreichen Konvertierungsstatus prüfen:
+## Funktionsgrenzen dieses Stands
 
-```powershell
-./scripts/smoke-install.ps1 -TestPrint
-```
+Unterstützt sind normale Rechnungen mit positionsbezogener Umsatzsteuer. Noch nicht enthalten sind Gutschriften, Belegzuschläge/-abschläge, Vorauszahlungen, Rundungsbeträge, mehrere Zahlungswege und komplexe Steuerfälle. Solche Fälle müssen vor produktivem Einsatz ergänzt und mit offiziellen Referenzvalidatoren regressiongetestet werden.
 
-Dabei werden die Jobdateien vor der Deinstallation zusätzlich unter `artifacts/smoke/` gesichert. Der verwendete gehostete GitHub-Windows-Runner hat den Druckjob in seiner nicht interaktiven Sitzung vor Aktivierung der Print-Workflow-Background-Task abgebrochen; CI prüft deshalb bewusst den installierbaren Paket- und Queue-Lifecycle, nicht die UI-Aktivierung.
+Standardstände:
 
-Bei einem Fehler sammelt folgendes Skript Paket-, Queue-, Spooler- und relevante Windows-Ereignisdaten, ohne PDFs zu kopieren:
-
-```powershell
-./scripts/collect-diagnostics.ps1
-```
-
-Mit `-IncludeJobMetadata` werden zusätzlich JSON-Metadaten und JSONL-Statuslogs aufgenommen. Diese können Dokumentnamen enthalten und sollten vor dem Teilen geprüft werden.
-
-## Deinstallation
-
-```powershell
-./scripts/uninstall.ps1
-```
-
-Mit dem MSIX-Paket sollte Windows auch die zugehörige Queue entfernen. Kontrolle:
-
-```powershell
-Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue
-```
-
-## Architektur
-
-```text
-Anwendung → Windows Print Pipeline → OXPS/PDF
-          → VirtualPrinterBackgroundTask
-          → XPS-to-PDF / PDF copy
-          → lokaler atomarer Job-Store
-          → PrintWorkflowUILauncher
-          → Companion-App
-```
-
-Das Manifest enthält absichtlich kein `OutputFileTypes`. Dadurch wird die Queue nicht als klassischer File Printer registriert und Windows sollte keinen Speichern-unter-Dialog anzeigen.
-
-Details: [docs/architecture.md](docs/architecture.md) und [docs/windows-print-api-notes.md](docs/windows-print-api-notes.md).
-
-Der vollständige aktuelle Arbeitsstand für die Fortsetzung auf einem anderen Gerät steht in [docs/PROGRESS.md](docs/PROGRESS.md).
-
-## Bekannte Einschränkungen
-
-- Installation, Queue-Registrierung und Deinstallation sind automatisiert auf Windows Build 26100 verifiziert; der Druckpfad ist noch nicht in einer interaktiven Windows-11-Sitzung ausgeführt worden.
-- Die aktuelle C#-WinRT-Projektion der `PrintSupportJobUI`-Aktivierungsargumente muss praktisch bestätigt werden.
-- Die PDC-Datei bietet zunächst A3, A4, A5, Hoch-/Querformat, Farbe und 600 dpi; weitere PrintTicket-Optionen fehlen.
-- Das Schließen der Companion-App beendet den Print-Workflow. Bleibt sie offen, bleibt auch die zugehörige UI-Aktivierung aktiv.
-- Die Development-Signatur ist nicht für Distribution geeignet.
-- Die mitgelieferten App-Icons sind Platzhalter aus dem Microsoft-Sample.
-
-Änderungen dieser und späterer Versionen stehen in [CHANGELOG.md](CHANGELOG.md).
-
-## Sicherheits- und Datenschutzmodell
-
-- keine Netzwerkaufrufe im Produktcode,
-- keine Telemetrie oder Analytics,
-- keine externen PDF-Konverter,
-- keine vorhersehbaren Dateinamen aus Dokumenttiteln,
-- keine Rechnungsdaten außerhalb des lokalen Paketverzeichnisses.
+- XRechnung 3.0.2 / KoSIT-Konfiguration 2026-01-31
+- ZUGFeRD 2.5.2 / Factur-X 1.09.2 EN16931, Profilkennung `urn:cen.eu:en16931:2017`; die passenden FeRD-Prüfartefakte müssen vor einem konformen Produktrelease als versioniertes Standardpaket eingebunden werden
+- UBL 2.1 und UN/CEFACT CII D16B Syntax
