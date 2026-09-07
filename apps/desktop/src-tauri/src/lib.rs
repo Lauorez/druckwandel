@@ -1,6 +1,7 @@
 mod archive;
 mod datev;
 mod paths;
+mod validator;
 mod workspace;
 
 use archive::{
@@ -409,6 +410,8 @@ pub fn run() {
             write_learning_memory,
             open_print_inbox,
             save_and_archive_invoice,
+            validator::cancel_invoice_validation,
+            validator::validate_prepared_invoice,
             list_archive_entries,
             get_archive_entry,
             get_archive_status,

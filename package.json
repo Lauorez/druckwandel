@@ -27,7 +27,8 @@
     "wp6:check": "npm run corpus:generate && npm run corpus:evaluate && npm run corpus:fuzz",
     "generate:fixtures": "tsx scripts/generate-fixtures.ts",
     "validate:external": "tsx scripts/validate-external.ts",
-    "validate:zugferd": "tsx scripts/validate-zugferd.ts"
+    "validate:zugferd": "tsx scripts/validate-zugferd.ts",
+    "validators:fetch": "node scripts/fetch-validators.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.8",

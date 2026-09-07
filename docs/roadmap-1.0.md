@@ -1,8 +1,8 @@
 # Umsetzungsplan bis zur Version 1.0
 
-Stand: 06.09.2026. Ausgangspunkt: Version 0.2.2.
+Stand: 07.09.2026. Ausgangspunkt: Version 0.2.2.
 
-Status: Umsetzung vom Nutzer freigegeben. WP7 ist implementiert; Abnahme und Installer-Meilenstein siehe [WP7-Protokoll](wp7-acceptance.md). WP15 (DATEV) folgt direkt danach; die übrigen Pakete bleiben geplant. Keine 1.0- oder fachliche Produktionsfreigabe. Die Nummerierung führt die bisherigen WP1–WP6 fort. Der ursprüngliche MVP-Projektplan bleibt als historische Produktbeschreibung bestehen.
+Status: Umsetzung vom Nutzer freigegeben. WP7, WP15 und WP8 sind implementiert; Abnahme siehe [WP7-Protokoll](wp7-acceptance.md) und [WP8-Protokoll](wp8-acceptance.md). Die übrigen Pakete bleiben geplant. Keine 1.0- oder fachliche Produktionsfreigabe. Die Nummerierung führt die bisherigen WP1–WP6 fort. Der ursprüngliche MVP-Projektplan bleibt als historische Produktbeschreibung bestehen.
 
 ## Ziel und Grenzen
 
@@ -64,7 +64,7 @@ Implementiert in 0.3.0. Die folgenden Punkte bleiben als ursprünglicher Umfang 
 
 ### Umfang und fachliche Grenze
 
-Ein lokaler Export `EXTF_*.csv` aus dem Archiv, zunächst für bestätigte, fertiggestellte Ausgangsrechnungen des eingerichteten Betriebs in EUR. Die eigene Firma muss ausdrücklich einem Kanzlei-/Mandantenprofil zugeordnet sein; nicht jede geöffnete oder archivierte Rechnung ist automatisch eine Ausgangsrechnung. Zuerst normale Rechnungen mit unterstützter Umsatzsteuer, einschließlich gemischter Steuersätze. Keine Bank-/Zahlungsbuchungen, Kreditoren-/Eingangsrechnungen, Fremdwährungsumrechnung, Stammdatenexporte oder automatische DATEV-Übertragung im ersten Schritt.
+Ein lokales Kanzleipaket aus dem Archiv: `EXTF_*.csv` als Buchungsstapel und `Belege.zip` nach der DATEV-XML-Schnittstelle online (document.xml mit GUID, PDF und Rechnungs-XML). Zunächst für bestätigte, fertiggestellte Ausgangsrechnungen des eingerichteten Betriebs in EUR. Die eigene Firma muss ausdrücklich einem Kanzlei-/Mandantenprofil zugeordnet sein; nicht jede geöffnete oder archivierte Rechnung ist automatisch eine Ausgangsrechnung. Zuerst normale Rechnungen mit unterstützter Umsatzsteuer, einschließlich gemischter Steuersätze. Keine Bank-/Zahlungsbuchungen, Kreditoren-/Eingangsrechnungen, Fremdwährungsumrechnung, Stammdatenexporte oder automatische DATEV-Übertragung im ersten Schritt.
 
 EXTF ist ein Buchungsdatenaustausch, kein weiteres E-Rechnungsformat. Konto, Gegenkonto und Buchungsrichtung sind zusätzliche fachliche Angaben und lassen sich nicht zuverlässig aus dem Rechnungs-PDF ableiten. DATEV nennt diese neben Umsatz und Belegdatum als Mussfelder für Bewegungsdaten. [DATEV-Funktionsbeschreibung](https://www.datev.de/content/dam/markenassets/marktplatz/schnittstellen-funktionsumfang/DATEV-Format_CP-Pro.pdf)
 
@@ -84,7 +84,7 @@ Auch das für EXTF benötigte Vorgangsprotokoll für Datei-/SQLite-Abschluss hie
 6. **Archivoberfläche:** Aktion „Für die Steuerkanzlei exportieren“ mit Zeitraum oder expliziter Rechnungsauswahl anbieten. Vorschau zeigt Rechnungen, Buchungszeilen, Summen und fehlende Zuordnungen. Bereits exportierte Rechnungen standardmäßig ausnehmen und auf Wunsch sichtbar einblenden. Enthält die Auswahl Fehler, den gesamten ausgewählten Export blockieren oder den Benutzer die Auswahl ausdrücklich ändern lassen; keine stillen Teilerfolge. Die UI meldet „Datei erstellt“, niemals ungeprüft „an DATEV übertragen“ oder „gebucht“.
 7. **Doppelte Übergaben verhindern:** Exporthistorie mit Stapel-ID, Profil-/Formatversion, Dateihash, Zeitraum, fachlicher Rechnungs-ID/Inhaltsrevision und verwendeten Archivbezügen führen. Dieselbe Rechnung in XML- und Hybrid-PDF-Ausgabe ergibt nicht zwei Buchungen. Auch mehrfach importierte/doppelt gedruckte Belege als mögliche Dubletten markieren; bei widersprüchlichen Daten nicht blind anhand gleicher Rechnungsnummer zusammenführen. Erneutes Herunterladen eines vorhandenen Stapels liefert dieselben gespeicherten Bytes. Bewusster Neu-/Korrekturexport benötigt Bestätigung mit Hinweis auf möglichen Doppelimport in DATEV; ohne Rückkanal ist der dortige Importstatus unbekannt.
 8. **Nachvollziehbarkeit ohne Archivmutation:** Erzeugte EXTF-Datei und ein lokales Begleitmanifest unverändert mit Hash aufbewahren. Beziehungen zwischen Stapel und Rechnungen in separaten Exporttabellen führen, vorhandene Rechnungshashes nicht ändern. DATEV-Exportstatus ist kein Rechnungsstatus und EXTF kein zusätzlicher `ArchiveFormat`-Wert. Dateisystem/SQLite-Abschluss mit dem vorgesehenen Vorgangsprotokoll absichern. Bei Altarchiven fehlenden Rechnungssnapshot kontrolliert aus unterstütztem UBL/CII rekonstruieren und prüfen oder Export mit verständlichem Hinweis sperren; nicht aus PDF neu raten oder nur den Archiv-Bruttobetrag verwenden.
-9. **Belege getrennt behandeln:** Auf Wunsch zugehörige PDF/XML-Dateien als separates Begleitpaket mit nachvollziehbarer Zuordnung bereitstellen. Das ist noch kein DATEV-Belegtransfer und keine automatisch funktionierende Belegverknüpfung. Ein lokaler Dateipfad wird nicht als erfundener DATEV-Beleglink ausgegeben. Keine Belegübertragung im Hintergrund.
+9. **Belegpaket mit EXTF:** Jede Ausgabe ist ein Kanzleipaket: EXTF-Buchungsstapel plus `Belege.zip` nach DATEV-XML-Schnittstelle online (document.xml Version 6.0, Belegbilder mit GUID). Dieselbe GUID steht in der EXTF-Spalte Beleglink (`BEDI "<GUID>"`) und in document.xml. Kein lokaler Dateipfad als Beleglink. Die Oberfläche weist auf die Importreihenfolge hin (zuerst ZIP über DATEV Belegtransfer, nicht entpacken, danach CSV). Keine Belegübertragung im Hintergrund und keine Aussage „an DATEV übertragen“.
 10. **Sonderfälle gestaffelt freigeben:** Gutschrift-/Korrekturbelege, Steuerbefreiung und Reverse Charge erst nach dem jeweiligen WP11-Teilpaket plus eigenem DATEV-Mapping-/Importtest einschalten. Soll/Haben-Umkehr, Generalumkehr und Belegkorrektur nicht gleichsetzen. Abschlags-/Schlussrechnungen bleiben bis zur gesonderten Freigabe ausgeschlossen. Ein nach E-Rechnungsregeln gültiger Beleg ist nicht automatisch durch das aktuelle DATEV-Profil abbildbar.
 
 ### Betroffene Stellen
@@ -211,4 +211,4 @@ Kundenfreigabe 1.0 zusätzlich: Produktionssignaturen vorhanden, vereinbarter Re
 
 ## Erster ausführbarer Auftrag
 
-Der Einstieg **WP7** wurde umgesetzt: nativer Arbeitsbestand und Wiederanlauftests, danach Posteingang/Entwurfsoberfläche und native Regressionstests. Nächster Auftrag ist **WP15**: Rechnungssnapshot und Identität absichern, EXTF-Basisexport mit Kanzleieinstellungen/Vorschau/Exporthistorie implementieren und einen testbaren Installer bereitstellen. Erst danach folgen WP8 und die übrigen Pakete.
+Der Einstieg **WP7**, der DATEV-Basisexport **WP15** und die verbindliche lokale XML-Prüfung **WP8** sind umgesetzt. Nächster Auftrag ist **WP9** (Hybrid-PDF/PDF/A), sofern ein tragfähiger Konverter feststeht.

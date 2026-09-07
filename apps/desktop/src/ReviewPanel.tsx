@@ -1,4 +1,6 @@
 import type { CalculatedInvoice } from "../../../src/domain/types.js";
+import { germanFieldLabel } from "../../../src/engine/validation-report.js";
+import type { OfficialCheckIssue } from "./archiveStore.js";
 import { decimal, money } from "../../../src/domain/money.js";
 import { formatGermanDecimal } from "../../../src/domain/localized-decimal.js";
 import type { ExtractedFieldName, ExtractionResult } from "../../../src/extraction/types.js";
@@ -18,6 +20,8 @@ interface ReviewPanelProps {
   calculated?: CalculatedInvoice;
   unsupportedCases: UnsupportedCase[];
   activeAction?: "draft" | "authority" | "pdf";
+  validationPhase?: string;
+  officialIssues?: OfficialCheckIssue[];
   feedback?: ActionFeedback;
   onDismissFeedback: () => void;
   learningRuleCount: number;
@@ -25,6 +29,7 @@ interface ReviewPanelProps {
   onDraftChange: (draft: ReviewDraft) => void;
   onSelectField: (name: ExtractedFieldName) => void;
   onSelectTokens: (tokenIds: string[]) => void;
+  onFocusPath: (path: string) => void;
   sourceSelections: FieldSourceSelections;
   onChooseSource: (name: LearnableFieldName, label: string) => void;
   onSave: () => void;
@@ -47,40 +52,31 @@ function nextManualLineId(): string {
   return `manual-${Date.now()}-${manualLineSequence}`;
 }
 
-const VALIDATION_LABELS: Record<string, string> = {
-  invoiceNumber: "Rechnungsnummer",
-  buyerReference: "Bestellnummer oder Leitweg-ID",
-  issueDate: "Rechnungsdatum",
-  currency: "Währung",
-  "seller.name": "Absender: Name",
-  "seller.address.line1": "Absender: Straße und Hausnummer",
-  "seller.address.city": "Absender: Ort",
-  "seller.address.postalCode": "Absender: Postleitzahl",
-  "seller.address.countryCode": "Absender: Land",
-  "buyer.name": "Empfänger: Name",
-  "buyer.address.line1": "Empfänger: Straße und Hausnummer",
-  "buyer.address.city": "Empfänger: Ort",
-  "buyer.address.postalCode": "Empfänger: Postleitzahl",
-  "buyer.address.countryCode": "Empfänger: Land",
-  lines: "Leistungen und Artikel",
-  document: "Art der Rechnung",
+const SOURCE_PATH: Record<string, string> = {
+  invoiceNumber: "invoiceNumber",
+  buyerReference: "buyerReference",
+  issueDate: "issueDate",
+  dueDate: "dueDate",
+  serviceDate: "serviceDate",
+  currency: "currency",
+  sellerName: "seller.name",
+  sellerAddressLine1: "seller.address.line1",
+  sellerCity: "seller.address.city",
+  sellerPostalCode: "seller.address.postalCode",
+  sellerCountryCode: "seller.address.countryCode",
+  buyerName: "buyer.name",
+  buyerAddressLine1: "buyer.address.line1",
+  buyerCity: "buyer.address.city",
+  buyerPostalCode: "buyer.address.postalCode",
+  buyerCountryCode: "buyer.address.countryCode",
 };
 
+export function reviewFieldId(path: string): string {
+  return `review-field-${path.replace(/\./g, "-")}`;
+}
+
 function validationLabel(path: string): string {
-  const lineMatch = path.match(/^lines\.(\d+)\.(.+)$/);
-  if (lineMatch?.[1]) {
-    const field = lineMatch[2] === "name"
-      ? "Beschreibung"
-      : lineMatch[2] === "quantity"
-        ? "Menge"
-        : lineMatch[2] === "netUnitPrice"
-          ? "Einzelpreis"
-          : lineMatch[2] === "tax.rate"
-            ? "Steuersatz"
-            : lineMatch[2];
-    return `Position ${Number(lineMatch[1]) + 1}: ${field}`;
-  }
-  return VALIDATION_LABELS[path] ?? path;
+  return germanFieldLabel(path);
 }
 
 function lineAmount(line: ReviewLineDraft): string | undefined {
@@ -99,6 +95,8 @@ export function ReviewPanel({
   calculated,
   unsupportedCases,
   activeAction,
+  validationPhase,
+  officialIssues,
   feedback,
   onDismissFeedback,
   learningRuleCount,
@@ -108,6 +106,7 @@ export function ReviewPanel({
   onSelectTokens,
   sourceSelections,
   onChooseSource,
+  onFocusPath,
   onSave,
   onCreateXRechnung,
   onCreateZugferd,
@@ -123,7 +122,8 @@ export function ReviewPanel({
     const remembered = source?.transformations.some((step) => step.operation === "learned-layout");
     const assigned = sourceSelections[name] !== undefined;
     const accessibleLabel = name.startsWith("seller") ? `Absender: ${label}` : name.startsWith("buyer") && name !== "buyerReference" ? `Empfänger: ${label}` : label;
-    return <div className="source-field">
+    const path = SOURCE_PATH[name] ?? name;
+    return <div className="source-field" id={reviewFieldId(path)}>
       <label className={source || assigned ? "" : "missing"} onClick={() => onSelectField(name)}>
         <span>{label} {(source || assigned) && <small>{assigned ? "selbst zugeordnet" : remembered ? "aus ähnlicher Rechnung" : "übernommen"}</small>}</span>
         {control}
@@ -205,7 +205,7 @@ export function ReviewPanel({
       <div className="line-table">
         <div className="line-header"><span>Bezeichnung</span><span>Anzahl</span><span>Einheit</span><span>Preis</span><span>Steuer</span><span>Betrag</span><span /></div>
         {draft.lines.length === 0 && <div className="empty-lines">Noch keine Leistungen oder Artikel vorhanden.</div>}
-        {draft.lines.map((line, index) => <div className="line-row" key={line.id}>
+        {draft.lines.map((line, index) => <div className="line-row" key={line.id} id={reviewFieldId(`lines.${index}.name`)}>
           <input aria-label={`Beschreibung Position ${index + 1}`} value={line.description} onFocus={() => onSelectTokens(line.sourceTokenIds)} onChange={(event) => updateLine(index, { description: event.target.value })} />
           <LocalizedDecimalInput aria-label={`Menge Position ${index + 1}`} value={line.quantity} minimumFractionDigits={0} maximumFractionDigits={3} onChange={(value) => updateLine(index, { quantity: value })} />
           <select aria-label={`Einheit Position ${index + 1}`} value={line.unitCode} onChange={(event) => updateLine(index, { unitCode: event.target.value as ReviewLineDraft["unitCode"] })}>
@@ -235,7 +235,12 @@ export function ReviewPanel({
 
     {!validation.valid && <section className="validation-panel" aria-live="polite">
       <h2>{zugferdValidation.valid ? "Für eine Rechnung an Behörden fehlt noch" : "Bitte ergänzen Sie diese Angaben"}</h2>
-      <ul>{validation.issues.slice(0, 8).map((issue) => <li key={`${issue.code}-${issue.path}`}><strong>{validationLabel(issue.path)}:</strong> {issue.message}</li>)}</ul>
+      <ul>{validation.issues.slice(0, 8).map((issue) => <li key={`${issue.code}-${issue.path}`}><button type="button" className="issue-link" onClick={() => onFocusPath(issue.path)}><strong>{validationLabel(issue.path)}:</strong> {issue.message}</button></li>)}</ul>
+    </section>}
+    {officialIssues && officialIssues.length > 0 && <section className="validation-panel official" aria-live="polite">
+      <h2>Die unabhängige Prüfung hat die Datei nicht angenommen</h2>
+      <p>Der Entwurf bleibt gespeichert. Es wurde keine fertige E-Rechnung ausgegeben.</p>
+      <ul>{officialIssues.slice(0, 10).map((issue) => <li key={`${issue.code}-${issue.path}-${issue.message}`}><button type="button" className="issue-link" onClick={() => onFocusPath(issue.path)}><strong>{validationLabel(issue.path)}:</strong> {issue.message}</button></li>)}</ul>
     </section>}
     {feedback && <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>
       <span>{feedback.message}</span>

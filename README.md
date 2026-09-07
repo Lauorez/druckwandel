@@ -130,11 +130,11 @@ Der vollständige technische Datenfluss und die Sicherheitsgrenzen sind in [docs
 
 Der Lauf erzeugt das anonymisierte Referenzkorpus, prüft Felder, Positionen, Warnungen und blockierte Sonderfälle und testet zusätzlich 250 reproduzierbare, künstlich erzeugte Rechnungen. Die Reports liegen unter artifacts/corpus-report.json und artifacts/synthetic-fuzz-report.json. Das Gate ist Bestandteil von npm run check und des Desktop-Release-Builds. Seed-Reproduktion, lokale echte Rechnungen und Hinweise zur sicheren Anonymisierung sind in [docs/wp6-corpus.md](docs/wp6-corpus.md) beschrieben.
 
-Die ergänzenden Workspace-, Wiederanlauf- und echten Windows-Drucktests für 0.3.0 sind in [docs/wp7-acceptance.md](docs/wp7-acceptance.md) dokumentiert. Der DATEV-EXTF-Export ist der nächste vorgezogene Meilenstein, noch kein Bestandteil dieser Version; Reihenfolge und Umfang stehen in [docs/roadmap-1.0.md](docs/roadmap-1.0.md).
+Die ergänzenden Workspace-, Wiederanlauf- und echten Windows-Drucktests für 0.3.0 sind in [docs/wp7-acceptance.md](docs/wp7-acceptance.md) dokumentiert. Die verbindliche lokale XML-Prüfung vor der Fertigstellung steht in [docs/wp8-acceptance.md](docs/wp8-acceptance.md).
 
 ## Externe Validierung
 
-Die interne Prüfung ist schnell und verständlich, ersetzt aber keine offizielle Schema-/Schematron-Prüfung. Für XRechnung wird die KoSIT-Konfiguration 3.0.2 (Release 2026-01-31) unterstützt:
+Die interne Prüfung bleibt die schnelle Eingabehilfe. Fertige Ausgaben in der nativen App entstehen erst nach unabhängiger KoSIT- (XRechnung) bzw. Mustang-Prüfung (ZUGFeRD/Factur-X-XML) der tatsächlich erzeugten Bytes. Das gebündelte Paket, Versionen und Lizenzen liegen unter `apps/desktop/src-tauri/resources/validators/`. Entwicklungsadapter:
 
 ```powershell
 $env:KOSIT_VALIDATOR_JAR = 'C:\validator\validator.jar'
@@ -142,9 +142,9 @@ $env:KOSIT_SCENARIOS = 'C:\xrechnung-config\scenarios.xml'
 npm run validate:external -- test/fixtures/generated/xrechnung-ubl.xml
 ```
 
-Für formal konforme Hybrid-PDFs gilt: Das Eingabe-PDF muss bereits PDF/A-3 sein. Nach dem Einbetten muss das Ergebnis über `VeraPdfValidator` mit veraPDF geprüft werden. Die Engine und der E-Rechnungs-Assistent behaupten ohne diese unabhängige Prüfung ausdrücklich keine PDF/A-Konformität. Der aktuelle offizielle FeRD-Release ist ZUGFeRD 2.5.2/Factur-X 1.09.2; dessen versionierte Schema- und Schematron-Artefakte sind noch nicht Bestandteil dieses Prototyps.
+Für formal konforme Hybrid-PDFs gilt weiterhin: Das Eingabe-PDF muss bereits PDF/A-3 sein und das Ergebnis über veraPDF geprüft werden (WP9). Die XML-Prüfung von WP8 ersetzt diese PDF/A-Prüfung nicht.
 
-Die XML- und Geschäftsregeln des ZUGFeRD-/Factur-X-Profils lassen sich separat mit Mustang prüfen:
+Die XML- und Geschäftsregeln des ZUGFeRD-/Factur-X-Profils:
 
 ```powershell
 $env:MUSTANG_VALIDATOR_JAR = 'C:\validator\Mustang-CLI.jar'
@@ -160,5 +160,5 @@ Unterstützt sind normale Rechnungen mit positionsbezogener Umsatzsteuer. Noch n
 Standardstände:
 
 - XRechnung 3.0.2 / KoSIT-Konfiguration 2026-01-31
-- ZUGFeRD 2.5.2 / Factur-X 1.09.2 EN16931, Profilkennung `urn:cen.eu:en16931:2017`; die passenden FeRD-Prüfartefakte müssen vor einem konformen Produktrelease als versioniertes Standardpaket eingebunden werden
+- ZUGFeRD 2.5.2 / Factur-X 1.09.2 EN16931, Profilkennung `urn:cen.eu:en16931:2017`; XML-Prüfung über Mustang im gebündelten Paket, PDF/A-Nachweis folgt in WP9
 - UBL 2.1 und UN/CEFACT CII D16B Syntax

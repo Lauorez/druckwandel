@@ -148,7 +148,7 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
     }
   }
 
-  async function openEntryFile(kind: "pdf" | "xml") {
+  async function openEntryFile(kind: "pdf" | "xml" | "report") {
     if (!detail) return;
     try {
       await openArchiveEntryFile(detail.id, kind);
@@ -254,6 +254,7 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
           <span className="archive-list-top"><strong>{entry.invoiceNumber}</strong><small>#{entry.sequence}</small></span>
           <span>{entry.buyerName}</span>
           <span className="archive-list-bottom"><small>{formatDate(entry.issueDate)} · {formatLabel(entry.format)}</small><b>{formatAmount(entry.grossAmount, entry.currency)}</b></span>
+          {entry.independentlyChecked && <em>Unabhängig geprüft</em>}
           {entry.signed && <em>Zusätzlich geschützt</em>}
         </button>)}
         {!loading && filteredTotal > 0 && <nav className="archive-pagination" aria-label="Seiten im Archiv">
@@ -267,7 +268,7 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
         {!detail ? <div className="archive-empty"><strong>Rechnung auswählen</strong><span>Hier sehen Sie anschließend alle archivierten Angaben und Dateien.</span></div> : <>
           <div className="archive-detail-title">
             <div><small>Archiveintrag #{detail.sequence}</small><h3>{detail.invoiceNumber}</h3><span>{formatLabel(detail.format)}</span></div>
-            <span className={`archive-badge ${detail.signed ? "signed" : ""}`}>{detail.signed ? "Zusätzlich geschützt" : "Im Archiv erfasst"}</span>
+            <span className={`archive-badge ${detail.independentlyChecked ? "signed" : ""}`}>{detail.independentlyChecked ? `Unabhängig geprüft${detail.ruleVersion ? ` (${detail.ruleVersion})` : ""}` : "Ohne unabhängige Prüfung archiviert"}</span>
           </div>
           <dl className="archive-metadata">
             <div><dt>Rechnungsdatum</dt><dd>{formatDate(detail.issueDate)}</dd></div>
@@ -280,6 +281,7 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
           <div className="archive-file-actions">
             <button className="primary" onClick={() => void openEntryFile("pdf")}>PDF öffnen</button>
             <button className="secondary" onClick={() => void openEntryFile("xml")}>Rechnungsdaten öffnen</button>
+            {detail.independentlyChecked && <button className="secondary" onClick={() => void openEntryFile("report")}>Prüfbericht öffnen</button>}
           </div>
         </>}
       </article>

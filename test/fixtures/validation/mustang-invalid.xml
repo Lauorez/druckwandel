@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validation filename="invoice.xml">
+  <error criterion="BR-CO-15" location="/rsm:CrossIndustryInvoice/rsm:SupplyChainTradeTransaction/ram:ApplicableHeaderTradeSettlement/ram:SpecifiedTradeSettlementHeaderMonetarySummation/ram:GrandTotalAmount">
+    Der Rechnungsbetrag passt nicht zu Nettobetrag und Umsatzsteuer.
+  </error>
+  <summary status="invalid"/>
+</validation>

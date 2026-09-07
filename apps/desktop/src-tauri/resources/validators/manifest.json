@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-07",
+  "java": {
+    "vendor": "Eclipse Temurin",
+    "version": "21",
+    "relativePath": "jre/bin/java",
+    "license": "GPL-2.0-with-Classpath-exception",
+    "source": "https://adoptium.net/"
+  },
+  "kosit": {
+    "engineVersion": "1.5.0",
+    "ruleVersion": "xrechnung-3.0.2-2026-01-31",
+    "jar": "kosit/validator-1.5.0-standalone.jar",
+    "scenarios": "kosit/xrechnung/scenarios.xml",
+    "repository": "kosit/xrechnung",
+    "license": "EUPL-1.2",
+    "source": "https://github.com/itplr-kosit/validator/releases/tag/v1.5.0",
+    "configurationSource": "https://github.com/itplr-kosit/validator-configuration-xrechnung"
+  },
+  "mustang": {
+    "engineVersion": "2.16.2",
+    "ruleVersion": "factur-x-en16931",
+    "jar": "mustang/Mustang-CLI-2.16.2.jar",
+    "license": "Apache-2.0",
+    "source": "https://repo1.maven.org/maven2/org/mustangproject/Mustang-CLI/2.16.2/"
+  }
+}

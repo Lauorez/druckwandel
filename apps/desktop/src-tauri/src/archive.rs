@@ -17,7 +17,7 @@ use std::{
 use tauri::AppHandle;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 const MAX_PDF_BYTES: usize = 120 * 1024 * 1024;
 const MAX_XML_BYTES: usize = 20 * 1024 * 1024;
 const EMPTY_HEAD: &str = "";
@@ -54,7 +54,7 @@ pub(crate) struct ArchiveMetadata {
     source_file_name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SaveAndArchiveRequest {
     format: String,
@@ -64,6 +64,12 @@ pub(crate) struct SaveAndArchiveRequest {
     metadata: ArchiveMetadata,
     #[serde(default)]
     evidence: Option<InvoiceEvidence>,
+    #[serde(default)]
+    ticket_id: Option<String>,
+    #[serde(default, skip)]
+    validation_json: Option<String>,
+    #[serde(default, skip)]
+    report_xml: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -107,6 +113,8 @@ pub(crate) struct ArchiveEntrySummary {
     signed: bool,
     document_id: Option<String>,
     content_hash: Option<String>,
+    independently_checked: bool,
+    rule_version: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -131,6 +139,8 @@ pub(crate) struct ArchiveEntryDetail {
     chain_hash: String,
     signed: bool,
     signing_key_id: Option<String>,
+    independently_checked: bool,
+    rule_version: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -213,6 +223,7 @@ struct ArchiveRow {
     signature: Option<Vec<u8>>,
     signing_key_id: Option<String>,
     evidence_json: Option<String>,
+    validation_json: Option<String>,
 }
 
 fn archive_paths(app: &AppHandle) -> Result<ArchivePaths, String> {
@@ -306,6 +317,9 @@ fn migrate_database(connection: &Connection) -> Result<(), String> {
     }
     if version < 2 {
         connection.execute_batch("BEGIN IMMEDIATE; ALTER TABLE archive_entries ADD COLUMN evidence_json TEXT; PRAGMA user_version=2; COMMIT;").map_err(|e| format!("Das Archiv konnte nicht erweitert werden: {e}"))?;
+    }
+    if version < 3 {
+        connection.execute_batch("BEGIN IMMEDIATE; ALTER TABLE archive_entries ADD COLUMN validation_json TEXT; PRAGMA user_version=3; COMMIT;").map_err(|e| format!("Das Archiv konnte nicht um Prüfnachweise erweitert werden: {e}"))?;
     }
     Ok(())
 }
@@ -475,13 +489,15 @@ fn push_hash_component(hasher: &mut Sha256, value: &[u8]) {
 
 fn calculate_chain_hash(row: &ArchiveRow) -> String {
     let mut hasher = Sha256::new();
+    let domain = if row.validation_json.is_some() {
+        "e-rechnungsarchiv-chain-v3"
+    } else if row.evidence_json.is_some() {
+        "e-rechnungsarchiv-chain-v2"
+    } else {
+        "e-rechnungsarchiv-chain-v1"
+    };
     for value in [
-        if row.evidence_json.is_some() {
-            "e-rechnungsarchiv-chain-v2"
-        } else {
-            "e-rechnungsarchiv-chain-v1"
-        }
-        .to_string(),
+        domain.to_string(),
         row.sequence.to_string(),
         row.id.clone(),
         row.created_at_ms.to_string(),
@@ -504,6 +520,9 @@ fn calculate_chain_hash(row: &ArchiveRow) -> String {
     }
     if let Some(evidence) = &row.evidence_json {
         push_hash_component(&mut hasher, sha256_hex(evidence.as_bytes()).as_bytes());
+    }
+    if let Some(validation) = &row.validation_json {
+        push_hash_component(&mut hasher, sha256_hex(validation.as_bytes()).as_bytes());
     }
     hex::encode(hasher.finalize())
 }
@@ -708,7 +727,27 @@ fn save_and_archive_to(
                 .map(serde_json::to_string)
                 .transpose()
                 .map_err(|e| e.to_string())?,
+            validation_json: None,
         };
+        let report_relative = relative_archive_path(&request.metadata.issue_date, &id, "pruefbericht.xml");
+        if let Some(report_xml) = &request.report_xml {
+            if report_xml.len() > MAX_XML_BYTES || request.validation_json.is_none() {
+                return Err("Der Prüfnachweis ist unvollständig.".into());
+            }
+            let mut proof: serde_json::Value = serde_json::from_str(request.validation_json.as_ref().unwrap())
+                .map_err(|_| "Der Prüfnachweis ist beschädigt.".to_string())?;
+            if proof["schemaVersion"] != 1 || proof["status"] != "passed" {
+                return Err("Ohne erfolgreiche unabhängige Prüfung kann keine fertige E-Rechnung erzeugt werden.".into());
+            }
+            if proof["xmlSha256"] != row.xml_sha256 || proof["pdfSha256"] != row.pdf_sha256 {
+                return Err("Prüfergebnis und Rechnungsdatei passen nicht zusammen.".into());
+            }
+            if proof["reportSha256"] != sha256_hex(report_xml.as_bytes()) {
+                return Err("Der Prüfbericht passt nicht zum gespeicherten Nachweis.".into());
+            }
+            proof["reportPath"] = report_relative.clone().into();
+            row.validation_json = Some(proof.to_string());
+        }
         row.chain_hash = calculate_chain_hash(&row);
         row.signature = signing_key
             .as_ref()
@@ -716,6 +755,9 @@ fn save_and_archive_to(
 
         write_new_file(&pdf_path, &pdf)?;
         write_new_file(&xml_path, request.xml_contents.as_bytes())?;
+        if let Some(report_xml) = &request.report_xml {
+            write_new_file(&checked_relative_path(&paths.root, &report_relative)?, report_xml.as_bytes())?;
+        }
         let output_contents = if request.format == "xrechnung" {
             request.xml_contents.as_bytes()
         } else {
@@ -737,9 +779,9 @@ fn save_and_archive_to(
                 "INSERT INTO archive_entries(
                    sequence, id, created_at_ms, invoice_number, issue_date, seller_name, buyer_name,
                    gross_amount, currency, format, source_file_name, pdf_path, xml_path, pdf_sha256,
-                   xml_sha256, previous_chain_hash, chain_hash, signature, signing_key_id, evidence_json
+                   xml_sha256, previous_chain_hash, chain_hash, signature, signing_key_id, evidence_json, validation_json
                  ) VALUES(
-                   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+                   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
                  )",
                 params![
                     row.sequence,
@@ -762,6 +804,7 @@ fn save_and_archive_to(
                     row.signature,
                     row.signing_key_id,
                     row.evidence_json,
+                    row.validation_json,
                 ],
             )
             .map_err(|error| format!("Archiveintrag konnte nicht gespeichert werden: {error}"))?;
@@ -812,12 +855,34 @@ fn row_from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArchiveRow> {
         signature: row.get(17)?,
         signing_key_id: row.get(18)?,
         evidence_json: row.get(19)?,
+        validation_json: row.get(20)?,
     })
 }
 
 const ROW_COLUMNS: &str = "sequence, id, created_at_ms, invoice_number, issue_date, seller_name,
   buyer_name, gross_amount, currency, format, source_file_name, pdf_path, xml_path, pdf_sha256,
-  xml_sha256, previous_chain_hash, chain_hash, signature, signing_key_id, evidence_json";
+  xml_sha256, previous_chain_hash, chain_hash, signature, signing_key_id, evidence_json, validation_json";
+
+fn independently_checked(row: &ArchiveRow) -> bool {
+    row.validation_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+        .is_some_and(|value| value["status"] == "passed")
+}
+
+fn rule_version_of(row: &ArchiveRow) -> Option<String> {
+    row.validation_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+        .and_then(|value| value["ruleVersion"].as_str().map(str::to_string))
+}
+
+fn report_path_of(row: &ArchiveRow) -> Option<String> {
+    row.validation_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+        .and_then(|value| value["reportPath"].as_str().map(str::to_string))
+}
 
 fn detail_from_row(row: &ArchiveRow) -> ArchiveEntryDetail {
     ArchiveEntryDetail {
@@ -840,6 +905,8 @@ fn detail_from_row(row: &ArchiveRow) -> ArchiveEntryDetail {
         chain_hash: row.chain_hash.clone(),
         signed: row.signature.is_some(),
         signing_key_id: row.signing_key_id.clone(),
+        independently_checked: independently_checked(row),
+        rule_version: rule_version_of(row),
     }
 }
 
@@ -989,7 +1056,9 @@ fn list_entries_to(paths: &ArchivePaths, query: ArchiveQuery) -> Result<ArchiveL
         "SELECT id, sequence, created_at_ms, invoice_number, issue_date, seller_name,
                       buyer_name, gross_amount, currency, format, signing_key_id IS NOT NULL,
                       CASE WHEN json_valid(evidence_json) THEN json_extract(evidence_json,'$.documentId') END,
-                      CASE WHEN json_valid(evidence_json) THEN json_extract(evidence_json,'$.contentHash') END
+                      CASE WHEN json_valid(evidence_json) THEN json_extract(evidence_json,'$.contentHash') END,
+                      CASE WHEN json_valid(validation_json) AND json_extract(validation_json,'$.status')='passed' THEN 1 ELSE 0 END,
+                      CASE WHEN json_valid(validation_json) THEN json_extract(validation_json,'$.ruleVersion') END
                {filters}
                ORDER BY sequence DESC LIMIT ?7 OFFSET ?8"
     );
@@ -1016,6 +1085,8 @@ fn list_entries_to(paths: &ArchivePaths, query: ArchiveQuery) -> Result<ArchiveL
                 signed: row.get(10)?,
                 document_id: row.get(11)?,
                 content_hash: row.get(12)?,
+                independently_checked: row.get::<_, i64>(13)? == 1,
+                rule_version: row.get(14)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1198,7 +1269,13 @@ fn verify_archive_to(paths: &ArchivePaths) -> Result<ArchiveVerificationReport, 
     let mut signed_count = 0_i64;
     let expected_files = rows
         .iter()
-        .flat_map(|row| [row.pdf_path.clone(), row.xml_path.clone()])
+        .flat_map(|row| {
+            let mut files = vec![row.pdf_path.clone(), row.xml_path.clone()];
+            if let Some(report) = report_path_of(row) {
+                files.push(report);
+            }
+            files
+        })
         .collect::<HashSet<_>>();
 
     for row in &rows {
@@ -1238,6 +1315,31 @@ fn verify_archive_to(paths: &ArchivePaths) -> Result<ArchiveVerificationReport, 
                 }
             }
             Err(message) => issues.push(verification_issue(Some(row), message)),
+        }
+        if let Some(report_path) = report_path_of(row) {
+            match read_checked_file(&paths.root, &report_path) {
+                Ok(contents) => {
+                    file_count += 1;
+                    let expected = row
+                        .validation_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+                        .and_then(|value| value["reportSha256"].as_str().map(str::to_string));
+                    let actual = sha256_hex(&contents);
+                    if expected.as_deref() != Some(actual.as_str()) {
+                        issues.push(verification_issue(
+                            Some(row),
+                            "Der unabhängige Prüfbericht wurde verändert.",
+                        ));
+                    }
+                }
+                Err(message) => issues.push(verification_issue(Some(row), message)),
+            }
+        } else if row.validation_json.is_some() {
+            issues.push(verification_issue(
+                Some(row),
+                "Der unabhängige Prüfnachweis ist unvollständig.",
+            ));
         }
         let calculated_chain_hash = calculate_chain_hash(row);
         if calculated_chain_hash != row.chain_hash {
@@ -1352,6 +1454,36 @@ pub(crate) fn open_native(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn find_existing_export(
+    connection: &Connection,
+    evidence: &InvoiceEvidence,
+    format: &str,
+    xml_sha256: &str,
+    pdf_sha256: &str,
+) -> Result<Option<ArchiveRow>, String> {
+    connection
+        .query_row(
+            &format!(
+                "SELECT {ROW_COLUMNS} FROM archive_entries
+                 WHERE format = ?1 AND xml_sha256 = ?2 AND pdf_sha256 = ?3
+                   AND json_valid(evidence_json)
+                   AND json_extract(evidence_json,'$.documentId') = ?4
+                   AND json_extract(evidence_json,'$.sourceRevision') = ?5
+                 ORDER BY sequence DESC LIMIT 1"
+            ),
+            params![
+                format,
+                xml_sha256,
+                pdf_sha256,
+                evidence.document_id,
+                evidence.source_revision
+            ],
+            row_from_sql,
+        )
+        .optional()
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub(crate) fn save_and_archive_invoice(
     app: AppHandle,
@@ -1364,9 +1496,74 @@ pub(crate) fn save_and_archive_invoice(
     evidence.original_hash =
         super::workspace::export_source(&app, &evidence.document_id, evidence.source_revision)?;
     evidence.content_hash = sha256_hex(evidence.snapshot.as_bytes());
+    let pdf = base64::engine::general_purpose::STANDARD
+        .decode(&request.pdf_contents_base64)
+        .map_err(|error| format!("PDF-Rechnung ist nicht gültig kodiert: {error}"))?;
+    let xml_hash = sha256_hex(request.xml_contents.as_bytes());
+    let pdf_hash = sha256_hex(&pdf);
     let paths = archive_paths(&app)?;
     let documents = super::paths::documents()?;
-    save_and_archive_to(&paths, &documents, request)
+    let connection = open_database(&paths)?;
+    if let Some(existing) = find_existing_export(
+        &connection,
+        evidence,
+        &request.format,
+        &xml_hash,
+        &pdf_hash,
+    )? {
+        if let Some(ticket_id) = &request.ticket_id {
+            super::validator::consume_ticket(&app, ticket_id);
+        }
+        return Ok(SaveAndArchiveResult {
+            output_path: checked_relative_path(
+                &paths.root,
+                if request.format == "xrechnung" {
+                    &existing.xml_path
+                } else {
+                    &existing.pdf_path
+                },
+            )?
+            .to_string_lossy()
+            .into_owned(),
+            archive_entry: detail_from_row(&existing),
+        });
+    }
+    drop(connection);
+    let ticket_id = request
+        .ticket_id
+        .clone()
+        .ok_or_else(|| "Bitte die Rechnung zuerst unabhängig prüfen lassen.".to_string())?;
+    let ticket = super::validator::load_ticket(&app, &ticket_id)?;
+    super::validator::ticket_matches(
+        &ticket,
+        &evidence.document_id,
+        evidence.source_revision,
+        &request.format,
+        &request.xml_contents,
+        &pdf,
+        &evidence.snapshot,
+        &evidence.original_hash,
+    )?;
+    request.report_xml = Some(ticket.report_xml.clone());
+    request.validation_json = Some(
+        serde_json::json!({
+            "schemaVersion": 1,
+            "engine": ticket.report.engine,
+            "engineVersion": ticket.report.engine_version,
+            "ruleVersion": ticket.report.rule_version,
+            "status": ticket.report.status,
+            "xmlSha256": ticket.xml_sha256,
+            "pdfSha256": ticket.pdf_sha256,
+            "reportSha256": ticket.report.report_sha256.clone().unwrap_or_else(|| super::validator::sha256_hex(ticket.report_xml.as_bytes())),
+            "snapshotHash": ticket.snapshot_hash,
+            "documentId": ticket.document_id,
+            "sourceRevision": ticket.source_revision
+        })
+        .to_string(),
+    );
+    let result = save_and_archive_to(&paths, &documents, request)?;
+    super::validator::consume_ticket(&app, &ticket_id);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1418,6 +1615,7 @@ pub(crate) fn open_archive_entry_file(
     let relative = match file_kind.as_str() {
         "pdf" => row.pdf_path,
         "xml" => row.xml_path,
+        "report" => report_path_of(&row).ok_or_else(|| "Für diese ältere Ausgabe liegt kein unabhängiger Prüfbericht vor.".to_string())?,
         _ => return Err("Unbekannte Archivdatei.".to_string()),
     };
     let path = checked_relative_path(&paths.root, &relative)?;
@@ -1483,6 +1681,9 @@ mod tests {
         };
         SaveAndArchiveRequest {
             evidence: None,
+            ticket_id: None,
+            validation_json: None,
+            report_xml: None,
             format: format.to_string(),
             output_file_name: format!(
                 "{invoice_number}.{}",
@@ -1716,5 +1917,95 @@ mod tests {
         assert_ne!(first.output_path, second.output_path);
         assert!(second.output_path.contains("(2)"));
         fs::remove_dir_all(root).expect("remove isolated archive");
+    }
+
+    fn checked_request(invoice_number: &str) -> SaveAndArchiveRequest {
+        let mut req = request(invoice_number, "xrechnung");
+        let report = include_str!("../../../../test/fixtures/validation/kosit-valid.xml");
+        let xml_sha = sha256_hex(req.xml_contents.as_bytes());
+        let pdf = base64::engine::general_purpose::STANDARD
+            .decode(&req.pdf_contents_base64)
+            .unwrap();
+        req.report_xml = Some(report.to_string());
+        req.validation_json = Some(
+            serde_json::json!({
+                "schemaVersion": 1,
+                "engine": "kosit",
+                "engineVersion": "1.5.0",
+                "ruleVersion": "xrechnung-3.0.2-2026-01-31",
+                "status": "passed",
+                "xmlSha256": xml_sha,
+                "pdfSha256": sha256_hex(&pdf),
+                "reportSha256": sha256_hex(report.as_bytes()),
+                "snapshotHash": "ab",
+                "documentId": "00000000-0000-0000-0000-000000000001",
+                "sourceRevision": 1
+            })
+            .to_string(),
+        );
+        req
+    }
+
+    #[test]
+    fn new_checked_entries_use_v3_chain_and_keep_legacy_hashes() {
+        let (root, paths) = test_paths("validation-v3");
+        let documents = root.join("documents");
+        let legacy = save_and_archive_to(&paths, &documents, request("OLD-2", "xrechnung")).unwrap();
+        assert!(!legacy.archive_entry.independently_checked);
+        let checked = save_and_archive_to(&paths, &documents, checked_request("NEW-2")).unwrap();
+        assert!(checked.archive_entry.independently_checked);
+        assert_eq!(
+            checked.archive_entry.previous_chain_hash,
+            legacy.archive_entry.chain_hash
+        );
+        assert_eq!(
+            checked.archive_entry.rule_version.as_deref(),
+            Some("xrechnung-3.0.2-2026-01-31")
+        );
+        assert!(verify_archive_to(&paths).unwrap().valid);
+        let report_path = paths.root.join(
+            checked
+                .archive_entry
+                .xml_path
+                .replace("rechnungsdaten.xml", "pruefbericht.xml"),
+        );
+        fs::write(&report_path, b"tampered").unwrap();
+        assert!(!verify_archive_to(&paths).unwrap().valid);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn same_revision_export_is_found_instead_of_duplicated() {
+        let (root, paths) = test_paths("idempotent-export");
+        let documents = root.join("documents");
+        let mut req = checked_request("IDEM-1");
+        let snapshot =
+            serde_json::json!({"schemaVersion":1,"serializerVersion":"ubl-cii-v1","invoice":{
+                "invoiceNumber":req.metadata.invoice_number,"issueDate":req.metadata.issue_date,
+                "seller":{"name":req.metadata.seller_name},"buyer":{"name":req.metadata.buyer_name},
+                "totals":{"payable":req.metadata.gross_amount},"currency":req.metadata.currency
+            }})
+            .to_string();
+        req.evidence = Some(InvoiceEvidence {
+            schema_version: 1,
+            document_id: "11111111-1111-1111-1111-111111111111".into(),
+            source_revision: 4,
+            original_hash: sha256_hex(b"original"),
+            content_hash: sha256_hex(snapshot.as_bytes()),
+            snapshot,
+        });
+        let first = save_and_archive_to(&paths, &documents, req.clone()).unwrap();
+        let db = open_database(&paths).unwrap();
+        let found = find_existing_export(
+            &db,
+            req.evidence.as_ref().unwrap(),
+            "xrechnung",
+            &first.archive_entry.xml_sha256,
+            &first.archive_entry.pdf_sha256,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(found.id, first.archive_entry.id);
+        fs::remove_dir_all(root).unwrap();
     }
 }

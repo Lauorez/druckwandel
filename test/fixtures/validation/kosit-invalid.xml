@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rep:report xmlns:rep="http://www.xoev.de/de/validator/1/1/report" valid="false">
+  <rep:engine name="KoSIT Validator" version="1.5.0"/>
+  <rep:assessment>
+    <rep:reject>
+      <rep:explanation>Ablehnung empfohlen.</rep:explanation>
+    </rep:reject>
+  </rep:assessment>
+  <rep:xml-syntax-error message="Unerwartetes Element."/>
+  <svrl:failed-assert xmlns:svrl="http://purl.oclc.org/dsdl/svrl" id="BR-DE-15" flag="fatal" location="/*[local-name()='Invoice']/*[local-name()='BuyerReference']">
+    <svrl:text>[BR-DE-15] Eine leitweg-ID oder Bestellreferenz muss angegeben werden.</svrl:text>
+  </svrl:failed-assert>
+  <failed-assert id="BR-06" location="/Invoice/AccountingSupplierParty/Party/PartyName/Name">
+    <text>Seller name is missing.</text>
+  </failed-assert>
+</rep:report>
