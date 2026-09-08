@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { extractInvoicePdf } from "../src/extraction/index.js";
+import { parseExtractedRelativeDueDays, parseRelativeDueDays } from "../src/extraction/dates.js";
 import { reconstructLines, reconstructTableRows } from "../src/extraction/layout.js";
 import type { DocumentPage, OcrAdapter } from "../src/extraction/types.js";
 import { parseTesseractTsv } from "../src/extraction/ocr-tesseract.js";
@@ -132,6 +133,40 @@ describe("PDF extraction", () => {
     expect(result.fields.dueDate?.value).toBe("2026-09-22");
   });
 
+  it("does not treat an unlabeled buyer window as the seller", async () => {
+    const document = await PDFDocument.create();
+    const page = document.addPage([595, 842]);
+    const font = await document.embedFont(StandardFonts.Helvetica);
+    const draw = (text: string, x: number, y: number) => page.drawText(text, { x, y, size: 10, font });
+    draw("RECHNUNG", 350, 780);
+    draw("Beleg-Nr: RE-4401", 350, 760);
+    draw("Kunde AG", 70, 680);
+    draw("Kundenweg 5", 70, 665);
+    draw("20095 Hamburg", 70, 650);
+    draw("Position Beschreibung", 70, 560);
+    draw("1 Beratung", 70, 545);
+    draw("Absender GmbH", 70, 90);
+    draw("Beispielstrasse 12", 70, 75);
+    draw("10115 Berlin", 70, 60);
+    const result = await extractInvoicePdf(await document.save());
+    expect(result.fields.sellerName?.value).not.toBe("Kunde AG");
+    expect(result.fields.sellerCity?.value).not.toBe("Hamburg");
+    expect(result.fields.buyerName?.value).toBeUndefined();
+  });
+
+  it("uses net payment days rather than skonto or delivery windows", async () => {
+    const document = await PDFDocument.create();
+    const page = document.addPage([595, 842]);
+    const font = await document.embedFont(StandardFonts.Helvetica);
+    const draw = (text: string, x: number, y: number) => page.drawText(text, { x, y, size: 10, font });
+    draw("Rechnungsdatum: 8. September 2026", 70, 780);
+    draw("Lieferung innerhalb von 3 Tagen", 70, 740);
+    draw("Bei Zahlung innerhalb von 10 Tagen 2% Skonto, 30 Tage netto", 70, 720);
+    const result = await extractInvoicePdf(await document.save());
+    expect(result.fields.issueDate?.value).toBe("2026-09-08");
+    expect(result.fields.dueDate?.value).toBe("2026-10-08");
+  });
+
   it("reconstructs columns from horizontal gaps", () => {
     const pages: DocumentPage[] = [{ page: 1, width: 500, height: 500, tokens: [
       { id: "a", page: 1, text: "2", box: { x: 10, y: 10, width: 5, height: 10 }, origin: "text-layer" },
@@ -165,5 +200,17 @@ describe("PDF extraction", () => {
     ].join("\n");
     const tokens = parseTesseractTsv(tsv, 1, 2, 35);
     expect(tokens).toEqual([{ id: "p1-ocr0", page: 1, text: "Rechnung", box: { x: 50, y: 100, width: 40, height: 10 }, origin: "ocr" }]);
+  });
+});
+
+describe("relative due dates", () => {
+  it("keeps explicit phrases while ignoring skonto and delivery windows during extraction", () => {
+    expect(parseRelativeDueDays("fällig in 14 Tagen")).toBe(14);
+    expect(parseRelativeDueDays("innerhalb von 14 Tagen")).toBe(14);
+    expect(parseRelativeDueDays("Bei Zahlung innerhalb von 10 Tagen 2% Skonto, 30 Tage netto")).toBe(30);
+    expect(parseExtractedRelativeDueDays("Lieferung innerhalb von 3 Tagen")).toBeNull();
+    expect(parseExtractedRelativeDueDays("Bei Zahlung innerhalb von 10 Tagen 2% Skonto")).toBeNull();
+    expect(parseExtractedRelativeDueDays("Zahlungsbedingungen: Innerhalb von 14 Tagen")).toBe(14);
+    expect(parseExtractedRelativeDueDays("Bei Zahlung innerhalb von 10 Tagen 2% Skonto, 30 Tage netto")).toBe(30);
   });
 });

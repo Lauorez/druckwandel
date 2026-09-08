@@ -19,7 +19,35 @@ const MONTH_PATTERN = MONTH_ALIASES.map(([pattern]) => pattern.source).join("|")
 const NUMERIC_DATE = /\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/;
 const ISO_DATE = /\b(\d{4})-(\d{2})-(\d{2})\b/;
 const NAMED_DATE = new RegExp(`\\b(\\d{1,2})\\.?\\s*(${MONTH_PATTERN})\\.?\\s+(\\d{4})\\b`, "i");
-const RELATIVE_DUE_DAYS = /(?:fällig(?:keit)?|faellig(?:keit)?|zahlbar|zu\s+zahlen)(?:\s+(?:am|bis|innerhalb|binnen|in))?\s*(?:von\s+)?(\d{1,3})\s+tagen?|(?:zahlungsziel|zahlungsfrist)\s*:?\s*(\d{1,3})\s+tage(?:n)?|(?:binnen|innerhalb(?:\s+von)?)\s+(\d{1,3})\s+tagen?|(\d{1,3})\s+tage(?:n)?\s+netto|netto\s+(\d{1,3})\s+tage(?:n)?/i;
+const RELATIVE_DUE_DAYS_SOURCE = "(?:fällig(?:keit)?|faellig(?:keit)?|zahlbar|zu\\s+zahlen)(?:\\s+(?:am|bis|innerhalb|binnen|in))?\\s*(?:von\\s+)?(\\d{1,3})\\s+tagen?|(?:zahlungsziel|zahlungsfrist)\\s*:?\\s*(\\d{1,3})\\s+tage(?:n)?|(?:binnen|innerhalb(?:\\s+von)?)\\s+(\\d{1,3})\\s+tagen?|(\\d{1,3})\\s+tage(?:n)?\\s+netto|netto\\s+(\\d{1,3})\\s+tage(?:n)?";
+const PAYMENT_DUE_CONTEXT = /(?:fällig|faellig|zahlbar|zahlungsziel|zahlungsfrist|zahlungsbedingungen|zu\s+zahlen|tage(?:n)?\s+netto|netto\s+\d)/i;
+const NON_PAYMENT_RELATIVE = /(?:lieferung|lieferzeit|widerruf|mängelrüge|maengelruege|gewährleistung|gewaehrleistung)/i;
+
+type RelativeDueKind = "payment" | "innerhalb";
+
+interface RelativeDueCandidate {
+  days: number;
+  kind: RelativeDueKind;
+}
+
+function relativeDueCandidates(value: string): RelativeDueCandidate[] {
+  return [...value.matchAll(new RegExp(RELATIVE_DUE_DAYS_SOURCE, "gi"))].flatMap((match) => {
+    const days = Number(match.slice(1).find((part) => part));
+    if (!Number.isInteger(days) || days <= 0 || days > 366) return [];
+    const text = match[0];
+    const kind: RelativeDueKind = /(?:fällig|faellig|zahlbar|zu\s+zahlen|zahlungsziel|zahlungsfrist|netto)/i.test(text)
+      ? "payment"
+      : "innerhalb";
+    return [{ days, kind }];
+  });
+}
+
+function pickRelativeDueDays(candidates: RelativeDueCandidate[]): number | null {
+  const preferred = candidates.filter((candidate) => candidate.kind === "payment");
+  const pool = preferred.length > 0 ? preferred : candidates;
+  if (pool.length === 0) return null;
+  return Math.max(...pool.map((candidate) => candidate.days));
+}
 
 function monthNumber(name: string): number | undefined {
   return MONTH_ALIASES.find(([pattern]) => pattern.test(name.replace(/\.$/, "")))?.[1];
@@ -45,9 +73,17 @@ export function parseInvoiceDate(value: string): string | null {
 }
 
 export function parseRelativeDueDays(value: string): number | null {
-  const match = value.match(RELATIVE_DUE_DAYS);
-  const days = Number(match?.slice(1).find((part) => part));
-  return Number.isInteger(days) && days > 0 && days <= 366 ? days : null;
+  return pickRelativeDueDays(relativeDueCandidates(value));
+}
+
+/** Automatic extraction: ignore delivery/withdrawal phrases and bare "innerhalb von X Tagen" unless the line is a payment term. */
+export function parseExtractedRelativeDueDays(value: string): number | null {
+  if (NON_PAYMENT_RELATIVE.test(value) && !PAYMENT_DUE_CONTEXT.test(value)) return null;
+  const candidates = relativeDueCandidates(value);
+  const preferred = candidates.filter((candidate) => candidate.kind === "payment");
+  if (preferred.length > 0) return pickRelativeDueDays(preferred);
+  if (!PAYMENT_DUE_CONTEXT.test(value)) return null;
+  return pickRelativeDueDays(candidates);
 }
 
 export function addIsoDays(iso: string, days: number): string | null {
@@ -60,6 +96,11 @@ export function addIsoDays(iso: string, days: number): string | null {
 
 export function relativeDueDate(value: string, issueDate: string | undefined): string | null {
   const days = parseRelativeDueDays(value);
+  return days === null || !issueDate ? null : addIsoDays(issueDate, days);
+}
+
+export function extractedRelativeDueDate(value: string, issueDate: string | undefined): string | null {
+  const days = parseExtractedRelativeDueDays(value);
   return days === null || !issueDate ? null : addIsoDays(issueDate, days);
 }
 

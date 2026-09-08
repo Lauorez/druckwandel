@@ -1,7 +1,7 @@
 import type { ExtractedField, ExtractedFieldName, TextLine } from "./types.js";
 import { parseLocalizedDecimal } from "../domain/localized-decimal.js";
 import { money } from "../domain/money.js";
-import { parseInvoiceDate, relativeDueDate } from "./dates.js";
+import { extractedRelativeDueDate, parseInvoiceDate } from "./dates.js";
 
 interface Rule {
   name: ExtractedFieldName;
@@ -154,10 +154,6 @@ function classifyParties(lines: TextLine[], fields: Partial<Record<ExtractedFiel
     }
     return;
   }
-
-  const headerLimit = lines.findIndex((line) => /^(?:position|pos\.?|beschreibung|leistung|artikel|netto|rechnungsnummer)\b/i.test(line.text.trim()));
-  const seller = findAddressBlock(lines, 0, headerLimit >= 0 ? headerLimit : Math.min(lines.length, 16));
-  if (seller && !fields.sellerName) assignParty(fields, "seller", seller.name, seller.street, seller.city, 0.74, seller.country);
 }
 
 function applyNamedDates(lines: TextLine[], fields: Partial<Record<ExtractedFieldName, ExtractedField>>) {
@@ -188,7 +184,7 @@ function applyNamedDates(lines: TextLine[], fields: Partial<Record<ExtractedFiel
 function applyRelativeDueDate(lines: TextLine[], fields: Partial<Record<ExtractedFieldName, ExtractedField>>) {
   if (fields.dueDate || !fields.issueDate) return;
   for (const line of lines) {
-    const value = relativeDueDate(line.text, fields.issueDate.value);
+    const value = extractedRelativeDueDate(line.text, fields.issueDate.value);
     if (!value) continue;
     fields.dueDate = {
       name: "dueDate",
