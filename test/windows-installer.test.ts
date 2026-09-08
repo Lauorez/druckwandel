@@ -39,6 +39,9 @@ describe("gemeinsamer Windows-Installer", () => {
   it("stellt den Windows-Vorführrechner mit einem Setup-Skript auf", () => {
     const setup = readFileSync(resolve(root, "scripts/setup-windows.ps1"), "utf8");
     expect(setup).toContain("26100");
+    expect(setup).toContain("PROCESSOR_ARCHITEW6432");
+    expect(setup).toContain("AMD64");
+    expect(setup).toContain("Is64BitProcess");
     expect(setup).toContain("create-dev-cert.ps1");
     expect(setup).toContain("validators:fetch");
     expect(setup).toContain("demo:invoice");

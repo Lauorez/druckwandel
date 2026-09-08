@@ -192,13 +192,45 @@ function Install-Prerequisites {
     }
 }
 
-if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+function Get-NativeProcessorArchitecture {
+    if ($env:PROCESSOR_ARCHITEW6432) {
+        return $env:PROCESSOR_ARCHITEW6432
+    }
+    return $env:PROCESSOR_ARCHITECTURE
+}
+
+function Get-ForwardedSetupArguments {
+    $arguments = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $PSCommandPath
+    )
+    if ($InstallPrerequisitesOnly) { $arguments += "-InstallPrerequisitesOnly" }
+    if ($SkipToolInstall) { $arguments += "-SkipToolInstall" }
+    if ($SkipInstaller) { $arguments += "-SkipInstaller" }
+    if ($SkipChecks) { $arguments += "-SkipChecks" }
+    return $arguments
+}
+
+if ($env:OS -ne "Windows_NT") {
     throw "Dieses Setup läuft nur unter Windows 11."
 }
 
-$osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-if ($osArch -ne [System.Runtime.InteropServices.Architecture]::X64) {
-    throw "Der Windows-Installer-Build ist für x64. Gefundene Architektur: $osArch"
+$nativeArch = Get-NativeProcessorArchitecture
+if ($nativeArch -ne "AMD64") {
+    throw "Der Windows-Installer-Build ist für Windows 11 x64 (AMD64). Gefundene Prozessorarchitektur: $nativeArch"
+}
+
+if (-not [Environment]::Is64BitProcess) {
+    $sysnative = Join-Path $env:WINDIR "Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+    $system32 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $powershell64 = if (Test-Path -LiteralPath $sysnative) { $sysnative } else { $system32 }
+    if (-not (Test-Path -LiteralPath $powershell64)) {
+        throw "64-Bit-PowerShell wurde nicht gefunden. Bitte System32-PowerShell auf dem x64-System starten."
+    }
+    Write-Host "32-Bit-PowerShell erkannt. Starte 64-Bit-PowerShell neu ..."
+    & $powershell64 @(Get-ForwardedSetupArguments)
+    exit $LASTEXITCODE
 }
 
 $currentBuild = [Environment]::OSVersion.Version.Build
