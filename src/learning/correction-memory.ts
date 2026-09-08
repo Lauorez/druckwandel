@@ -1,6 +1,8 @@
 import type { ReviewDraft } from "../review/draft.js";
 import { parseLocalizedDecimal } from "../domain/localized-decimal.js";
 import { decimal, money } from "../domain/money.js";
+import { isIsoDate } from "../domain/validate.js";
+import { dateSearchNeedles, parseInvoiceDate, relativeDueDate } from "../extraction/dates.js";
 import type { BoundingBox, ExtractedField, ExtractedFieldName, ExtractedLineItem, ExtractionResult, SourceToken, TextLine } from "../extraction/types.js";
 
 export const LEARNABLE_FIELD_NAMES = [
@@ -151,13 +153,8 @@ function hash(value: string): string {
   return (result >>> 0).toString(16).padStart(8, "0");
 }
 
-function normalizeDate(value: string): string | null {
-  const iso = value.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-  if (iso?.[1] && iso[2] && iso[3]) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const local = value.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/);
-  if (!local?.[1] || !local[2] || !local[3]) return null;
-  const year = local[3].length === 2 ? `20${local[3]}` : local[3];
-  return `${year}-${local[2].padStart(2, "0")}-${local[1].padStart(2, "0")}`;
+function normalizeDate(value: string, issueDate?: string): string | null {
+  return parseInvoiceDate(value) ?? relativeDueDate(value, issueDate);
 }
 
 function normalizedFieldValue(field: LearnableFieldName, value: string): string {
@@ -289,10 +286,7 @@ function valueNeedles(field: LearnableFieldName, value: string): string[] {
   const needles = [normalizeLoose(value)];
   if (["issueDate", "dueDate", "serviceDate"].includes(field)) {
     const date = normalizeDate(value);
-    const match = date?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (match?.[1] && match[2] && match[3]) {
-      needles.push(`${match[3]}${match[2]}${match[1]}`, `${match[3]}${match[2]}${match[1].slice(2)}`);
-    }
+    if (date) needles.push(...dateSearchNeedles(date));
   }
   return [...new Set(needles.filter((needle) => needle.length >= 2))].sort((a, b) => b.length - a.length);
 }
@@ -316,7 +310,7 @@ function findValueRange(text: string, field: LearnableFieldName, value: string):
 const FIELD_HINTS: Partial<Record<LearnableFieldName, RegExp>> = {
   invoiceNumber: /rechnung|beleg|nummer/i,
   issueDate: /rechnung|beleg|ausstellung|datum/i,
-  dueDate: /fällig|zahlbar|zahlung/i,
+  dueDate: /fällig|faellig|zahlbar|zahlung|tagen?/i,
   serviceDate: /leistung|lieferung/i,
   buyerReference: /bestell|auftrag|referenz|leitweg/i,
   sellerVatId: /steuer|ust|vat/i,
@@ -334,8 +328,14 @@ function locateValue(extraction: ExtractionResult, field: LearnableFieldName, va
   if (selectedIds) {
     const line = selectedSourceLine(extraction, selectedIds);
     const range = line ? findValueRange(line.text, field, value) : null;
-    if (!line || !range) return null;
-    return { line, prefix: line.text.slice(0, range.start).trimEnd(), suffix: line.text.slice(range.end).trimStart() };
+    if (line && range) return { line, prefix: line.text.slice(0, range.start).trimEnd(), suffix: line.text.slice(range.end).trimStart() };
+    if (line && field === "dueDate") {
+      const computed = relativeDueDate(line.text, extraction.fields.issueDate?.value);
+      if (computed && (computed === value || computed === parseInvoiceDate(value))) {
+        return { line, prefix: "", suffix: "" };
+      }
+    }
+    return null;
   }
   const hint = FIELD_HINTS[field];
   const matches = extraction.lines.flatMap((line) => {
@@ -413,10 +413,13 @@ function affixRange(text: string, prefix: string, suffix: string): { start: numb
   return { start, end };
 }
 
-export function normalizeSourceValue(field: LearnableFieldName, raw: string): string | null {
+export function normalizeSourceValue(field: LearnableFieldName, raw: string, context: { issueDate?: string } = {}): string | null {
   const trimmed = raw.trim().replace(/^[\s:#|]+|[\s|]+$/g, "");
   if (!trimmed) return null;
-  if (["issueDate", "dueDate", "serviceDate"].includes(field)) return normalizeDate(trimmed);
+  if (["issueDate", "dueDate", "serviceDate"].includes(field)) {
+    const date = normalizeDate(trimmed, field === "dueDate" ? context.issueDate : undefined);
+    return date && isIsoDate(date) ? date : null;
+  }
   if (field === "currency") {
     const match = trimmed.match(/\b(EUR|USD|GBP|CHF)\b|€|\$|£/i)?.[0].toUpperCase();
     return match === "€" ? "EUR" : match === "$" ? "USD" : match === "£" ? "GBP" : match ?? null;
@@ -440,28 +443,64 @@ export function normalizeSourceValue(field: LearnableFieldName, raw: string): st
     return /^[A-Z]{2}$/.test(compact) ? compact : null;
   }
   if (field === "sellerPostalCode" || field === "buyerPostalCode") {
-    const match = trimmed.match(/\b[0-9A-Z][0-9A-Z -]{2,9}\b/i)?.[0].trim();
-    return match ?? null;
+    const match = trimmed.match(/\b(\d{4,6})\b/)?.[1]
+      ?? trimmed.match(/\b([A-Z0-9][A-Z0-9 -]{2,9})\b/i)?.[1]?.trim();
+    if (!match || !/\d/.test(match)) return null;
+    return match;
   }
   if (field === "sellerCity" || field === "buyerCity") return trimmed.replace(/^\d{5}\s+/, "");
   if (field === "invoiceNumber" || field === "buyerReference") {
     const compact = trimmed.replace(/^[-–—:;,.]+|[-–—:;,.]+$/g, "").trim();
     return compact.length >= 3 && compact.length <= 100 ? compact : null;
   }
+  if (/Name$|AddressLine1$/.test(field) && /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(trimmed.replace(/\s/g, "").toUpperCase())) {
+    return null;
+  }
   return trimmed.length <= 500 ? trimmed : null;
+}
+
+const FIELD_ASSIGNMENT_HINTS: Partial<Record<LearnableFieldName, string>> = {
+  issueDate: "Bitte markieren Sie ein gültiges Kalenderdatum.",
+  dueDate: "Bitte markieren Sie ein gültiges Datum oder eine Angabe wie „fällig in 14 Tagen“.",
+  serviceDate: "Bitte markieren Sie ein gültiges Kalenderdatum.",
+  currency: "Bitte markieren Sie eine Währung mit drei Buchstaben, zum Beispiel EUR.",
+  sellerCountryCode: "Bitte markieren Sie das Land mit zwei Buchstaben, zum Beispiel DE.",
+  buyerCountryCode: "Bitte markieren Sie das Land mit zwei Buchstaben, zum Beispiel DE.",
+  sellerVatId: "Bitte markieren Sie eine Umsatzsteuer-ID, zum Beispiel DE123456789.",
+  buyerVatId: "Bitte markieren Sie eine Umsatzsteuer-ID, zum Beispiel DE123456789.",
+  iban: "Bitte markieren Sie eine gültige IBAN.",
+  bic: "Bitte markieren Sie einen gültigen BIC.",
+  sellerPostalCode: "Bitte markieren Sie eine Postleitzahl.",
+  buyerPostalCode: "Bitte markieren Sie eine Postleitzahl.",
+};
+
+export function sourceAssignmentError(field: LearnableFieldName, raw: string, context: { issueDate?: string } = {}): string | null {
+  if (normalizeSourceValue(field, raw, context)) return null;
+  return FIELD_ASSIGNMENT_HINTS[field] ?? "Bitte prüfen Sie den markierten Wert. Entfernen Sie zum Beispiel eine mitmarkierte Beschriftung.";
 }
 
 function matchingRegion(extraction: ExtractionResult, rule: LearnedFieldRule): { line: TextLine; raw: string } | null {
   const page = extraction.pages.find((candidate) => candidate.page === rule.page);
-  if (!page) return null;
-  // Match the saved text block, not its entire horizontal row. A small margin
-  // tolerates PDF rounding while keeping adjacent footer columns separate.
-  const tokens = page.tokens.filter((token) => {
-    const x = token.box.x / page.width;
-    const y = (token.box.y + token.box.height / 2) / page.height;
-    return x >= rule.box.x - 0.006 && x < rule.box.x + rule.box.width + 0.006
-      && y >= rule.box.y - 0.006 && y <= rule.box.y + rule.box.height + 0.006;
-  });
+  if (page) {
+    // Match the saved text block, not its entire horizontal row. A small margin
+    // tolerates PDF rounding while keeping adjacent footer columns separate.
+    const tokens = page.tokens.filter((token) => {
+      const x = token.box.x / page.width;
+      const y = (token.box.y + token.box.height / 2) / page.height;
+      return x >= rule.box.x - 0.006 && x < rule.box.x + rule.box.width + 0.006
+        && y >= rule.box.y - 0.006 && y <= rule.box.y + rule.box.height + 0.006;
+    });
+    const exact = readoutFromTokens(extraction, rule, tokens);
+    if (exact) return exact;
+  }
+  return matchingShiftedRegion(extraction, rule);
+}
+
+function readoutFromTokens(
+  extraction: ExtractionResult,
+  rule: LearnedFieldRule,
+  tokens: SourceToken[],
+): { line: TextLine; raw: string } | null {
   const line = selectedSourceLine(extraction, tokens.map((token) => token.id));
   if (!line) return null;
   // Postal code and city often share one PDF text run. Neither is a fixed
@@ -471,6 +510,42 @@ function matchingRegion(extraction: ExtractionResult, rule: LearnedFieldRule): {
   if (postalCity && (rule.field === "sellerPostalCode" || rule.field === "buyerPostalCode")) return { line, raw: postalCity[1]! };
   const range = affixRange(line.text, rule.prefix, rule.suffix);
   return range ? { line, raw: line.text.slice(range.start, range.end) } : null;
+}
+
+function matchingShiftedRegion(extraction: ExtractionResult, rule: LearnedFieldRule): { line: TextLine; raw: string } | null {
+  const hint = FIELD_HINTS[rule.field];
+  const issueDate = extraction.fields.issueDate?.value;
+  const candidates = extraction.lines.flatMap((line) => {
+    if (line.page < rule.page) return [];
+    const box = relativeBox(extraction, line);
+    if (!box) return [];
+    const centerDistance = Math.abs((box.x + box.width / 2) - (rule.box.x + rule.box.width / 2));
+    if (centerDistance > 0.12) return [];
+    const verticalDistance = Math.abs((box.y + box.height / 2) - (rule.box.y + rule.box.height / 2));
+    const hinted = Boolean(hint?.test(line.text));
+    if (hint && !hinted) return [];
+    if (!hint && (line.page !== rule.page || verticalDistance > 0.05)) return [];
+    const parts = tokensForLine(extraction, line).map((token) => selectedSourceLine(extraction, [token.id])!);
+    const isolated = parts.find((part) => {
+      if (affixRange(part.text, rule.prefix, rule.suffix)) return true;
+      return !rule.prefix && !rule.suffix && Boolean(normalizeSourceValue(rule.field, part.text, issueDate ? { issueDate } : {}));
+    });
+    const source = isolated ?? line;
+    const range = affixRange(source.text, rule.prefix, rule.suffix);
+    const postalCity = source.text.match(/^(\d{5})\s+(.+)$/);
+    let raw: string | null = range ? source.text.slice(range.start, range.end) : null;
+    if (!raw && postalCity && (rule.field === "sellerCity" || rule.field === "buyerCity")) raw = postalCity[2]!;
+    if (!raw && postalCity && (rule.field === "sellerPostalCode" || rule.field === "buyerPostalCode")) raw = postalCity[1]!;
+    if (!raw && !rule.prefix && !rule.suffix) raw = source.text;
+    if (!raw) return [];
+    const value = normalizeSourceValue(rule.field, raw, issueDate ? { issueDate } : {});
+    if (!value) return [];
+    const pagePenalty = (source.page - rule.page) * 0.45;
+    const hintBonus = hinted ? -0.3 : 0;
+    return [{ line: source, raw, score: verticalDistance + pagePenalty + centerDistance + hintBonus }];
+  });
+  candidates.sort((left, right) => left.score - right.score);
+  return candidates[0] ?? null;
 }
 
 function nearestMatchingLine(extraction: ExtractionResult, rule: LearnedFieldRule): { line: TextLine; raw: string } | null {
@@ -715,7 +790,8 @@ export function applyLearnedCorrections(extraction: ExtractionResult, memory: Co
     if (rule.mode === "fill" && fields[rule.field]) continue;
     const match = nearestMatchingLine(extraction, rule);
     if (!match) continue;
-    const value = normalizeSourceValue(rule.field, match.raw);
+    const issueDate = fields.issueDate?.value ?? extraction.fields.issueDate?.value;
+    const value = normalizeSourceValue(rule.field, match.raw, issueDate ? { issueDate } : {});
     if (!value) continue;
     fields[rule.field] = extractionField(rule, match.line, match.raw, value);
     appliedFields.push(rule.field);
@@ -748,7 +824,7 @@ export function upgradeLegacyFieldRules(extraction: ExtractionResult, memory: Co
   const rules = memory.rules.map((rule) => {
     if (rule.region || !sameContext(rule, keys, currentLayoutKey)) return rule;
     const match = nearestMatchingLine(extraction, rule);
-    const value = match ? normalizeSourceValue(rule.field, match.raw) : null;
+    const value = match ? normalizeSourceValue(rule.field, match.raw, extraction.fields.issueDate?.value ? { issueDate: extraction.fields.issueDate.value } : {}) : null;
     const located = match && value ? locateValue(extraction, rule.field, value, match.line.tokenIds) : null;
     const box = located ? relativeBox(extraction, located.line) : null;
     if (!located || !box) return rule;

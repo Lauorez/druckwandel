@@ -84,7 +84,7 @@ describe("DATEV immutable source and EXTF adapter",()=>{
     expect(previewDatev(profile(),[next]).issues.join()).toContain("Wirtschaftsjahres");
   });
   it("requires service dates when chosen, and separates explicit tax keys from automatic accounts",()=>{
-    const p=profile();p.periodRule="service-date";expect(previewDatev(p,[source({...standardInvoice,serviceDate:undefined})]).issues.join()).toContain("Leistungsdatum");
+    const p=profile();p.periodRule="service-date";const ohneLeistungsdatum={...standardInvoice};delete ohneLeistungsdatum.serviceDate;expect(previewDatev(p,[source(ohneLeistungsdatum)]).issues.join()).toContain("Leistungsdatum");
     p.revenueAccounts[0]!.taxKey="0003";expect(validateDatevProfile(p).length).toBeGreaterThan(0);
     p.revenueAccounts[0]!.mode="tax-key";expect(validateDatevProfile(p)).toEqual([]);
     const v=previewDatev(p,[source()]);expect(csv(serializeDatev(p,v.batches[0]!,new Date()))[2]![8]).toBe("0003");

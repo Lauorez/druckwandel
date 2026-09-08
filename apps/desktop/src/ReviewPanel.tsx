@@ -21,6 +21,12 @@ interface ReviewPanelProps {
   feedback?: ActionFeedback;
   onDismissFeedback: () => void;
   learningRuleCount: number;
+  learningProfiles: Array<{ id: string; name: string }>;
+  activeLearningProfileId: string;
+  onSelectLearningProfile: (profileId: string) => void;
+  onCreateLearningProfile: () => void;
+  onRenameLearningProfile: () => void;
+  onDeleteLearningProfile: () => void;
   onClearLearningMemory: () => void;
   onDraftChange: (draft: ReviewDraft) => void;
   onSelectField: (name: ExtractedFieldName) => void;
@@ -102,6 +108,12 @@ export function ReviewPanel({
   feedback,
   onDismissFeedback,
   learningRuleCount,
+  learningProfiles,
+  activeLearningProfileId,
+  onSelectLearningProfile,
+  onCreateLearningProfile,
+  onRenameLearningProfile,
+  onDeleteLearningProfile,
   onClearLearningMemory,
   onDraftChange,
   onSelectField,
@@ -148,9 +160,19 @@ export function ReviewPanel({
     <div className={`learning-note${rememberedAreaCount > 0 ? " applied" : ""}`}>
       <div>
         <strong>{rememberedAreaCount > 0 ? `${rememberedAreaCount} ${rememberedAreaCount === 1 ? "Bereich wurde" : "Bereiche wurden"} aus ähnlichen Rechnungen ergänzt` : "Wird mit jeder Rechnung besser"}</strong>
-        <span>Ergänzen Sie Angaben von Hand oder wählen Sie „Im PDF markieren“. Beim Speichern merkt sich der Assistent die passende Stelle für gleich aufgebaute Rechnungen. Alles bleibt auf diesem Computer.</span>
+        <span>Ergänzen Sie Angaben von Hand oder wählen Sie „Im PDF markieren“. Beim Speichern merkt sich der Assistent die passende Stelle im ausgewählten Erkennungsprofil. Alles bleibt auf diesem Computer.</span>
+        <div className="learning-profiles">
+          <label>Erkennungsprofil
+            <select aria-label="Erkennungsprofil" value={activeLearningProfileId} onChange={(event) => onSelectLearningProfile(event.target.value)}>
+              {learningProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={onCreateLearningProfile}>Neues Profil</button>
+          <button type="button" onClick={onRenameLearningProfile}>Umbenennen</button>
+          <button type="button" disabled={learningProfiles.length < 2} onClick={onDeleteLearningProfile}>Profil löschen</button>
+          {learningRuleCount > 0 && <button type="button" onClick={onClearLearningMemory}>Gemerkte Ergänzungen löschen</button>}
+        </div>
       </div>
-      {learningRuleCount > 0 && <button type="button" onClick={onClearLearningMemory}>Gemerkte Ergänzungen löschen</button>}
     </div>
     {extraction.warnings.map((warning) => <div className="warning" key={warning.code}><strong>Bitte beachten</strong>{warning.message}</div>)}
     {unsupportedCases.map((unsupportedCase) => <button

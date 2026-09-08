@@ -8,8 +8,10 @@ import {
   emptyCorrectionMemory,
   learnCorrections,
   parseCorrectionMemory,
+  sourceAssignmentError,
   upgradeLegacyFieldRules,
 } from "../src/learning/correction-memory.js";
+import { parseLearningProfileStore } from "../src/learning/profiles.js";
 import { reviewDraftFromExtraction } from "../src/review/draft.js";
 
 function template(reference: string, issueDate = "01.09.2026", correctedDate = "02.09.2026"): DocumentPage[] {
@@ -229,5 +231,53 @@ describe("local correction memory", () => {
   it("ignores malformed persisted data", () => {
     expect(parseCorrectionMemory("not json")).toEqual(emptyCorrectionMemory());
     expect(parseCorrectionMemory('{"schemaVersion":2,"rules":[]}')).toEqual(emptyCorrectionMemory());
+  });
+
+  it("rejects invalid PDF assignments for typed fields", () => {
+    expect(sourceAssignmentError("dueDate", "Absender GmbH")).toMatch(/gültiges Datum/);
+    expect(sourceAssignmentError("dueDate", "32.13.2026")).toMatch(/gültiges Datum/);
+    expect(sourceAssignmentError("sellerPostalCode", "Berlin")).toMatch(/Postleitzahl/);
+    expect(sourceAssignmentError("dueDate", "fällig in 14 Tagen", { issueDate: "2026-09-08" })).toBeNull();
+    expect(sourceAssignmentError("issueDate", "8. September 2026")).toBeNull();
+  });
+
+  it("follows a learned due date when extra line items push the total block down", () => {
+    const pages = (itemCount: number, dueY: number): DocumentPage[] => [{
+      page: 1,
+      width: 600,
+      height: 800,
+      tokens: [
+        { id: "title", page: 1, text: "Rechnung", box: { x: 50, y: 40, width: 80, height: 12 }, origin: "text-layer" },
+        { id: "vat-l", page: 1, text: "USt-ID:", box: { x: 50, y: 70, width: 55, height: 12 }, origin: "text-layer" },
+        { id: "vat", page: 1, text: "DE123456789", box: { x: 180, y: 70, width: 80, height: 12 }, origin: "text-layer" },
+        { id: "issue-l", page: 1, text: "Rechnungsdatum:", box: { x: 50, y: 100, width: 90, height: 12 }, origin: "text-layer" },
+        { id: "issue", page: 1, text: "08.09.2026", box: { x: 180, y: 100, width: 70, height: 12 }, origin: "text-layer" },
+        ...Array.from({ length: itemCount }, (_, index) => ({
+          id: `item-${index}`,
+          page: 1,
+          text: `Leistung ${index + 1}`,
+          box: { x: 50, y: 160 + index * 16, width: 120, height: 12 },
+          origin: "text-layer" as const,
+        })),
+        { id: "due-l", page: 1, text: "Faellig am:", box: { x: 50, y: dueY, width: 70, height: 12 }, origin: "text-layer" },
+        { id: "due", page: 1, text: itemCount === 1 ? "22.09.2026" : "30.09.2026", box: { x: 180, y: dueY, width: 70, height: 12 }, origin: "text-layer" },
+        { id: "sum-l", page: 1, text: "Gesamtbetrag:", box: { x: 50, y: dueY + 20, width: 80, height: 12 }, origin: "text-layer" },
+        { id: "sum", page: 1, text: "100,00", box: { x: 180, y: dueY + 20, width: 50, height: 12 }, origin: "text-layer" },
+      ],
+    }];
+    const first = analyzeDocumentPages(pages(1, 220));
+    const initial = reviewDraftFromExtraction(first);
+    const learned = learnCorrections(emptyCorrectionMemory(), first, initial, { ...initial, dueDate: "2026-09-22" }, undefined, { dueDate: ["due"] });
+    expect(learned.learnedFields).toEqual(["dueDate"]);
+    const second = analyzeDocumentPages(pages(8, 360));
+    const applied = applyLearnedCorrections(second, learned.memory);
+    expect(applied.extraction.fields.dueDate?.value).toBe("2026-09-30");
+  });
+
+  it("wraps existing memory into a selectable standard profile", () => {
+    const store = parseLearningProfileStore('{"schemaVersion":1,"rules":[],"tableRules":[]}');
+    expect(store.schemaVersion).toBe(2);
+    expect(store.profiles).toHaveLength(1);
+    expect(store.profiles[0]?.name).toBe("Standard");
   });
 });

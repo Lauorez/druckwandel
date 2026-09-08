@@ -1,6 +1,7 @@
 import type { ExtractedField, ExtractedFieldName, TextLine } from "./types.js";
 import { parseLocalizedDecimal } from "../domain/localized-decimal.js";
 import { money } from "../domain/money.js";
+import { parseInvoiceDate, relativeDueDate } from "./dates.js";
 
 interface Rule {
   name: ExtractedFieldName;
@@ -14,9 +15,9 @@ const dateValue = "(\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4}|\\d{4}-\\d{2}-\\d{2})";
 const amountValue = "(-?[0-9][0-9. ]*(?:,[0-9]{1,4})|-?[0-9]+(?:\\.[0-9]{1,4})?)";
 const rules: Rule[] = [
   { name: "invoiceNumber", labels: /(?:rechnungs(?:nummer|nr\.?|\s*nr\.)|beleg[- ]?nr\.?|invoice\s*(?:number|no\.?))/i, value: /(?:[:#]\s*|\s+)([A-Z0-9][A-Z0-9/_-]{2,})/i, confidence: 0.94 },
-  { name: "dueDate", labels: /(?:fällig(?:keit| am)?|zahlbar bis|due date)/i, value: new RegExp(dateValue), confidence: 0.92, normalize: normalizeDate },
-  { name: "serviceDate", labels: /(?:leistungsdatum|lieferdatum|delivery date)/i, value: new RegExp(dateValue), confidence: 0.91, normalize: normalizeDate },
   { name: "issueDate", labels: /(?:rechnungsdatum|belegdatum|ausstellungsdatum|invoice date|^\s*datum\s*:)/i, value: new RegExp(dateValue), confidence: 0.88, normalize: normalizeDate },
+  { name: "dueDate", labels: /(?:fällig(?:keit| am)?|faellig(?:keit| am)?|zahlbar bis|due date)/i, value: new RegExp(dateValue), confidence: 0.92, normalize: normalizeDate },
+  { name: "serviceDate", labels: /(?:leistungsdatum|lieferdatum|delivery date)/i, value: new RegExp(dateValue), confidence: 0.91, normalize: normalizeDate },
   { name: "buyerReference", labels: /(?:leitweg[- ]?id|bestell(?:nummer|nr\.?)|buyer reference|käuferreferenz)/i, value: /(?:[:#]\s*|\s+)([A-Z0-9][A-Z0-9._/-]{2,})/i, confidence: 0.9 },
   { name: "sellerVatId", labels: /(?:ust\.?-?id(?:nr)?\.?|umsatzsteuer-id|vat id)/i, value: /\b([A-Z]{2}(?:\s*[A-Z0-9]){8,14})\b/i, confidence: 0.96, normalize: (value) => value.replaceAll(" ", "").toUpperCase() },
   { name: "iban", labels: /\bIBAN\b/i, value: /\b([A-Z]{2}\s?[0-9]{2}(?:\s?[A-Z0-9]){11,30})\b/i, confidence: 0.98, normalize: normalizeIban },
@@ -27,11 +28,15 @@ const rules: Rule[] = [
   { name: "payable", labels: /(?:zahlbetrag|rechnungsbetrag|gesamtbetrag|zu zahlen|amount due|^\s*gesamt\s*:)/i, value: new RegExp(amountValue), confidence: 0.95, normalize: normalizeAmount },
 ];
 
+const BUYER_MARKER = /^(?:rechnung\s+an|rechnungsempfänger(?:in)?|rechnungsempfaenger(?:in)?|rechnungsadresse|kundenadresse|lieferanschrift|bill(?:ed)?\s+to)\s*:?\s*(.*)$|^(?:empfänger(?:in)?|empfaenger(?:in)?|kunde|an)\s*:\s*(.*)$|^(?:empfänger(?:in)?|empfaenger(?:in)?)\s*$/i;
+const SKIP_ADDRESS = /^(?:z\.?\s*h(?:d)?\.?|zu\s+h(?:ä|ae)nden|c\/o|tel\.?|telefon|fax|mobil|e-?mail|www\.|https?:|ust\.?-?id|iban|bic|steuernr)/i;
+const STREET = /(?:str(?:a(?:ss|ß)e)?\.?|weg|platz|gasse|allee|ring|damm|ufer|chaussee|hof|markt)\b.*\d|\d+[a-z]?(?:\s*[-\/]\s*\d+[a-z]?)?\s*$/i;
+const COUNTRY_NAMES: Record<string, string> = {
+  DEUTSCHLAND: "DE", GERMANY: "DE", ÖSTERREICH: "AT", OESTERREICH: "AT", AUSTRIA: "AT", SCHWEIZ: "CH", SWITZERLAND: "CH",
+};
+
 function normalizeDate(value: string): string {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const [day, month, year] = value.split(/[./-]/);
-  const fullYear = year?.length === 2 ? `20${year}` : year;
-  return `${fullYear}-${month?.padStart(2, "0")}-${day?.padStart(2, "0")}`;
+  return parseInvoiceDate(value) ?? value;
 }
 
 function normalizeAmount(value: string): string {
@@ -50,9 +55,34 @@ function extractedField(name: ExtractedFieldName, value: string, line: TextLine,
   return { name, value, confidence, sourceTokenIds: line.tokenIds, sourceText: line.text, transformations: [] };
 }
 
-function postalAddress(line: TextLine): { postalCode: string; city: string } | null {
-  const match = line.text.match(/^\s*(?:[A-Z]{2}[- ]?)?(\d{4,6})\s+(.+?)\s*$/);
-  return match?.[1] && match[2] ? { postalCode: match[1], city: match[2] } : null;
+function postalAddress(text: string): { postalCode: string; city: string } | null {
+  const match = text.match(/^\s*(?:[A-Z]{2}[- ]?)?(\d{4,6})\s+(.+?)\s*$/);
+  const city = match?.[2]?.replace(/[,;]+$/, "").trim();
+  if (!match?.[1] || !city || /^\d+$/.test(city)) return null;
+  if (/\b(?:iban|bic|bank|steuer|geschäftsführer|geschaeftsfuehrer|ust-?id|www\.|tel\.?)\b/i.test(city)) return null;
+  if (city.length > 40) return null;
+  return { postalCode: match[1], city };
+}
+
+function countryCode(text: string): string | null {
+  const compact = text.trim().replace(/\.$/, "").toUpperCase();
+  if (COUNTRY_NAMES[compact]) return COUNTRY_NAMES[compact]!;
+  return /^[A-Z]{2}$/.test(compact) ? compact : null;
+}
+
+function isStreetLine(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || postalAddress(trimmed) || SKIP_ADDRESS.test(trimmed) || countryCode(trimmed)) return false;
+  if (!/\d/.test(trimmed) || !/[A-Za-zÄÖÜäöüß]{3,}/.test(trimmed)) return false;
+  if (/^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(trimmed)) return false;
+  return STREET.test(trimmed);
+}
+
+function isNameLine(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || postalAddress(trimmed) || isStreetLine(trimmed) || SKIP_ADDRESS.test(trimmed) || countryCode(trimmed)) return false;
+  if (/^(?:rechnung|rechnungsnummer|datum|position|beschreibung|netto|ust|iban|pos\.?)\b/i.test(trimmed)) return false;
+  return /[A-Za-zÄÖÜäöüß]{3,}/.test(trimmed);
 }
 
 function assignParty(
@@ -62,43 +92,110 @@ function assignParty(
   addressLine: TextLine | undefined,
   cityLine: TextLine | undefined,
   confidence: number,
+  countryLine?: TextLine,
 ) {
-  const postal = cityLine ? postalAddress(cityLine) : null;
+  const postal = cityLine ? postalAddress(cityLine.text) : null;
   if (!nameLine || !addressLine || !cityLine || !postal) return;
   fields[`${prefix}Name`] = extractedField(`${prefix}Name`, nameLine.text.trim(), nameLine, confidence);
   fields[`${prefix}AddressLine1`] = extractedField(`${prefix}AddressLine1`, addressLine.text.trim(), addressLine, confidence);
   fields[`${prefix}PostalCode`] = extractedField(`${prefix}PostalCode`, postal.postalCode, cityLine, confidence);
   fields[`${prefix}City`] = extractedField(`${prefix}City`, postal.city, cityLine, confidence);
-  fields[`${prefix}CountryCode`] = extractedField(`${prefix}CountryCode`, "DE", cityLine, Math.min(confidence, 0.72));
+  const country = countryLine ? countryCode(countryLine.text) : null;
+  fields[`${prefix}CountryCode`] = extractedField(`${prefix}CountryCode`, country ?? "DE", countryLine ?? cityLine, country ? confidence : Math.min(confidence, 0.72));
+}
+
+function findAddressBlock(lines: TextLine[], from: number, until: number): {
+  name: TextLine;
+  street: TextLine;
+  city: TextLine;
+  country?: TextLine;
+} | null {
+  const window = lines.slice(from, until);
+  const cityOffset = window.findIndex((line) => postalAddress(line.text) !== null);
+  if (cityOffset < 0) return null;
+  const city = window[cityOffset]!;
+  const before = window.slice(0, cityOffset).filter((line) => line.text.trim() && !SKIP_ADDRESS.test(line.text.trim()));
+  const street = [...before].reverse().find((line) => isStreetLine(line.text));
+  const name = [...before].reverse().find((line) => line !== street && isNameLine(line.text));
+  if (!name || !street) return null;
+  const afterCity = window[cityOffset + 1];
+  const country = afterCity && countryCode(afterCity.text) ? afterCity : undefined;
+  return country ? { name, street, city, country } : { name, street, city };
 }
 
 function classifyParties(lines: TextLine[], fields: Partial<Record<ExtractedFieldName, ExtractedField>>) {
-  const buyerMarker = lines.findIndex((line) => /^(?:rechnung\s+an|rechnungsempfänger(?:in)?|bill\s+to)\s*:?$/i.test(line.text.trim()));
-  if (buyerMarker < 0) return;
+  const buyerMarker = lines.findIndex((line) => BUYER_MARKER.test(line.text.trim()));
+  if (buyerMarker >= 0) {
+    const remainder = lines[buyerMarker]?.text.trim().match(BUYER_MARKER)?.slice(1).find((part) => part)?.trim();
+    const seller = findAddressBlock(lines, 0, buyerMarker);
+    if (seller) assignParty(fields, "seller", seller.name, seller.street, seller.city, 0.82, seller.country);
 
-  let sellerCityIndex = -1;
-  for (let index = buyerMarker - 1; index >= 0; index -= 1) {
-    const candidate = lines[index];
-    if (candidate && postalAddress(candidate) !== null) {
-      sellerCityIndex = index;
+    if (remainder && isNameLine(remainder)) {
+      const synthetic: TextLine = { ...lines[buyerMarker]!, text: remainder };
+      const rest = findAddressBlock(lines, buyerMarker + 1, buyerMarker + 8);
+      if (rest) assignParty(fields, "buyer", synthetic, rest.street, rest.city, 0.84, rest.country);
+      else {
+        const cityLine = lines.slice(buyerMarker + 1, buyerMarker + 8).find((line) => postalAddress(line.text));
+        const street = lines.slice(buyerMarker + 1, buyerMarker + 8).find((line) => isStreetLine(line.text));
+        if (street && cityLine) assignParty(fields, "buyer", synthetic, street, cityLine, 0.84);
+      }
+    } else {
+      const buyer = findAddressBlock(lines, buyerMarker + 1, buyerMarker + 8);
+      if (buyer) assignParty(fields, "buyer", buyer.name, buyer.street, buyer.city, 0.84, buyer.country);
+    }
+
+    const buyerVatLine = lines.slice(buyerMarker + 1).find((line) => /(?:ust\.?-?id(?:nr)?\.?|umsatzsteuer-id|vat id)/i.test(line.text));
+    const buyerVat = buyerVatLine?.text.match(/\b([A-Z]{2}(?:\s*[A-Z0-9]){8,14})\b/i)?.[1];
+    if (buyerVatLine && buyerVat) {
+      fields.buyerVatId = extractedField("buyerVatId", buyerVat.replaceAll(" ", "").toUpperCase(), buyerVatLine, 0.9);
+    }
+    return;
+  }
+
+  const headerLimit = lines.findIndex((line) => /^(?:position|pos\.?|beschreibung|leistung|artikel|netto|rechnungsnummer)\b/i.test(line.text.trim()));
+  const seller = findAddressBlock(lines, 0, headerLimit >= 0 ? headerLimit : Math.min(lines.length, 16));
+  if (seller && !fields.sellerName) assignParty(fields, "seller", seller.name, seller.street, seller.city, 0.74, seller.country);
+}
+
+function applyNamedDates(lines: TextLine[], fields: Partial<Record<ExtractedFieldName, ExtractedField>>) {
+  const dateFields = [
+    { name: "issueDate" as const, labels: /(?:rechnungsdatum|belegdatum|ausstellungsdatum|invoice date|^\s*datum\s*:)/i, confidence: 0.88 },
+    { name: "dueDate" as const, labels: /(?:fällig(?:keit| am)?|faellig(?:keit| am)?|zahlbar bis|due date)/i, confidence: 0.92 },
+    { name: "serviceDate" as const, labels: /(?:leistungsdatum|lieferdatum|delivery date)/i, confidence: 0.91 },
+  ];
+  for (const rule of dateFields) {
+    if (fields[rule.name]) continue;
+    for (const line of lines) {
+      if (!rule.labels.test(line.text)) continue;
+      const value = parseInvoiceDate(line.text);
+      if (!value) continue;
+      fields[rule.name] = {
+        name: rule.name,
+        value,
+        confidence: rule.confidence,
+        sourceTokenIds: line.tokenIds,
+        sourceText: line.text,
+        transformations: [{ operation: "normalize-date", input: line.text, output: value }],
+      };
       break;
     }
   }
-  if (sellerCityIndex >= 2) {
-    assignParty(fields, "seller", lines[sellerCityIndex - 2], lines[sellerCityIndex - 1], lines[sellerCityIndex], 0.82);
-  }
+}
 
-  const buyerWindow = lines.slice(buyerMarker + 1, buyerMarker + 8);
-  const buyerCityOffset = buyerWindow.findIndex((line) => postalAddress(line) !== null);
-  if (buyerCityOffset >= 2) {
-    const cityIndex = buyerMarker + 1 + buyerCityOffset;
-    assignParty(fields, "buyer", lines[cityIndex - 2], lines[cityIndex - 1], lines[cityIndex], 0.84);
-  }
-
-  const buyerVatLine = lines.slice(buyerMarker + 1).find((line) => /(?:ust\.?-?id(?:nr)?\.?|umsatzsteuer-id|vat id)/i.test(line.text));
-  const buyerVat = buyerVatLine?.text.match(/\b([A-Z]{2}(?:\s*[A-Z0-9]){8,14})\b/i)?.[1];
-  if (buyerVatLine && buyerVat) {
-    fields.buyerVatId = extractedField("buyerVatId", buyerVat.replaceAll(" ", "").toUpperCase(), buyerVatLine, 0.9);
+function applyRelativeDueDate(lines: TextLine[], fields: Partial<Record<ExtractedFieldName, ExtractedField>>) {
+  if (fields.dueDate || !fields.issueDate) return;
+  for (const line of lines) {
+    const value = relativeDueDate(line.text, fields.issueDate.value);
+    if (!value) continue;
+    fields.dueDate = {
+      name: "dueDate",
+      value,
+      confidence: 0.86,
+      sourceTokenIds: line.tokenIds,
+      sourceText: line.text,
+      transformations: [{ operation: "normalize-date", input: line.text, output: value }],
+    };
+    return;
   }
 }
 
@@ -113,6 +210,7 @@ export function classifyFields(lines: TextLine[]): Partial<Record<ExtractedField
       const raw = match?.[1];
       if (!raw) continue;
       const value = rule.normalize?.(raw) ?? raw.trim();
+      if (rule.normalize === normalizeDate && parseInvoiceDate(raw) === null) continue;
       fields[rule.name] = {
         name: rule.name,
         value,
@@ -124,6 +222,8 @@ export function classifyFields(lines: TextLine[]): Partial<Record<ExtractedField
       break;
     }
   }
+  applyNamedDates(lines, fields);
+  applyRelativeDueDate(lines, fields);
   const currencyLine = lines.find((line) => /\b(EUR|USD|GBP|CHF)\b|€|\$|£/i.test(line.text));
   const currencyMatch = currencyLine?.text.match(/\b(EUR|USD|GBP|CHF)\b|€|\$|£/i)?.[0].toUpperCase();
   const currency = currencyMatch === "€" ? "EUR" : currencyMatch === "$" ? "USD" : currencyMatch === "£" ? "GBP" : currencyMatch;

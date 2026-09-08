@@ -127,21 +127,52 @@ fn write_review_draft(file_name: String, contents: String) -> Result<String, Str
     )
 }
 
+fn validate_v1_memory(parsed: &serde_json::Value) -> bool {
+    parsed
+        .get("rules")
+        .and_then(|value| value.as_array())
+        .is_some_and(|rules| rules.len() <= 250)
+        && parsed
+            .get("tableRules")
+            .is_none_or(|value| value.as_array().is_some_and(|rules| rules.len() <= 50))
+}
+
 fn validate_learning_memory(contents: &str) -> Result<(), String> {
     if contents.len() > 1024 * 1024 {
         return Err("Die gemerkten Angaben sind zu groß.".to_string());
     }
     let parsed: serde_json::Value = serde_json::from_str(contents)
         .map_err(|_| "Die gemerkten Angaben sind beschädigt.".to_string())?;
-    if parsed.get("schemaVersion").and_then(|value| value.as_u64()) != Some(1)
-        || parsed
-            .get("rules")
-            .and_then(|value| value.as_array())
-            .is_none_or(|rules| rules.len() > 250)
-        || parsed
-            .get("tableRules")
-            .is_some_and(|value| value.as_array().is_none_or(|rules| rules.len() > 50))
-    {
+    let version = parsed.get("schemaVersion").and_then(|value| value.as_u64());
+    let valid = match version {
+        Some(1) => validate_v1_memory(&parsed),
+        Some(2) => parsed
+            .get("activeProfileId")
+            .and_then(|value| value.as_str())
+            .is_some_and(|id| !id.is_empty())
+            && parsed
+                .get("profiles")
+                .and_then(|value| value.as_array())
+                .is_some_and(|profiles| {
+                    (1..=20).contains(&profiles.len())
+                        && profiles.iter().all(|profile| {
+                            profile.get("id").and_then(|value| value.as_str()).is_some_and(|id| !id.is_empty())
+                                && profile
+                                    .get("name")
+                                    .and_then(|value| value.as_str())
+                                    .is_some_and(|name| !name.is_empty() && name.len() <= 80)
+                                && profile
+                                    .get("memory")
+                                    .is_some_and(validate_v1_memory)
+                        })
+                        && profiles.iter().any(|profile| {
+                            profile.get("id").and_then(|value| value.as_str())
+                                == parsed.get("activeProfileId").and_then(|value| value.as_str())
+                        })
+                }),
+        _ => false,
+    };
+    if !valid {
         return Err("Die gemerkten Angaben haben ein unbekanntes Format.".to_string());
     }
     Ok(())
@@ -469,6 +500,10 @@ mod tests {
             validate_learning_memory(r#"{"schemaVersion":1,"rules":[],"tableRules":{}}"#).is_err()
         );
         assert!(validate_learning_memory(r#"{"schemaVersion":2,"rules":[]}"#).is_err());
+        assert!(validate_learning_memory(
+            r#"{"schemaVersion":2,"activeProfileId":"profile-standard","profiles":[{"id":"profile-standard","name":"Standard","memory":{"schemaVersion":1,"rules":[],"tableRules":[]}}]}"#
+        )
+        .is_ok());
         assert!(validate_learning_memory(r#"{"schemaVersion":1}"#).is_err());
         assert!(validate_learning_memory("not json").is_err());
     }

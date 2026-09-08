@@ -74,6 +74,7 @@ describe("PDF extraction", () => {
     expect(result.fields.payable?.value).toBe("1469.06");
     expect(result.fields.payable?.sourceTokenIds.length).toBeGreaterThan(0);
     expect(result.fields.payable?.confidence).toBeGreaterThanOrEqual(0.9);
+    expect(result.fields.dueDate?.value).toBe("2026-09-03");
   });
 
   it("accepts a Node.js Buffer as returned by readFile", async () => {
@@ -106,6 +107,29 @@ describe("PDF extraction", () => {
     expect(result.lineItems[0]).toMatchObject({ description: "Softwareentwicklung", quantity: "10.000", unit: "Std", netUnitPrice: "95.00", netAmount: "950.00", taxRate: "19.00" });
     expect(result.lineItems[1]).toMatchObject({ description: "Einrichtung und Konfiguration", quantity: "1.000", unit: "Stk", netUnitPrice: "150.00", netAmount: "150.00", taxRate: "19.00" });
     expect(result.warnings).toEqual([]);
+  });
+
+  it("reads German month names, relative due dates and labelled addresses", async () => {
+    const document = await PDFDocument.create();
+    const page = document.addPage([595, 842]);
+    const font = await document.embedFont(StandardFonts.Helvetica);
+    const draw = (text: string, x: number, y: number) => page.drawText(text, { x, y, size: 10, font });
+    draw("Absender GmbH", 70, 780);
+    draw("z.Hd. Buchhaltung", 70, 765);
+    draw("Beispielstrasse 12", 70, 750);
+    draw("10115 Berlin", 70, 735);
+    draw("Empfaenger:", 70, 700);
+    draw("Kunde AG", 70, 685);
+    draw("Kundenweg 5", 70, 670);
+    draw("20095 Hamburg", 70, 655);
+    draw("Rechnungsdatum: 8. September 2026", 70, 620);
+    draw("Faellig in 14 Tagen", 70, 605);
+    const result = await extractInvoicePdf(await document.save());
+    expect(result.fields.sellerName?.value).toBe("Absender GmbH");
+    expect(result.fields.sellerAddressLine1?.value).toBe("Beispielstrasse 12");
+    expect(result.fields.buyerName?.value).toBe("Kunde AG");
+    expect(result.fields.issueDate?.value).toBe("2026-09-08");
+    expect(result.fields.dueDate?.value).toBe("2026-09-22");
   });
 
   it("reconstructs columns from horizontal gaps", () => {

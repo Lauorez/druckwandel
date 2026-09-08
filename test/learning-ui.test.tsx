@@ -34,6 +34,11 @@ function invoice(company: string, street: string, vat: string) {
   })) }]);
 }
 
+function storedRules() {
+  const parsed = JSON.parse(native.memory!) as { rules?: unknown[]; profiles?: Array<{ memory?: { rules?: unknown[] } }> };
+  return parsed.profiles?.[0]?.memory?.rules ?? parsed.rules ?? [];
+}
+
 function openFile(name: string) {
   const file = new File(["synthetic"], name, { type: "application/pdf" });
   Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(1) });
@@ -71,10 +76,11 @@ describe("mark and remember a source in the application", () => {
     fireEvent.click(screen.getByRole("button", { name: "Übernehmen" }));
     fireEvent.change(screen.getAllByLabelText("Straße und Hausnummer")[0]!, { target: { value: "Hauptstraße 12" } });
     fireEvent.click(screen.getByRole("button", { name: "Entwurf speichern" }));
-    await waitFor(() => expect(JSON.parse(native.memory!).rules).toHaveLength(2));
+    await waitFor(() => expect(storedRules()).toHaveLength(2));
     await screen.findByText(/Entwurf gespeichert\. Sie können/);
     expect(native.memory).not.toContain("Erste Firma GmbH");
     expect(native.memory).not.toContain("Hauptstraße 12");
+    expect(JSON.parse(native.memory!).schemaVersion).toBe(2);
     first.unmount();
 
     native.extract.mockResolvedValueOnce(invoice("Zweite Firma GmbH", "Bauhofstraße 18", "DE000000001"));
@@ -83,6 +89,17 @@ describe("mark and remember a source in the application", () => {
     await screen.findByDisplayValue("Zweite Firma GmbH");
     expect(screen.getByDisplayValue("Bauhofstraße 18")).toBeTruthy();
     expect(screen.queryByDisplayValue(/Zweite Firma GmbH IBAN/)).toBeNull();
+  });
+
+  it("refuses an invalid PDF assignment for a date field", async () => {
+    native.extract.mockResolvedValueOnce(invoice("Erste Firma GmbH", "Hauptstraße 12", "DE123456789"));
+    render(<App />);
+    openFile("erste.pdf");
+    fireEvent.click(await screen.findByRole("button", { name: "Fälligkeitsdatum: Im PDF markieren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Erste Firma GmbH" }));
+    fireEvent.click(screen.getByRole("button", { name: "Übernehmen" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/gültiges Datum/);
+    expect((screen.getByLabelText("Fälligkeitsdatum") as HTMLInputElement).value).toBe("");
   });
 
   it("autosaves without learning, and restores the exact draft without re-extraction", async () => {

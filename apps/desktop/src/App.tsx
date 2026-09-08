@@ -7,11 +7,21 @@ import {
   learnCorrections,
   normalizeSourceValue,
   selectedSourceLine,
+  sourceAssignmentError,
   upgradeLegacyFieldRules,
-  type CorrectionMemory,
   type FieldSourceSelections,
   type LearnableFieldName,
 } from "../../../src/learning/correction-memory.js";
+import {
+  activeLearningProfile,
+  createLearningProfile,
+  deleteLearningProfile,
+  emptyLearningProfileStore,
+  renameLearningProfile,
+  replaceActiveMemory,
+  selectLearningProfile,
+  type LearningProfileStore,
+} from "../../../src/learning/profiles.js";
 import { detectUnsupportedCases } from "../../../src/policy/unsupported-cases.js";
 import {
   calculateReviewDraft,
@@ -23,7 +33,7 @@ import {
 import { PdfReview } from "./PdfReview.js";
 import { assignSourceValue } from "./pdfSelection.js";
 import { ReviewPanel, type ActionFeedback } from "./ReviewPanel.js";
-import { loadLearningMemory, saveLearningMemory } from "./learningMemoryStore.js";
+import { loadLearningProfiles, saveLearningProfiles } from "./learningMemoryStore.js";
 import { ArchiveView } from "./ArchiveView.js";
 import { DatevView } from "./DatevView.js";
 import { saveAndArchiveInvoice, type ArchiveMetadata } from "./archiveStore.js";
@@ -84,6 +94,7 @@ export function App() {
   const [draft, setDraft] = useState<ReviewDraft>();
   const [initialDraft, setInitialDraft] = useState<ReviewDraft>();
   const [learningRuleCount, setLearningRuleCount] = useState(0);
+  const [learningProfiles, setLearningProfiles] = useState<LearningProfileStore>(emptyLearningProfileStore);
   const [selectedTokenIds, setSelectedTokenIds] = useState<string[]>([]);
   const [sourceSelections, setSourceSelections] = useState<FieldSourceSelections>({});
   const [pendingSourceFields, setPendingSourceFields] = useState<LearnableFieldName[]>([]);
@@ -98,8 +109,8 @@ export function App() {
   const [feedback, setFeedback] = useState<ActionFeedback>();
   const [completed, setCompleted] = useState(false);
   const [legacyDraft, setLegacyDraft] = useState<LegacyDraft>();
-  const learningMemory = useRef<CorrectionMemory>(emptyCorrectionMemory());
-  const learningMemoryPromise = useRef<Promise<CorrectionMemory> | null>(null);
+  const learningStore = useRef<LearningProfileStore>(emptyLearningProfileStore());
+  const learningStorePromise = useRef<Promise<LearningProfileStore> | null>(null);
   const selectedTokenSet = useMemo(() => new Set(selectedTokenIds), [selectedTokenIds]);
   const unsupportedCases = useMemo(() => extraction ? detectUnsupportedCases(extraction) : [], [extraction]);
   const validation = useMemo(() => draft ? validateReviewDraft(draft, unsupportedCases) : undefined, [draft, unsupportedCases]);
@@ -125,17 +136,24 @@ export function App() {
     };
   }
 
-  function ensureLearningMemory(): Promise<CorrectionMemory> {
-    learningMemoryPromise.current ??= loadLearningMemory().then((memory) => {
-      learningMemory.current = memory;
-      setLearningRuleCount(memory.rules.length + memory.tableRules.length);
-      return memory;
+  function rememberStore(store: LearningProfileStore) {
+    learningStore.current = store;
+    learningStorePromise.current = Promise.resolve(store);
+    setLearningProfiles(store);
+    const memory = activeLearningProfile(store).memory;
+    setLearningRuleCount(memory.rules.length + memory.tableRules.length);
+  }
+
+  function ensureLearningStore(): Promise<LearningProfileStore> {
+    learningStorePromise.current ??= loadLearningProfiles().then((store) => {
+      rememberStore(store);
+      return store;
     });
-    return learningMemoryPromise.current;
+    return learningStorePromise.current;
   }
 
   useEffect(() => {
-    void ensureLearningMemory();
+    void ensureLearningStore();
   }, []);
 
   useEffect(() => {
@@ -145,13 +163,14 @@ export function App() {
   async function buildSnapshot(data: Uint8Array): Promise<WorkspaceSnapshot> {
     const { extractInvoicePdfInBrowser } = await import("../../../src/extraction/browser.js");
     const nextSourceExtraction = await extractInvoicePdfInBrowser(data);
-    const storedMemory = await ensureLearningMemory();
+    const storedStore = await ensureLearningStore();
+    const storedMemory = activeLearningProfile(storedStore).memory;
     const memory = upgradeLegacyFieldRules(nextSourceExtraction, storedMemory);
     if (memory !== storedMemory) {
       try {
-        await saveLearningMemory(memory);
-        learningMemory.current = memory;
-        learningMemoryPromise.current = Promise.resolve(memory);
+        const nextStore = replaceActiveMemory(storedStore, memory);
+        await saveLearningProfiles(nextStore);
+        rememberStore(nextStore);
       } catch {
         setFeedback({ kind: "error", message: "Die bisherigen Zuordnungen konnten nicht dauerhaft verbessert werden." });
       }
@@ -230,9 +249,10 @@ export function App() {
 
   function acceptSource() {
     if (!draft || !sourceTarget || selectedTokenIds.length === 0) return;
-    const value = normalizeSourceValue(sourceTarget.field, sourceValue);
-    if (!value) {
-      setSourceError("Bitte prüfen Sie den markierten Wert. Entfernen Sie zum Beispiel eine mitmarkierte Beschriftung.");
+    const value = normalizeSourceValue(sourceTarget.field, sourceValue, { issueDate: draft.issueDate });
+    const assignmentError = sourceAssignmentError(sourceTarget.field, sourceValue, { issueDate: draft.issueDate });
+    if (!value || assignmentError) {
+      setSourceError(assignmentError ?? "Bitte prüfen Sie den markierten Wert. Entfernen Sie zum Beispiel eine mitmarkierte Beschriftung.");
       return;
     }
     setCompleted(false);
@@ -264,13 +284,13 @@ export function App() {
     if (!sourceExtraction || !initialDraft || !draft) return "";
     try {
       const pendingSelections = Object.fromEntries(pendingSourceFields.map((field) => [field, sourceSelections[field]!])) as FieldSourceSelections;
-      const result = learnCorrections(await ensureLearningMemory(), sourceExtraction, initialDraft, draft, undefined, pendingSelections);
+      const store = await ensureLearningStore();
+      const result = learnCorrections(activeLearningProfile(store).memory, sourceExtraction, initialDraft, draft, undefined, pendingSelections);
       if (result.changedFields.length === 0 && !result.tableChanged) return "";
       if (result.learnedFields.length > 0 || result.tableLearned) {
-        await saveLearningMemory(result.memory);
-        learningMemory.current = result.memory;
-        learningMemoryPromise.current = Promise.resolve(result.memory);
-        setLearningRuleCount(result.memory.rules.length + result.memory.tableRules.length);
+        const nextStore = replaceActiveMemory(store, result.memory);
+        await saveLearningProfiles(nextStore);
+        rememberStore(nextStore);
       }
       setInitialDraft(draft);
       setPendingSourceFields((current) => current.filter((field) => !result.learnedFields.includes(field)));
@@ -295,15 +315,60 @@ export function App() {
     }
   }
 
-  async function clearLearningMemory() {
-    if (!window.confirm("Sollen alle gemerkten Ergänzungen gelöscht werden? Bereits geöffnete Rechnungen bleiben unverändert.")) return;
+  async function persistProfiles(next: LearningProfileStore | null, success: string, failure: string) {
+    if (!next) return;
     try {
-      const empty = emptyCorrectionMemory();
-      await saveLearningMemory(empty);
-      learningMemory.current = empty;
-      learningMemoryPromise.current = Promise.resolve(empty);
-      setLearningRuleCount(0);
-      setFeedback({ kind: "success", message: "Alle gemerkten Ergänzungen wurden gelöscht. Dies gilt ab der nächsten Rechnung." });
+      await saveLearningProfiles(next);
+      rememberStore(next);
+      setFeedback({ kind: "success", message: success });
+    } catch (reason) {
+      console.error(reason);
+      setFeedback({ kind: "error", message: failure });
+    }
+  }
+
+  async function changeLearningProfile(profileId: string) {
+    const next = selectLearningProfile(await ensureLearningStore(), profileId);
+    try {
+      await saveLearningProfiles(next);
+      rememberStore(next);
+    } catch (reason) {
+      console.error(reason);
+      setFeedback({ kind: "error", message: "Das Erkennungsprofil konnte nicht gewechselt werden." });
+    }
+  }
+
+  async function addLearningProfile() {
+    const name = window.prompt("Name des neuen Erkennungsprofils", "Neues Profil")?.trim();
+    if (!name) return;
+    const created = createLearningProfile(await ensureLearningStore(), name);
+    await persistProfiles(created, `Erkennungsprofil „${name}“ wurde angelegt und ist ausgewählt. Es gilt ab der nächsten Rechnung.`, "Das Erkennungsprofil konnte nicht angelegt werden.");
+  }
+
+  async function renameActiveLearningProfile() {
+    const current = activeLearningProfile(await ensureLearningStore());
+    const name = window.prompt("Erkennungsprofil umbenennen", current.name)?.trim();
+    if (!name) return;
+    const renamed = renameLearningProfile(await ensureLearningStore(), current.id, name);
+    await persistProfiles(renamed, `Das Erkennungsprofil heißt jetzt „${name}“.`, "Das Erkennungsprofil konnte nicht umbenannt werden.");
+  }
+
+  async function removeActiveLearningProfile() {
+    const store = await ensureLearningStore();
+    if (store.profiles.length < 2) return;
+    const current = activeLearningProfile(store);
+    if (!window.confirm(`Soll das Erkennungsprofil „${current.name}“ gelöscht werden? Die gemerkten Stellen dieses Profils gehen verloren.`)) return;
+    const removed = deleteLearningProfile(store, current.id);
+    await persistProfiles(removed, `Erkennungsprofil „${current.name}“ wurde gelöscht.`, "Das Erkennungsprofil konnte nicht gelöscht werden.");
+  }
+
+  async function clearLearningMemory() {
+    if (!window.confirm("Sollen die gemerkten Ergänzungen des aktuellen Profils gelöscht werden? Bereits geöffnete Rechnungen bleiben unverändert.")) return;
+    try {
+      const next = replaceActiveMemory(await ensureLearningStore(), emptyCorrectionMemory());
+      await saveLearningProfiles(next);
+      rememberStore(next);
+      setFeedback({ kind: "success", message: "Die gemerkten Ergänzungen dieses Profils wurden gelöscht. Dies gilt ab der nächsten Rechnung." });
     } catch (reason) {
       console.error(reason);
       setFeedback({ kind: "error", message: "Die gemerkten Ergänzungen konnten nicht gelöscht werden." });
@@ -488,6 +553,12 @@ export function App() {
         feedback={feedback}
         onDismissFeedback={() => setFeedback(undefined)}
         learningRuleCount={learningRuleCount}
+        learningProfiles={learningProfiles.profiles.map((profile) => ({ id: profile.id, name: profile.name }))}
+        activeLearningProfileId={learningProfiles.activeProfileId}
+        onSelectLearningProfile={(profileId) => void changeLearningProfile(profileId)}
+        onCreateLearningProfile={() => void addLearningProfile()}
+        onRenameLearningProfile={() => void renameActiveLearningProfile()}
+        onDeleteLearningProfile={() => void removeActiveLearningProfile()}
         onClearLearningMemory={() => void clearLearningMemory()}
         onDraftChange={next => { setCompleted(false); setDraft(next); }}
         onSelectField={selectSource}
