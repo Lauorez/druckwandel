@@ -41,8 +41,12 @@ if (-not $signTool) { throw 'signtool.exe wurde nicht gefunden (NuGet Windows SD
 
 $cer = Join-Path $workspace 'drucker\.cert\ERechnung.Dev.cer'
 if (Test-Path -LiteralPath $cer) {
-    Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
-    Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+    try {
+        Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+        Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+    } catch {
+        Write-Warning "Das Entwicklungszertifikat konnte nicht in den Zertifikatspeicher importiert werden: $($_.Exception.Message)"
+    }
 }
 
 & $signTool.FullName sign /fd SHA256 /f $pfx /p 'ERechnung-Dev-Only' $package.FullName

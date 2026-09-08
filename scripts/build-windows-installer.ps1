@@ -127,10 +127,18 @@ try {
 
 $tauriConfig = Get-Content -LiteralPath (Join-Path $tauriRoot "tauri.conf.json") -Raw | ConvertFrom-Json
 $version = [string]$tauriConfig.version
-$builtInstaller = Get-ChildItem -LiteralPath (Join-Path $tauriRoot "target\release\bundle\nsis") -File -Filter "*.exe" |
-    Where-Object LastWriteTimeUtc -GE (Get-Date).ToUniversalTime().AddMinutes(-15) |
-    Sort-Object LastWriteTimeUtc -Descending |
-    Select-Object -First 1
+$nsisDirectories = @(
+    (Join-Path $tauriRoot "target\release\bundle\nsis")
+)
+if ($env:CARGO_TARGET_DIR) {
+    $nsisDirectories = @((Join-Path $env:CARGO_TARGET_DIR "release\bundle\nsis")) + $nsisDirectories
+}
+$builtInstaller = $nsisDirectories | ForEach-Object {
+    if (Test-Path -LiteralPath $_) {
+        Get-ChildItem -LiteralPath $_ -File -Filter "*.exe" |
+            Where-Object LastWriteTimeUtc -GE (Get-Date).ToUniversalTime().AddMinutes(-30)
+    }
+} | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 if (-not $builtInstaller) {
     throw "Tauri meldete Erfolg, aber der neue Windows-Installer wurde nicht gefunden."
 }
