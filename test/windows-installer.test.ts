@@ -9,6 +9,7 @@ describe("gemeinsamer Windows-Installer", () => {
     const config = JSON.parse(
       readFileSync(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
     );
+    expect(config.bundle.windows.nsis.installMode).toBe("currentUser");
     expect(config.bundle.windows.nsis.installerHooks).toBe("nsis/installer-hooks.nsh");
 
     const hooks = readFileSync(
@@ -22,6 +23,7 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(hooks).toContain("Printer.msix");
     expect(hooks).toContain("$UpdateMode <> 1");
     expect(hooks).toContain("SetOutPath $INSTDIR");
+    expect(hooks).toContain("Die Anwendung wird trotzdem installiert");
   });
 
   it("installiert ausschließlich das erwartete, signierte Druckerpaket", () => {
@@ -32,6 +34,8 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(installer).toContain('$packageName = "ERechnung.VirtualPrinter.PoC"');
     expect(installer).toContain("Get-AuthenticodeSignature");
     expect(installer).toContain("Test-CertificateTrusted");
+    expect(installer).toContain("Cert:\\CurrentUser\\TrustedPeople");
+    expect(installer).not.toContain("-Verb RunAs");
     expect(installer).toContain("Add-AppxPackage");
     expect(installer).toContain("Wait-ForPrinter");
   });
@@ -42,6 +46,10 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(setup).toContain("PROCESSOR_ARCHITEW6432");
     expect(setup).toContain("AMD64");
     expect(setup).toContain("Is64BitProcess");
+    expect(setup).toContain("LOCALAPPDATA");
+    expect(setup).toContain("rustup-init.exe");
+    expect(setup).toContain("dotnet-install.ps1");
+    expect(setup).not.toContain("-Verb RunAs");
     expect(setup).toContain("create-dev-cert.ps1");
     expect(setup).toContain("validators:fetch");
     expect(setup).toContain("demo:invoice");

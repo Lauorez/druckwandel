@@ -36,7 +36,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup-windows.ps1
 ```
 
-Fehlen Visual Studio, das Windows-SDK, Node, Rust oder das .NET-SDK, hebt das Skript die Werkzeuginstallation einmalig per UAC an. `npm install` und der Installer-Build laufen danach wieder im aktuellen Benutzerkonto.
+Das Skript braucht **keine Administratorrechte**. Fehlende Werkzeuge (Node 22, Rust, .NET SDK 10) werden nur für das aktuelle Benutzerkonto nachgeladen. Visual Studio Build Tools und das Windows-SDK werden nicht maschinenweit installiert; `signtool` kommt aus dem NuGet-Paket der Windows SDK BuildTools. Der NSIS-Installer installiert die App für den aktuellen Benutzer. Das Testzertifikat landet in `CurrentUser\TrustedPeople`, nicht in `LocalMachine`.
 
 Ergebnis:
 

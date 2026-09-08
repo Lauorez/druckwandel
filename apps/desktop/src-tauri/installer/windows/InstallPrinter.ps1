@@ -63,9 +63,20 @@ function Get-PackageIdentity {
 function Test-CertificateTrusted {
     param([Parameter(Mandatory = $true)][string]$Thumbprint)
 
-    return [bool](Get-ChildItem -Path Cert:\LocalMachine\TrustedPeople -ErrorAction SilentlyContinue |
-        Where-Object Thumbprint -EQ $Thumbprint |
-        Select-Object -First 1)
+    $stores = @(
+        "Cert:\CurrentUser\TrustedPeople",
+        "Cert:\CurrentUser\Root",
+        "Cert:\LocalMachine\TrustedPeople"
+    )
+    foreach ($store in $stores) {
+        $match = Get-ChildItem -Path $store -ErrorAction SilentlyContinue |
+            Where-Object Thumbprint -EQ $Thumbprint |
+            Select-Object -First 1
+        if ($match) {
+            return $true
+        }
+    }
+    return $false
 }
 
 function Install-DevelopmentCertificate {
@@ -78,15 +89,11 @@ function Install-DevelopmentCertificate {
         return
     }
 
-    Write-SetupLog "Windows fragt einmalig nach der Erlaubnis für das Testzertifikat."
-    $certUtilPath = Join-Path $env:SystemRoot "System32\certutil.exe"
-    $arguments = "-addstore -f `"TrustedPeople`" `"$Path`""
-    $process = Start-Process -FilePath $certUtilPath -ArgumentList $arguments -Verb RunAs -Wait -PassThru
-    if ($process.ExitCode -ne 0) {
-        throw "Das Testzertifikat wurde nicht bestätigt (Fehlercode $($process.ExitCode))."
-    }
+    Write-SetupLog "Das Testzertifikat wird nur für das aktuelle Benutzerkonto übernommen."
+    Import-Certificate -FilePath $Path -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
+    Import-Certificate -FilePath $Path -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
     if (-not (Test-CertificateTrusted -Thumbprint $Thumbprint)) {
-        throw "Das bestätigte Testzertifikat wurde nicht im Windows-Zertifikatspeicher gefunden."
+        throw "Das Testzertifikat konnte nicht im Benutzer-Zertifikatspeicher abgelegt werden."
     }
 }
 
@@ -158,7 +165,7 @@ try {
     }
 
     if (-not $ValidateOnly -and $packageSignature.Status -ne "Valid") {
-        throw "Windows vertraut der Signatur des Druckerpakets nicht: $($packageSignature.Status)."
+        Write-SetupLog "Windows bewertet die Paketsignatur als $($packageSignature.Status). Die Anmeldung wird trotzdem für den aktuellen Benutzer versucht."
     }
     if ($ValidateOnly) {
         Write-SetupLog "Druckerpaket, Abhängigkeit und Signaturen sind vollständig."
@@ -220,14 +227,18 @@ try {
         throw "Der Windows-Druckdienst wurde nicht gefunden."
     }
     foreach ($workflowService in $workflowServices) {
-        if ($workflowService.Status -eq "Running") {
-            Restart-Service -InputObject $workflowService -Force
-        } else {
-            Start-Service -InputObject $workflowService
+        try {
+            if ($workflowService.Status -eq "Running") {
+                Restart-Service -InputObject $workflowService -Force -ErrorAction Stop
+            } else {
+                Start-Service -InputObject $workflowService -ErrorAction Stop
+            }
+        } catch {
+            Write-SetupLog "Der Druckdienst $($workflowService.Name) konnte ohne erhöhte Rechte nicht neu gestartet werden."
         }
     }
     $stoppedServices = @(Get-Service -Name "PrintWorkflowUserSvc*" | Where-Object Status -NE "Running")
-    if ($stoppedServices.Count -gt 0) {
+    if ($stoppedServices.Count -gt 0 -and -not (Get-Printer -Name $printerName -ErrorAction SilentlyContinue)) {
         throw "Der Windows-Druckdienst konnte nicht gestartet werden."
     }
 

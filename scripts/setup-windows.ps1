@@ -7,26 +7,39 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $workspace = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $workspace
+$toolsRoot = Join-Path $env:LOCALAPPDATA "ERechnungsAssistent\tools"
+$nodeHome = Join-Path $toolsRoot "node"
+$dotnetHome = Join-Path $env:LOCALAPPDATA "Microsoft\dotnet"
+$cargoHome = Join-Path $env:USERPROFILE ".cargo\bin"
 
-function Test-Administrator {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+function Add-UserPathEntry {
+    param([Parameter(Mandatory = $true)][string]$Directory)
+
+    if (-not (Test-Path -LiteralPath $Directory)) {
+        return
+    }
+    $user = [Environment]::GetEnvironmentVariable("Path", "User")
+    $parts = @()
+    if ($user) {
+        $parts = @($user.Split(";", [StringSplitOptions]::RemoveEmptyEntries))
+    }
+    if ($parts -notcontains $Directory) {
+        [Environment]::SetEnvironmentVariable("Path", ($Directory, $user -join ";").Trim(";"), "User")
+    }
+    if ($env:Path -notlike "*$Directory*") {
+        $env:Path = "$Directory;$env:Path"
+    }
 }
 
 function Refresh-SessionPath {
     $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $user = [Environment]::GetEnvironmentVariable("Path", "User")
     $env:Path = "$machine;$user"
-    $cargo = Join-Path $env:USERPROFILE ".cargo\bin"
-    if (Test-Path -LiteralPath $cargo) {
-        $env:Path = "$cargo;$env:Path"
-    }
-    $npmGlobal = Join-Path $env:APPDATA "npm"
-    if (Test-Path -LiteralPath $npmGlobal) {
-        $env:Path = "$npmGlobal;$env:Path"
+    foreach ($directory in @($cargoHome, $dotnetHome, $nodeHome, (Join-Path $env:APPDATA "npm"))) {
+        Add-UserPathEntry -Directory $directory
     }
 }
 
@@ -42,28 +55,29 @@ function Invoke-Checked {
     }
 }
 
-function Get-VsWhere {
-    Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+function Get-NpmCommand {
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($npm) {
+        return $npm.Source
+    }
+    $npm = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npm) {
+        return $npm.Source
+    }
+    throw "npm wurde nicht gefunden. Node.js liegt nach der Benutzerinstallation unter $nodeHome."
 }
 
-function Get-MsBuildPath {
-    $vswhere = Get-VsWhere
-    if (-not (Test-Path -LiteralPath $vswhere)) {
-        return $null
-    }
-    return & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" |
-        Select-Object -First 1
-}
+function Save-RemoteFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
 
-function Get-SignToolPath {
-    $kits = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
-    if (-not (Test-Path -LiteralPath $kits)) {
-        return $null
-    }
-    return Get-ChildItem -LiteralPath $kits -Recurse -File -Filter "signtool.exe" -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -like "*\x64\signtool.exe" } |
-        Sort-Object FullName -Descending |
-        Select-Object -First 1
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
+    Write-Host "Lade $Url ..."
+    $client = New-Object System.Net.WebClient
+    $client.Headers.Add("User-Agent", "erechnungs-assistent-windows-setup")
+    $client.DownloadFile($Url, $Path)
 }
 
 function Test-NodeVersion {
@@ -90,105 +104,75 @@ function Test-Rust {
         [bool](Get-Command cargo -ErrorAction SilentlyContinue)
 }
 
-function Test-WebView2 {
-    $key = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-    return Test-Path -LiteralPath $key
-}
-
 function Get-MissingTools {
     $missing = @()
     if (-not (Test-NodeVersion)) { $missing += "Node.js 22+" }
     if (-not (Test-Rust)) { $missing += "Rust (rustup)" }
     if (-not (Test-DotNetSdk10)) { $missing += ".NET SDK 10" }
-    if (-not (Get-MsBuildPath)) { $missing += "Visual Studio MSBuild" }
-    if (-not (Get-SignToolPath)) { $missing += "Windows SDK / signtool" }
-    if (-not (Test-WebView2)) { $missing += "WebView2 Runtime" }
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue) -and $missing.Count -gt 0) {
-        $missing += "winget"
-    }
     return $missing
 }
 
-function Install-WingetPackage {
-    param(
-        [Parameter(Mandatory = $true)][string]$Id,
-        [string]$Override = ""
-    )
+function Install-UserNode {
+    $index = Invoke-RestMethod -Uri "https://nodejs.org/dist/index.json"
+    $release = $index | Where-Object { $_.version.StartsWith("v22.") -and $_.lts } | Select-Object -First 1
+    if (-not $release) {
+        throw "Keine Node.js-22-LTS-Version gefunden."
+    }
+    $zipName = "node-$($release.version)-win-x64.zip"
+    $zipPath = Join-Path $env:TEMP $zipName
+    Save-RemoteFile -Url "https://nodejs.org/dist/$($release.version)/$zipName" -Path $zipPath
+    $extract = Join-Path $env:TEMP "node-extract-$(Get-Random)"
+    New-Item -ItemType Directory -Force -Path $extract | Out-Null
+    tar --force-local -xf $zipPath -C $extract
+    $payload = Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1
+    if (-not $payload -or -not (Test-Path -LiteralPath (Join-Path $payload.FullName "node.exe"))) {
+        throw "Das Node.js-Paket enthält keine node.exe."
+    }
+    if (Test-Path -LiteralPath $nodeHome) {
+        Remove-Item -LiteralPath $nodeHome -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $nodeHome) | Out-Null
+    Move-Item -LiteralPath $payload.FullName -Destination $nodeHome
+    Add-UserPathEntry -Directory $nodeHome
+}
 
-    $arguments = @(
-        "install", "--id", $Id, "-e",
-        "--accept-package-agreements", "--accept-source-agreements",
-        "--disable-interactivity"
-    )
-    if ($Override) {
-        $arguments += @("--override", $Override)
+function Install-UserRust {
+    $rustupInit = Join-Path $env:TEMP "rustup-init.exe"
+    Save-RemoteFile -Url "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe" -Path $rustupInit
+    & $rustupInit -y --default-toolchain 1.88.0 --default-host x86_64-pc-windows-msvc
+    if ($LASTEXITCODE -ne 0) {
+        throw "rustup-init ist fehlgeschlagen (Fehlercode $LASTEXITCODE)."
     }
-    Write-Host "Installiere $Id ..."
-    & winget @arguments
-    $accepted = @(0, 3010, -1978335189, -1978335135)
-    if ($accepted -notcontains $LASTEXITCODE) {
-        throw "winget install $Id ist fehlgeschlagen (Fehlercode $LASTEXITCODE)."
-    }
+    Add-UserPathEntry -Directory $cargoHome
     Refresh-SessionPath
+    Invoke-Checked -Command "rustup" -Arguments @("toolchain", "install", "1.88.0")
+}
+
+function Install-UserDotNet {
+    $script = Join-Path $env:TEMP "dotnet-install.ps1"
+    Save-RemoteFile -Url "https://dot.net/v1/dotnet-install.ps1" -Path $script
+    & $script -Channel 10.0 -InstallDir $dotnetHome
+    Add-UserPathEntry -Directory $dotnetHome
 }
 
 function Install-Prerequisites {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        throw "winget fehlt. Unter Windows 11 App Installer / 'App-Installer' aus dem Microsoft Store aktualisieren."
-    }
-
+    Write-Host "Installiere fehlende Werkzeuge nur für das aktuelle Benutzerkonto (ohne Administrator)."
+    New-Item -ItemType Directory -Force -Path $toolsRoot | Out-Null
     if (-not (Test-NodeVersion)) {
-        Install-WingetPackage -Id "OpenJS.NodeJS.LTS"
+        Install-UserNode
+        Refresh-SessionPath
     }
     if (-not (Test-Rust)) {
-        Install-WingetPackage -Id "Rustlang.Rustup"
+        Install-UserRust
         Refresh-SessionPath
-        if (Get-Command rustup -ErrorAction SilentlyContinue) {
-            Invoke-Checked -Command "rustup" -Arguments @("toolchain", "install", "1.88.0")
-            Invoke-Checked -Command "rustup" -Arguments @("default", "1.88.0")
-        }
     }
     if (-not (Test-DotNetSdk10)) {
-        Install-WingetPackage -Id "Microsoft.DotNet.SDK.10"
+        Install-UserDotNet
+        Refresh-SessionPath
     }
-    if (-not (Test-WebView2)) {
-        Install-WingetPackage -Id "Microsoft.EdgeWebView2Runtime"
-    }
-    if (-not (Get-SignToolPath)) {
-        try {
-            Install-WingetPackage -Id "Microsoft.WindowsSDK.10.0.26100"
-        } catch {
-            Write-Warning "Windows-SDK 26100 konnte nicht einzeln installiert werden. Es wird mit den Build Tools mitinstalliert."
-        }
-    }
-    if (-not (Get-MsBuildPath)) {
-        $vsOverride = @(
-            "--wait", "--passive", "--norestart",
-            "--add", "Microsoft.VisualStudio.Workload.VCTools",
-            "--add", "Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools",
-            "--add", "Microsoft.VisualStudio.Workload.UniversalBuildTools",
-            "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100",
-            "--includeRecommended"
-        ) -join " "
-        $installed = $false
-        foreach ($vsId in @("Microsoft.VisualStudio.2026.BuildTools", "Microsoft.VisualStudio.2022.BuildTools")) {
-            try {
-                Install-WingetPackage -Id $vsId -Override $vsOverride
-                $installed = $true
-                break
-            } catch {
-                Write-Warning "$vsId konnte nicht installiert werden: $_"
-            }
-        }
-        if (-not $installed) {
-            throw "Visual Studio Build Tools konnten nicht installiert werden. Installiere Visual Studio 2026 mit .NET Desktop, WinUI/MSIX und Windows 11 SDK 26100."
-        }
-    }
-
-    Refresh-SessionPath
     $stillMissing = Get-MissingTools
     if ($stillMissing.Count -gt 0) {
-        throw "Nach der Werkzeuginstallation fehlen weiterhin: $($stillMissing -join ', ')."
+        throw "Nach der Benutzerinstallation fehlen weiterhin: $($stillMissing -join ', ')."
     }
 }
 
@@ -246,37 +230,27 @@ if ($InstallPrerequisitesOnly) {
     return
 }
 
-$missingTools = @()
 if (-not $SkipToolInstall) {
     $missingTools = Get-MissingTools
-}
-
-if ($missingTools.Count -gt 0) {
-    Write-Host "Fehlende Werkzeuge: $($missingTools -join ', ')"
-    if (-not (Test-Administrator)) {
-        Write-Host "Hebe die Werkzeuginstallation einmalig per UAC an ..."
-        $arguments = @(
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-File", $PSCommandPath,
-            "-InstallPrerequisitesOnly"
-        )
-        $elevated = Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -PassThru -ArgumentList $arguments
-        if ($elevated.ExitCode -ne 0) {
-            throw "Die Werkzeuginstallation (Administrator) ist fehlgeschlagen (Fehlercode $($elevated.ExitCode))."
-        }
-        Refresh-SessionPath
-        $missingTools = Get-MissingTools
-        if ($missingTools.Count -gt 0) {
-            throw "Nach der Administrator-Installation fehlen weiterhin: $($missingTools -join ', '). PowerShell neu starten und das Skript erneut ausführen."
-        }
-    } else {
+    if ($missingTools.Count -gt 0) {
+        Write-Host "Fehlende Werkzeuge: $($missingTools -join ', ')"
         Install-Prerequisites
+        Refresh-SessionPath
     }
 }
 
 if (Get-Command rustup -ErrorAction SilentlyContinue) {
     Invoke-Checked -Command "rustup" -Arguments @("show")
+}
+
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+$msvcLinker = $null
+if (Test-Path -LiteralPath $vswhere) {
+    $msvcLinker = & $vswhere -latest -products * -find "VC\Tools\MSVC\**\bin\Hostx64\x64\link.exe" |
+        Select-Object -First 1
+}
+if (-not $msvcLinker -and -not (Get-Command link.exe -ErrorAction SilentlyContinue)) {
+    Write-Warning "Kein MSVC-Linker gefunden. Der Tauri-Build braucht vorhandene C++-Build-Tools; ohne Administrator können sie nicht nachinstalliert werden."
 }
 
 $certificateScript = Join-Path $workspace "drucker\scripts\create-dev-cert.ps1"
@@ -286,20 +260,21 @@ Invoke-Checked -Command "powershell.exe" -Arguments @(
     "-File", $certificateScript
 )
 
+$npm = Get-NpmCommand
 if (Test-Path -LiteralPath (Join-Path $workspace "package-lock.json")) {
-    Invoke-Checked -Command "npm.cmd" -Arguments @("ci")
+    Invoke-Checked -Command $npm -Arguments @("ci")
 } else {
-    Invoke-Checked -Command "npm.cmd" -Arguments @("install")
+    Invoke-Checked -Command $npm -Arguments @("install")
 }
 
-Invoke-Checked -Command "npm.cmd" -Arguments @("run", "validators:fetch")
+Invoke-Checked -Command $npm -Arguments @("run", "validators:fetch")
 
 $java = Join-Path $workspace "apps\desktop\src-tauri\resources\validators\jre\bin\java.exe"
 if (-not (Test-Path -LiteralPath $java)) {
     throw "Windows-JRE fehlt nach validators:fetch ($java)."
 }
 
-Invoke-Checked -Command "npm.cmd" -Arguments @("run", "demo:invoice")
+Invoke-Checked -Command $npm -Arguments @("run", "demo:invoice")
 
 if ($SkipInstaller) {
     Write-Host "Werkzeuge, Validatoren und Musterrechnung sind eingerichtet. Installer-Build wurde übersprungen."
@@ -331,8 +306,8 @@ if (-not (Test-Path -LiteralPath $demo)) {
 Copy-Item -LiteralPath $demo -Destination (Join-Path $setup.DirectoryName "muster-rechnung.pdf") -Force
 
 Write-Host ""
-Write-Host "Windows-Setup abgeschlossen."
+Write-Host "Windows-Setup abgeschlossen (ohne Administratorrechte)."
 Write-Host "Installer: $($setup.FullName)"
 Write-Host "Musterrechnung: $demo"
 Write-Host "Kopie neben dem Installer: $(Join-Path $setup.DirectoryName 'muster-rechnung.pdf')"
-Write-Host "Als Nächstes nur die Setup-Datei installieren, danach die Musterrechnung in der App öffnen."
+Write-Host "Als Nächstes nur die Setup-Datei installieren (aktueller Benutzer), danach die Musterrechnung in der App öffnen."
