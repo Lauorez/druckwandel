@@ -270,6 +270,9 @@ async function renderSource(source: SyntheticInvoiceSource): Promise<Uint8Array>
     draw(`Rechnungsdatum: ${germanDate(source.issueDate)}`, 69, 606);
     draw(`Leistungsdatum: ${germanDate(source.serviceDate)}`, 69, 590);
     draw(`Zahlbar bis: ${germanDate(source.dueDate)}`, 69, 574);
+    draw("Ansprechpartner: Buchhaltung", 330, 606);
+    draw("Telefon: +49 30 1234567", 330, 590);
+    draw("E-Mail: rechnung@muster.invalid", 330, 574);
     y = 530;
     tableHeader(y);
     y -= 16;
@@ -313,6 +316,9 @@ async function renderSource(source: SyntheticInvoiceSource): Promise<Uint8Array>
     draw(amountForDisplay(source.totals.payable), 485, y);
     draw(source.currencyMarker, 550, y);
     draw(`USt.-IdNr.: ${source.seller.vatId}`, 60, 60);
+    draw("Ansprechpartner: Buchhaltung", 60, 44);
+    draw("Telefon: +49 30 1234567", 250, 44);
+    draw("E-Mail: rechnung@muster.invalid", 60, 28);
   } else {
     draw(`Netto: ${amountForDisplay(source.totals.lineNet)} ${source.currencyMarker}`, 338, y);
     draw(`USt. ${source.taxRate} %: ${amountForDisplay(source.totals.taxTotal)} ${source.currencyMarker}`, 338, y - 16);

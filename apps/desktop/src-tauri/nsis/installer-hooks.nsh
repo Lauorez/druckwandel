@@ -41,10 +41,10 @@
   Pop $1
   ${If} $0 != 0
     DetailPrint "$1"
-    MessageBox MB_ICONSTOP|MB_OK "Der E-Rechnungsdrucker konnte nicht eingerichtet werden. Die Anwendung wurde noch nicht installiert.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\E-Rechnungs-Assistent-Installation.log"
-    Abort
+    MessageBox MB_ICONEXCLAMATION|MB_OK "Der E-Rechnungsdrucker konnte ohne Administratorrechte nicht eingerichtet werden. Die Anwendung wird trotzdem installiert.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\E-Rechnungs-Assistent-Installation.log"
+  ${Else}
+    DetailPrint "Der E-Rechnungsdrucker ist bereit."
   ${EndIf}
-  DetailPrint "Der E-Rechnungsdrucker ist bereit."
   ; File changes NSIS' output directory. Restore Tauri's application directory
   ; before the generated installer copies its executable and resources.
   SetOutPath $INSTDIR

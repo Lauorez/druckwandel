@@ -13,6 +13,12 @@ export interface ReviewPartyDraft {
   vatId: string;
 }
 
+export interface ReviewSellerDraft extends ReviewPartyDraft {
+  contactName: string;
+  phone: string;
+  email: string;
+}
+
 export interface ReviewLineDraft {
   id: string;
   description: string;
@@ -30,7 +36,7 @@ export interface ReviewDraft {
   serviceDate: string;
   currency: string;
   buyerReference: string;
-  seller: ReviewPartyDraft;
+  seller: ReviewSellerDraft;
   buyer: ReviewPartyDraft;
   payment: { iban: string; bic: string; terms: string };
   lines: ReviewLineDraft[];
@@ -77,6 +83,9 @@ export function reviewDraftFromExtraction(result: ExtractionResult): ReviewDraft
       city: value(result, "sellerCity"),
       countryCode: value(result, "sellerCountryCode", "DE"),
       vatId: value(result, "sellerVatId"),
+      contactName: value(result, "sellerContact"),
+      phone: value(result, "sellerPhone"),
+      email: value(result, "sellerEmail"),
     },
     buyer: {
       name: value(result, "buyerName"),
@@ -103,7 +112,24 @@ export function reviewDraftFromExtraction(result: ExtractionResult): ReviewDraft
   };
 }
 
+function germanElectronicAddress(vatId: string, leitwegId = ""): { value: string; schemeId: string } | undefined {
+  const vat = vatId.replaceAll(" ", "").toUpperCase();
+  if (/^[A-Z]{2}[A-Z0-9]{8,12}$/.test(vat)) return { value: vat, schemeId: "9930" };
+  const leitweg = leitwegId.trim();
+  if (/^\d{2,12}-\d+-\d{2}$/.test(leitweg)) return { value: leitweg, schemeId: "0204" };
+  return undefined;
+}
+
 export function invoiceInputFromReview(draft: ReviewDraft): InvoiceInput {
+  const sellerVat = draft.seller.vatId.replaceAll(" ", "").toUpperCase();
+  const buyerVat = draft.buyer.vatId.replaceAll(" ", "").toUpperCase();
+  const sellerContact = {
+    name: draft.seller.contactName?.trim() ?? "",
+    phone: draft.seller.phone?.trim() ?? "",
+    email: draft.seller.email?.trim() ?? "",
+  };
+  const sellerEndpoint = germanElectronicAddress(sellerVat);
+  const buyerEndpoint = germanElectronicAddress(buyerVat, draft.buyerReference);
   return {
     invoiceNumber: draft.invoiceNumber.trim(),
     invoiceType: "380",
@@ -120,7 +146,9 @@ export function invoiceInputFromReview(draft: ReviewDraft): InvoiceInput {
         postalCode: draft.seller.postalCode.trim(),
         countryCode: draft.seller.countryCode.trim().toUpperCase(),
       },
-      ...(draft.seller.vatId.trim() ? { vatId: draft.seller.vatId.replaceAll(" ", "").toUpperCase() } : {}),
+      ...(sellerVat ? { vatId: sellerVat } : {}),
+      ...(sellerEndpoint ? { electronicAddress: sellerEndpoint } : {}),
+      ...(sellerContact.name || sellerContact.phone || sellerContact.email ? { contact: sellerContact } : {}),
     },
     buyer: {
       name: draft.buyer.name.trim(),
@@ -130,7 +158,8 @@ export function invoiceInputFromReview(draft: ReviewDraft): InvoiceInput {
         postalCode: draft.buyer.postalCode.trim(),
         countryCode: draft.buyer.countryCode.trim().toUpperCase(),
       },
-      ...(draft.buyer.vatId.trim() ? { vatId: draft.buyer.vatId.replaceAll(" ", "").toUpperCase() } : {}),
+      ...(buyerVat ? { vatId: buyerVat } : {}),
+      ...(buyerEndpoint ? { electronicAddress: buyerEndpoint } : {}),
     },
     lines: draft.lines.map((line) => ({
       id: line.id,

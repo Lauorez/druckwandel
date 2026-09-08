@@ -7,8 +7,11 @@ export const ZUGFERD_EN16931_GUIDELINE = "urn:cen.eu:en16931:2017";
 
 function partyXml(tag: string, party: Party): string {
   const tax = party.vatId ? `<ram:SpecifiedTaxRegistration>${e("ram:ID", party.vatId, ' schemeID="VA"')}</ram:SpecifiedTaxRegistration>` : "";
+  const endpoint = party.electronicAddress
+    ? `<ram:URIUniversalCommunication>${e("ram:URIID", party.electronicAddress.value, ` schemeID="${party.electronicAddress.schemeId}"`)}</ram:URIUniversalCommunication>`
+    : "";
   const contact = party.contact ? `<ram:DefinedTradeContact>${e("ram:PersonName", party.contact.name)}${party.contact.phone ? `<ram:TelephoneUniversalCommunication>${e("ram:CompleteNumber", party.contact.phone)}</ram:TelephoneUniversalCommunication>` : ""}${party.contact.email ? `<ram:EmailURIUniversalCommunication>${e("ram:URIID", party.contact.email)}</ram:EmailURIUniversalCommunication>` : ""}</ram:DefinedTradeContact>` : "";
-  return `<ram:${tag}>${e("ram:Name", party.name)}${contact}<ram:PostalTradeAddress>${e("ram:PostcodeCode", party.address.postalCode)}${e("ram:LineOne", party.address.line1)}${e("ram:LineTwo", party.address.line2)}${e("ram:CityName", party.address.city)}${e("ram:CountryID", party.address.countryCode)}</ram:PostalTradeAddress>${tax}</ram:${tag}>`;
+  return `<ram:${tag}>${e("ram:Name", party.name)}${contact}<ram:PostalTradeAddress>${e("ram:PostcodeCode", party.address.postalCode)}${e("ram:LineOne", party.address.line1)}${e("ram:LineTwo", party.address.line2)}${e("ram:CityName", party.address.city)}${e("ram:CountryID", party.address.countryCode)}</ram:PostalTradeAddress>${endpoint}${tax}</ram:${tag}>`;
 }
 
 export function generateCii(invoice: CalculatedInvoice): string {

@@ -19,7 +19,8 @@ export interface SaveAndArchiveRequest {
   pdfContentsBase64: string;
   xmlContents: string;
   metadata: ArchiveMetadata;
-  evidence: { schemaVersion: 1; documentId: string; sourceRevision: number; snapshot: string };
+  evidence: { schemaVersion: 1; documentId: string; sourceRevision: number; snapshot: string; hybridConfirmed: boolean };
+  ticketId: string;
 }
 
 export interface ArchiveEntrySummary {
@@ -36,6 +37,8 @@ export interface ArchiveEntrySummary {
   signed: boolean;
   documentId?: string | null;
   contentHash?: string | null;
+  independentlyChecked?: boolean;
+  ruleVersion?: string | null;
 }
 
 export interface ArchiveEntryDetail extends ArchiveEntrySummary {
@@ -99,6 +102,37 @@ export function saveAndArchiveInvoice(request: SaveAndArchiveRequest): Promise<S
   return invoke("save_and_archive_invoice", { request });
 }
 
+export interface OfficialCheckIssue {
+  severity: "error" | "warning";
+  code: string;
+  path: string;
+  message: string;
+}
+
+export interface OfficialCheckResult {
+  status: string;
+  valid: boolean;
+  ticketId?: string | null;
+  ruleVersion: string;
+  engine: string;
+  issues: OfficialCheckIssue[];
+}
+
+export function validatePreparedInvoice(request: {
+  format: ArchiveFormat;
+  xmlContents: string;
+  pdfContentsBase64: string;
+  documentId: string;
+  sourceRevision: number;
+  snapshot: string;
+}): Promise<OfficialCheckResult> {
+  return invoke("validate_prepared_invoice", { request });
+}
+
+export function cancelInvoiceValidation(): Promise<void> {
+  return invoke("cancel_invoice_validation");
+}
+
 export function listArchiveEntries(query: ArchiveQuery): Promise<ArchiveListResult> {
   return invoke("list_archive_entries", { query });
 }
@@ -123,7 +157,7 @@ export function openArchiveFolder(): Promise<void> {
   return invoke("open_archive_folder");
 }
 
-export function openArchiveEntryFile(id: string, fileKind: "pdf" | "xml"): Promise<void> {
+export function openArchiveEntryFile(id: string, fileKind: "pdf" | "xml" | "report"): Promise<void> {
   return invoke("open_archive_entry_file", { id, fileKind });
 }
 

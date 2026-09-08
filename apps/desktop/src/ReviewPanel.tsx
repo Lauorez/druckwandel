@@ -1,4 +1,7 @@
+import type { ContentConsistency } from "../../../src/engine/consistency.js";
 import type { CalculatedInvoice } from "../../../src/domain/types.js";
+import { germanFieldLabel } from "../../../src/engine/validation-report.js";
+import type { OfficialCheckIssue } from "./archiveStore.js";
 import { decimal, money } from "../../../src/domain/money.js";
 import { formatGermanDecimal } from "../../../src/domain/localized-decimal.js";
 import type { ExtractedFieldName, ExtractionResult } from "../../../src/extraction/types.js";
@@ -16,8 +19,13 @@ interface ReviewPanelProps {
   validation: ReviewValidation;
   zugferdValidation: ReviewValidation;
   calculated?: CalculatedInvoice;
+  consistency?: ContentConsistency;
+  hybridConfirmed: boolean;
+  onHybridConfirmedChange: (confirmed: boolean) => void;
   unsupportedCases: UnsupportedCase[];
   activeAction?: "draft" | "authority" | "pdf";
+  validationPhase?: string;
+  officialIssues?: OfficialCheckIssue[];
   feedback?: ActionFeedback;
   onDismissFeedback: () => void;
   learningRuleCount: number;
@@ -31,6 +39,7 @@ interface ReviewPanelProps {
   onDraftChange: (draft: ReviewDraft) => void;
   onSelectField: (name: ExtractedFieldName) => void;
   onSelectTokens: (tokenIds: string[]) => void;
+  onFocusPath: (path: string) => void;
   sourceSelections: FieldSourceSelections;
   onChooseSource: (name: LearnableFieldName, label: string) => void;
   onSave: () => void;
@@ -53,40 +62,31 @@ function nextManualLineId(): string {
   return `manual-${Date.now()}-${manualLineSequence}`;
 }
 
-const VALIDATION_LABELS: Record<string, string> = {
-  invoiceNumber: "Rechnungsnummer",
-  buyerReference: "Bestellnummer oder Leitweg-ID",
-  issueDate: "Rechnungsdatum",
-  currency: "Währung",
-  "seller.name": "Absender: Name",
-  "seller.address.line1": "Absender: Straße und Hausnummer",
-  "seller.address.city": "Absender: Ort",
-  "seller.address.postalCode": "Absender: Postleitzahl",
-  "seller.address.countryCode": "Absender: Land",
-  "buyer.name": "Empfänger: Name",
-  "buyer.address.line1": "Empfänger: Straße und Hausnummer",
-  "buyer.address.city": "Empfänger: Ort",
-  "buyer.address.postalCode": "Empfänger: Postleitzahl",
-  "buyer.address.countryCode": "Empfänger: Land",
-  lines: "Leistungen und Artikel",
-  document: "Art der Rechnung",
+const SOURCE_PATH: Record<string, string> = {
+  invoiceNumber: "invoiceNumber",
+  buyerReference: "buyerReference",
+  issueDate: "issueDate",
+  dueDate: "dueDate",
+  serviceDate: "serviceDate",
+  currency: "currency",
+  sellerName: "seller.name",
+  sellerAddressLine1: "seller.address.line1",
+  sellerCity: "seller.address.city",
+  sellerPostalCode: "seller.address.postalCode",
+  sellerCountryCode: "seller.address.countryCode",
+  buyerName: "buyer.name",
+  buyerAddressLine1: "buyer.address.line1",
+  buyerCity: "buyer.address.city",
+  buyerPostalCode: "buyer.address.postalCode",
+  buyerCountryCode: "buyer.address.countryCode",
 };
 
+export function reviewFieldId(path: string): string {
+  return `review-field-${path.replace(/\./g, "-")}`;
+}
+
 function validationLabel(path: string): string {
-  const lineMatch = path.match(/^lines\.(\d+)\.(.+)$/);
-  if (lineMatch?.[1]) {
-    const field = lineMatch[2] === "name"
-      ? "Beschreibung"
-      : lineMatch[2] === "quantity"
-        ? "Menge"
-        : lineMatch[2] === "netUnitPrice"
-          ? "Einzelpreis"
-          : lineMatch[2] === "tax.rate"
-            ? "Steuersatz"
-            : lineMatch[2];
-    return `Position ${Number(lineMatch[1]) + 1}: ${field}`;
-  }
-  return VALIDATION_LABELS[path] ?? path;
+  return germanFieldLabel(path);
 }
 
 function lineAmount(line: ReviewLineDraft): string | undefined {
@@ -103,8 +103,13 @@ export function ReviewPanel({
   validation,
   zugferdValidation,
   calculated,
+  consistency,
+  hybridConfirmed,
+  onHybridConfirmedChange,
   unsupportedCases,
   activeAction,
+  validationPhase,
+  officialIssues,
   feedback,
   onDismissFeedback,
   learningRuleCount,
@@ -120,6 +125,7 @@ export function ReviewPanel({
   onSelectTokens,
   sourceSelections,
   onChooseSource,
+  onFocusPath,
   onSave,
   onCreateXRechnung,
   onCreateZugferd,
@@ -135,7 +141,8 @@ export function ReviewPanel({
     const remembered = source?.transformations.some((step) => step.operation === "learned-layout");
     const assigned = sourceSelections[name] !== undefined;
     const accessibleLabel = name.startsWith("seller") ? `Absender: ${label}` : name.startsWith("buyer") && name !== "buyerReference" ? `Empfänger: ${label}` : label;
-    return <div className="source-field">
+    const path = SOURCE_PATH[name] ?? name;
+    return <div className="source-field" id={reviewFieldId(path)}>
       <label className={source || assigned ? "" : "missing"} onClick={() => onSelectField(name)}>
         <span>{label} {(source || assigned) && <small>{assigned ? "selbst zugeordnet" : remembered ? "aus ähnlicher Rechnung" : "übernommen"}</small>}</span>
         {control}
@@ -207,6 +214,12 @@ export function ReviewPanel({
           {sourceField("sellerCity", "Ort", <input required value={draft.seller.city} onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, city: event.target.value } })} />)}
           {sourceField("sellerCountryCode", "Land (zum Beispiel DE)", <input required maxLength={2} value={draft.seller.countryCode} onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, countryCode: event.target.value.toUpperCase() } })} />)}
           {sourceField("sellerVatId", "Umsatzsteuer-ID", <input value={draft.seller.vatId} onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, vatId: event.target.value } })} />)}
+          <label id={reviewFieldId("seller.contact.name")}><span>Ansprechpartner</span>
+            <input value={draft.seller.contactName ?? ""} placeholder="Für Rechnungen an Behörden" onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, contactName: event.target.value } })} /></label>
+          <label id={reviewFieldId("seller.contact.phone")}><span>Telefon</span>
+            <input value={draft.seller.phone ?? ""} placeholder="+49 …" onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, phone: event.target.value } })} /></label>
+          <label id={reviewFieldId("seller.contact.email")}><span>E-Mail</span>
+            <input value={draft.seller.email ?? ""} placeholder="rechnung@firma.example" onChange={(event) => onDraftChange({ ...draft, seller: { ...draft.seller, email: event.target.value } })} /></label>
         </div></div>
         <div><h3>Empfänger</h3><div className="field-grid single">
           {sourceField("buyerName", "Name", <input required value={draft.buyer.name} onChange={(event) => onDraftChange({ ...draft, buyer: { ...draft.buyer, name: event.target.value } })} />)}
@@ -227,7 +240,7 @@ export function ReviewPanel({
       <div className="line-table">
         <div className="line-header"><span>Bezeichnung</span><span>Anzahl</span><span>Einheit</span><span>Preis</span><span>Steuer</span><span>Betrag</span><span /></div>
         {draft.lines.length === 0 && <div className="empty-lines">Noch keine Leistungen oder Artikel vorhanden.</div>}
-        {draft.lines.map((line, index) => <div className="line-row" key={line.id}>
+        {draft.lines.map((line, index) => <div className="line-row" key={line.id} id={reviewFieldId(`lines.${index}.name`)}>
           <input aria-label={`Beschreibung Position ${index + 1}`} value={line.description} onFocus={() => onSelectTokens(line.sourceTokenIds)} onChange={(event) => updateLine(index, { description: event.target.value })} />
           <LocalizedDecimalInput aria-label={`Menge Position ${index + 1}`} value={line.quantity} minimumFractionDigits={0} maximumFractionDigits={3} onChange={(value) => updateLine(index, { quantity: value })} />
           <select aria-label={`Einheit Position ${index + 1}`} value={line.unitCode} onChange={(event) => updateLine(index, { unitCode: event.target.value as ReviewLineDraft["unitCode"] })}>
@@ -249,30 +262,50 @@ export function ReviewPanel({
       </div>
       <div className="field-grid single wide-field">{sourceField("paymentTerms", "Zahlungsbedingungen", <textarea value={draft.payment.terms} onChange={(event) => onDraftChange({ ...draft, payment: { ...draft.payment, terms: event.target.value } })} />)}</div>
       <div className="totals">
-        <span>Nettobetrag <b>{calculated ? formatGermanDecimal(calculated.totals.lineNet) : "—"}</b></span>
-        <span>Umsatzsteuer <b>{calculated ? formatGermanDecimal(calculated.totals.taxTotal) : "—"}</b></span>
-        <span>Rechnungsbetrag <b>{calculated ? formatGermanDecimal(calculated.totals.payable) : "—"} {draft.currency}</b></span>
+        <span>Nettobetrag <b>{calculated ? formatGermanDecimal(calculated.totals.lineNet) : "—"}</b><small>Original: {extraction.fields.lineNet?.value || "nicht gelesen"}</small></span>
+        <span>Umsatzsteuer <b>{calculated ? formatGermanDecimal(calculated.totals.taxTotal) : "—"}</b><small>Original: {extraction.fields.taxTotal?.value || "nicht gelesen"}</small></span>
+        <span>Rechnungsbetrag <b>{calculated ? formatGermanDecimal(calculated.totals.payable) : "—"} {draft.currency}</b><small>Original: {extraction.fields.payable?.value || extraction.fields.taxInclusive?.value || "nicht gelesen"}</small></span>
       </div>
     </section>
 
+    {consistency && consistency.mismatches.length > 0 && <section className="validation-panel official" aria-live="polite">
+      <h2>Angaben weichen von der Originalrechnung ab</h2>
+      <p>Bitte die Widersprüche auflösen oder die Rechnung im Ursprungsprogramm korrigieren. Eine fertige E-Rechnung wird nicht erzeugt.</p>
+      <ul>{consistency.mismatches.slice(0, 8).map((item) => <li key={item.path}><button type="button" className="issue-link" onClick={() => onFocusPath(item.path)}><strong>{item.label}:</strong> Original „{item.sourceValue}“, Ausgabe „{item.outputValue}“</button></li>)}</ul>
+    </section>}
+    {consistency && consistency.supplemented.length > 0 && consistency.mismatches.length === 0 && <section className="validation-panel" aria-live="polite">
+      <h2>Diese Angaben stehen so nicht in der Originalrechnung</h2>
+      <p>Bitte prüfen Sie, ob die Ausgabe die ausgestellte Rechnung korrekt wiedergibt. Inhaltliche Änderungen gehören ins Ursprungsprogramm.</p>
+      <ul>{consistency.supplemented.slice(0, 8).map((item) => <li key={item.path}><button type="button" className="issue-link" onClick={() => onFocusPath(item.path)}><strong>{item.label}:</strong> {item.outputValue}</button></li>)}</ul>
+    </section>}
+
     {!validation.valid && <section className="validation-panel" aria-live="polite">
       <h2>{zugferdValidation.valid ? "Für eine Rechnung an Behörden fehlt noch" : "Bitte ergänzen Sie diese Angaben"}</h2>
-      <ul>{validation.issues.slice(0, 8).map((issue) => <li key={`${issue.code}-${issue.path}`}><strong>{validationLabel(issue.path)}:</strong> {issue.message}</li>)}</ul>
+      <ul>{validation.issues.slice(0, 8).map((issue) => <li key={`${issue.code}-${issue.path}`}><button type="button" className="issue-link" onClick={() => onFocusPath(issue.path)}><strong>{validationLabel(issue.path)}:</strong> {issue.message}</button></li>)}</ul>
+    </section>}
+    {officialIssues && officialIssues.length > 0 && <section className="validation-panel official" aria-live="polite">
+      <h2>Die unabhängige Prüfung hat die Datei nicht angenommen</h2>
+      <p>Der Entwurf bleibt gespeichert. Es wurde keine fertige E-Rechnung ausgegeben.</p>
+      <ul>{officialIssues.slice(0, 10).map((issue) => <li key={`${issue.code}-${issue.path}-${issue.message}`}><button type="button" className="issue-link" onClick={() => onFocusPath(issue.path)}><strong>{validationLabel(issue.path)}:</strong> {issue.message}</button></li>)}</ul>
     </section>}
     {feedback && <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>
       <span>{feedback.message}</span>
       <button type="button" aria-label="Meldung schließen" onClick={onDismissFeedback}>Schließen</button>
     </div>}
-    <div className="export-note"><strong>Wie möchten Sie die Rechnung weitergeben?</strong><span>Behörden benötigen meist die reine E-Rechnungsdatei. Für andere Kunden können Sie die Rechnung als PDF speichern.</span></div>
+    <div className="export-note"><strong>Wie möchten Sie die Rechnung weitergeben?</strong><span>Behörden benötigen meist die reine E-Rechnungsdatei. Für andere Kunden können Sie die Rechnung als PDF speichern. Die Original-PDF bleibt unverändert; für die PDF-Rechnung wird eine neue PDF/A-3-Datei erzeugt.</span></div>
+    <label className="confirm-original">
+      <input type="checkbox" checked={hybridConfirmed} disabled={Boolean(activeAction) || Boolean(consistency?.blocked)} onChange={(event) => onHybridConfirmedChange(event.target.checked)} />
+      <span>Ich bestätige, dass die Angaben die Originalrechnung korrekt wiedergeben. Änderungen am Rechnungsinhalt gehören ins Ursprungsprogramm.</span>
+    </label>
 
     <footer>
       <button className="secondary" disabled={Boolean(activeAction)} onClick={onSave}>
         {activeAction === "draft" ? "Entwurf wird gespeichert …" : "Entwurf speichern"}
       </button>
-      <button className="secondary" disabled={Boolean(activeAction) || !validation.valid} title={validation.valid ? "E-Rechnungsdatei für Behörden speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateXRechnung}>
+      <button className="secondary" disabled={Boolean(activeAction) || !validation.valid || Boolean(consistency?.blocked) || !hybridConfirmed} title={!hybridConfirmed ? "Bitte zuerst die Übereinstimmung mit der Originalrechnung bestätigen" : validation.valid ? "E-Rechnungsdatei für Behörden speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateXRechnung}>
         {activeAction === "authority" ? "Wird für Behörden gespeichert …" : "Für Behörden speichern"}
       </button>
-      <button className="primary" disabled={Boolean(activeAction) || !zugferdValidation.valid} title={zugferdValidation.valid ? "Lesbare PDF-Rechnung speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateZugferd}>
+      <button className="primary" disabled={Boolean(activeAction) || !zugferdValidation.valid || Boolean(consistency?.blocked) || !hybridConfirmed} title={!hybridConfirmed ? "Bitte zuerst die Übereinstimmung mit der Originalrechnung bestätigen" : zugferdValidation.valid ? "Lesbare PDF-Rechnung speichern" : "Bitte ergänzen Sie zuerst die angezeigten Angaben"} onClick={onCreateZugferd}>
         {activeAction === "pdf" ? "PDF-Rechnung wird gespeichert …" : "Als PDF-Rechnung speichern"}
       </button>
     </footer>

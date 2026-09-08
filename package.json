@@ -15,7 +15,9 @@
     "desktop:build": "npm run check && tauri build --config apps/desktop/src-tauri/tauri.conf.json",
     "desktop:web:dev": "vite --config apps/desktop/vite.config.ts --host 127.0.0.1",
     "desktop:web:build": "tsc -p apps/desktop/tsconfig.json && vite build --config apps/desktop/vite.config.ts",
+    "setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1",
     "installer:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1",
+    "installer:macos": "sh scripts/build-macos-installer.sh",
     "wp5:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-build-reference.ps1",
     "wp5:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-clean-install.ps1",
     "wp5:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-repair-spooler.ps1",
@@ -26,8 +28,10 @@
     "corpus:fuzz": "tsx scripts/fuzz-invoices.ts",
     "wp6:check": "npm run corpus:generate && npm run corpus:evaluate && npm run corpus:fuzz",
     "generate:fixtures": "tsx scripts/generate-fixtures.ts",
+    "demo:invoice": "tsx scripts/generate-demo-invoice.ts",
     "validate:external": "tsx scripts/validate-external.ts",
-    "validate:zugferd": "tsx scripts/validate-zugferd.ts"
+    "validate:zugferd": "tsx scripts/validate-zugferd.ts",
+    "validators:fetch": "node scripts/fetch-validators.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.8",
@@ -40,6 +44,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",

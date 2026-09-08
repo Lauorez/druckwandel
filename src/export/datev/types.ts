@@ -59,6 +59,17 @@ export interface Booking {
   tax: string;
   gross: string;
   text: string;
+  belegGuid: string;
+}
+export interface DatevDocumentFile {
+  archiveId: string;
+  guid: string;
+  pdfName: string;
+  xmlName: string;
+}
+export interface DatevDocumentPackage {
+  xml: string;
+  files: DatevDocumentFile[];
 }
 export interface DatevBatch {
   fiscalYearStart: string;

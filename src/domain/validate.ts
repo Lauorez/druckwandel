@@ -55,6 +55,15 @@ export function validateInvoiceInput(invoice: InvoiceInput): ValidationResult {
   if (!invoice.buyerReference.trim()) {
     issues.push({ severity: "error", code: "BR-DE-15", path: "buyerReference", message: "Bitte tragen Sie die Bestellnummer oder Leitweg-ID der Behörde ein." });
   }
+  if (!invoice.seller.contact?.name?.trim() || !invoice.seller.contact.phone?.trim() || !invoice.seller.contact.email?.trim()) {
+    issues.push({ severity: "error", code: "BR-DE-2", path: "seller.contact.name", message: "Für Behörden werden Ansprechpartner, Telefon und E-Mail des Absenders benötigt." });
+  }
+  if (!invoice.seller.electronicAddress?.value) {
+    issues.push({ severity: "error", code: "BT-34", path: "seller.vatId", message: "Für Behörden wird eine elektronische Adresse des Absenders benötigt. Tragen Sie die Umsatzsteuer-ID ein." });
+  }
+  if (!invoice.buyer.electronicAddress?.value) {
+    issues.push({ severity: "error", code: "BT-49", path: "buyer.vatId", message: "Für Behörden wird eine elektronische Adresse des Empfängers benötigt. Tragen Sie die Umsatzsteuer-ID oder eine Leitweg-ID ein." });
+  }
   return { valid: !issues.some((issue) => issue.severity === "error"), issues };
 }
 

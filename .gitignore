@@ -35,4 +35,8 @@ artifacts/corpus-report.json
 artifacts/synthetic-fuzz-report.json
 artifacts/fuzz-failures/
 artifacts/windows/
-apps/desktop/src-tauri/installer/windows/payload/
+apps/desktop/src-tauri/resources/validators/jre/
+apps/desktop/src-tauri/resources/validators/kosit/
+apps/desktop/src-tauri/resources/validators/mustang/
+apps/desktop/src-tauri/resources/validators/verapdf/
+apps/desktop/src-tauri/resources/validators/checksums.json

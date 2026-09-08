@@ -8,8 +8,8 @@ const completeDraft: ReviewDraft = {
   dueDate: "2026-09-13",
   serviceDate: "",
   currency: "eur",
-  buyerReference: "REF-1",
-  seller: { name: "Anbieter GmbH", addressLine1: "Straße 1", postalCode: "10115", city: "Berlin", countryCode: "de", vatId: "DE123456789" },
+  buyerReference: "04011000-12345-03",
+  seller: { name: "Anbieter GmbH", addressLine1: "Straße 1", postalCode: "10115", city: "Berlin", countryCode: "de", vatId: "DE123456789", contactName: "Erika Muster", phone: "+49 30 123456", email: "rechnung@muster.invalid" },
   buyer: { name: "Kunde AG", addressLine1: "Weg 2", postalCode: "20095", city: "Hamburg", countryCode: "de", vatId: "" },
   payment: { iban: "DE89 3704 0044 0532 0130 00", bic: "COBADEFFXXX", terms: "14 Tage netto" },
   lines: [
@@ -39,6 +39,9 @@ describe("review draft", () => {
     expect(input.currency).toBe("EUR");
     expect(input.seller.address.countryCode).toBe("DE");
     expect(input.payment.iban).toBe("DE89370400440532013000");
+    expect(input.seller.electronicAddress).toEqual({ value: "DE123456789", schemeId: "9930" });
+    expect(input.buyer.electronicAddress).toEqual({ value: "04011000-12345-03", schemeId: "0204" });
+    expect(input.seller.contact).toEqual({ name: "Erika Muster", phone: "+49 30 123456", email: "rechnung@muster.invalid" });
     expect(validateReviewDraft(completeDraft)).toMatchObject({
       valid: true,
       invoice: { totals: { lineNet: "1100.00", taxTotal: "209.00", payable: "1309.00" } },
@@ -49,6 +52,13 @@ describe("review draft", () => {
     const result = validateReviewDraft({ ...completeDraft, buyerReference: "", lines: [] });
     expect(result.valid).toBe(false);
     expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining(["BR-DE-15", "BR-16"]));
+  });
+
+  it("requires seller contact and electronic addresses only for XRechnung", () => {
+    const withoutContact = { ...completeDraft, seller: { ...completeDraft.seller, email: "" } };
+    expect(validateReviewDraft(withoutContact).valid).toBe(false);
+    expect(validateReviewDraft(withoutContact).issues.map((issue) => issue.code)).toContain("BR-DE-2");
+    expect(validateReviewDraft(withoutContact, [], "zugferd").valid).toBe(true);
   });
 
   it("uses separate XRechnung and ZUGFeRD validation gates", () => {
