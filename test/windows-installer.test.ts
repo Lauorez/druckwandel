@@ -50,6 +50,8 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(setup).toContain("rustup-init.exe");
     expect(setup).toContain("dotnet-install.ps1");
     expect(setup).not.toContain("-Verb RunAs");
+    expect(setup).toContain("Expand-Archive");
+    expect(setup).not.toContain("--force-local");
     expect(setup).toContain("create-dev-cert.ps1");
     expect(setup).toContain("validators:fetch");
     expect(setup).toContain("demo:invoice");

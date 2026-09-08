@@ -123,7 +123,7 @@ function Install-UserNode {
     Save-RemoteFile -Url "https://nodejs.org/dist/$($release.version)/$zipName" -Path $zipPath
     $extract = Join-Path $env:TEMP "node-extract-$(Get-Random)"
     New-Item -ItemType Directory -Force -Path $extract | Out-Null
-    tar --force-local -xf $zipPath -C $extract
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $extract -Force
     $payload = Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1
     if (-not $payload -or -not (Test-Path -LiteralPath (Join-Path $payload.FullName "node.exe"))) {
         throw "Das Node.js-Paket enthält keine node.exe."

@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, cp, writeFile } from "node:fs/promises";
 import { createWriteStream, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { Readable } from "node:stream";
@@ -35,9 +35,33 @@ async function findFile(directory, name) {
   return undefined;
 }
 
+function powershellQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
 function extractArchive(archive, dest) {
+  if (process.platform === "win32") {
+    const result = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        `Expand-Archive -LiteralPath ${powershellQuote(archive)} -DestinationPath ${powershellQuote(dest)} -Force`,
+      ],
+      { stdio: "inherit", windowsHide: true },
+    );
+    if (result.status !== 0) {
+      throw new Error(`Archiv konnte nicht entpackt werden: ${archive}`);
+    }
+    return;
+  }
+
   const gzip = /\.(tar\.gz|tgz)$/i.test(archive);
-  const result = spawnSync("tar", ["--force-local", gzip ? "-xzf" : "-xf", archive, "-C", dest], {
+  const result = spawnSync("tar", [gzip ? "-xzf" : "-xf", basename(archive), "-C", dest], {
+    cwd: dirname(archive),
     stdio: "inherit",
   });
   if (result.status !== 0) {

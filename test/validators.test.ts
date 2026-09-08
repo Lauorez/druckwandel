@@ -72,8 +72,8 @@ describe("official XML validation reports", () => {
 describe("validator fetch packaging", () => {
   it("entpackt Archive mit tar, damit Windows ohne unzip auskommt", () => {
     const script = readFileSync(resolve(import.meta.dirname, "../scripts/fetch-validators.mjs"), "utf8");
-    expect(script).toContain('spawnSync("tar"');
-    expect(script).toContain("--force-local");
+    expect(script).toContain("Expand-Archive");
+    expect(script).not.toContain("--force-local");
     expect(script).not.toContain('spawnSync("unzip"');
   });
 });
