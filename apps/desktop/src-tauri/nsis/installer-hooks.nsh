@@ -25,6 +25,7 @@
   CreateDirectory "$PLUGINSDIR\ERechnungsAssistent"
   SetOutPath "$PLUGINSDIR\ERechnungsAssistent"
   File /oname=InstallPrinter.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\InstallPrinter.ps1"
+  File /oname=TrustPrinterCertificate.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\TrustPrinterCertificate.ps1"
   File /oname=UpdateGuard.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\UpdateGuard.ps1"
   File /oname=Printer.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\Printer.msix"
   File /oname=WindowsAppRuntime.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\WindowsAppRuntime.msix"
@@ -45,7 +46,7 @@
   !if /FileExists "${ERECHNUNG_INSTALLER_PAYLOAD}\PrinterCertificate.cer"
     File /oname=PrinterCertificate.cer "${ERECHNUNG_INSTALLER_PAYLOAD}\PrinterCertificate.cer"
     DetailPrint "Der E-Rechnungsdrucker wird eingerichtet ..."
-    nsExec::ExecToStack /TIMEOUT=300000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\ERechnungsAssistent\Printer.msix" -DependencyPath "$PLUGINSDIR\ERechnungsAssistent\WindowsAppRuntime.msix" -CertificatePath "$PLUGINSDIR\ERechnungsAssistent\PrinterCertificate.cer"'
+    nsExec::ExecToStack /TIMEOUT=300000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\ERechnungsAssistent\Printer.msix" -DependencyPath "$PLUGINSDIR\ERechnungsAssistent\WindowsAppRuntime.msix" -CertificatePath "$PLUGINSDIR\ERechnungsAssistent\PrinterCertificate.cer" -CertificateTrustScriptPath "$PLUGINSDIR\ERechnungsAssistent\TrustPrinterCertificate.ps1"'
   !else
     DetailPrint "Der E-Rechnungsdrucker wird eingerichtet ..."
     nsExec::ExecToStack /TIMEOUT=300000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\ERechnungsAssistent\Printer.msix" -DependencyPath "$PLUGINSDIR\ERechnungsAssistent\WindowsAppRuntime.msix"'

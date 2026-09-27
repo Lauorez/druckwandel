@@ -1,6 +1,6 @@
 [package]
 name = "erechnung-desktop"
-version = "0.3.3"
+version = "0.3.4"
 description = "Native assistant for local e-invoice conversion"
 authors = ["E-Rechnungs-Assistent"]
 edition = "2024"

@@ -10,6 +10,8 @@ param(
 
     [string]$CertificatePath = "",
 
+    [string]$CertificateTrustScriptPath = "",
+
     [ValidateRange(10, 180)]
     [int]$QueueTimeoutSeconds = 45,
 
@@ -101,16 +103,36 @@ function Assert-CompletePrinterPackage {
     } finally { $archive.Dispose() }
 }
 
-function Assert-DevelopmentCertificateTrusted {
+function Ensure-DevelopmentCertificateTrusted {
     param(
-        [Parameter(Mandatory = $true)][string]$Thumbprint
+        [Parameter(Mandatory = $true)][string]$Thumbprint,
+        [Parameter(Mandatory = $true)][string]$Package,
+        [Parameter(Mandatory = $true)][string]$Certificate,
+        [Parameter(Mandatory = $true)][string]$TrustScript
     )
 
     if (Test-CertificateTrusted -Thumbprint $Thumbprint) {
         return
     }
 
-    throw "Dieser Vorführbuild verwendet ein Entwicklungszertifikat, dem Windows noch nicht vertraut. Für eine Installation ohne Administratorrechte auf einem neuen Rechner wird ein öffentlich vertrauenswürdig signiertes Druckerpaket benötigt. Alternativ muss die IT das mitgelieferte Zertifikat vorher in LocalMachine\TrustedPeople freigeben. Das Setup verändert keine Zertifikatsspeicher."
+    if (-not (Test-Path -LiteralPath $TrustScript -PathType Leaf)) {
+        throw "Das Hilfsskript zum Freigeben des Druckerzertifikats fehlt."
+    }
+    Write-SetupLog "Windows benötigt eine einmalige Administratorfreigabe für das Druckerzertifikat."
+    $powershell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+    try {
+        $process = Start-Process -FilePath $powershell -ArgumentList @(
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-File", "`"$TrustScript`"", "-PackagePath", "`"$Package`"",
+            "-CertificatePath", "`"$Certificate`""
+        ) -Verb RunAs -WindowStyle Hidden -Wait -PassThru
+    } catch {
+        throw "Die Administratorfreigabe für das Druckerzertifikat wurde nicht erteilt: $($_.Exception.Message)"
+    }
+    if ($process.ExitCode -ne 0 -or -not (Test-CertificateTrusted -Thumbprint $Thumbprint)) {
+        throw "Das Druckerzertifikat wurde nicht freigegeben. Ein Administrator muss die Windows-Abfrage bestätigen oder die IT muss das Zertifikat in LocalMachine\TrustedPeople hinterlegen."
+    }
+    Write-SetupLog "Das Druckerzertifikat wurde im Computerspeicher freigegeben."
 }
 
 function Wait-ForPrinter {
@@ -176,7 +198,7 @@ try {
             throw "Testzertifikat und Druckerpaket gehören nicht zusammen."
         }
         if (-not $ValidateOnly) {
-            Assert-DevelopmentCertificateTrusted -Thumbprint $certificate.Thumbprint
+            Ensure-DevelopmentCertificateTrusted -Thumbprint $certificate.Thumbprint -Package $PackagePath -Certificate $CertificatePath -TrustScript $CertificateTrustScriptPath
             $packageSignature = Get-AuthenticodeSignature -LiteralPath $PackagePath
         }
     }

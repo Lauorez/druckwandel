@@ -23,6 +23,8 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(hooks).toContain("CurrentBuildNumber");
     expect(hooks).toContain("$WINDIR\\Sysnative\\WindowsPowerShell");
     expect(hooks).toContain("Printer.msix");
+    expect(hooks).toContain("TrustPrinterCertificate.ps1");
+    expect(hooks).toContain("-CertificateTrustScriptPath");
     expect(hooks).toContain("UpdateGuard.ps1");
     expect(hooks).toContain("PrepareUpdate");
     expect(hooks).toContain("RecordInstalledVersion");
@@ -41,11 +43,21 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(installer).toContain('$packageName = "ERechnung.VirtualPrinter.PoC"');
     expect(installer).toContain("Get-AuthenticodeSignature");
     expect(installer).toContain("Test-CertificateTrusted");
+    expect(installer).toContain("Ensure-DevelopmentCertificateTrusted");
     expect(installer).toContain("Cert:\\LocalMachine\\TrustedPeople");
     expect(installer).not.toContain("Import-Certificate");
     expect(installer).not.toContain("-Verb RunAs");
     expect(installer).toContain("Add-AppxPackage");
     expect(installer).toContain("Wait-ForPrinter");
+
+    const trust = readFileSync(
+      resolve(root, "apps/desktop/src-tauri/installer/windows/TrustPrinterCertificate.ps1"),
+      "utf8",
+    );
+    expect(trust).toContain('"ERechnung.VirtualPrinter.PoC"');
+    expect(trust).toContain("$signature.SignerCertificate.Thumbprint");
+    expect(trust).toContain("Cert:\\LocalMachine\\TrustedPeople");
+    expect(trust).toContain("Import-Certificate");
   });
 
   it("stellt den Windows-Vorführrechner mit einem Setup-Skript auf", () => {

@@ -1,0 +1,63 @@
+name: Windows-Vorführinstaller
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Rust 1.88 installieren
+        shell: pwsh
+        run: rustup toolchain install 1.88.0 --profile minimal
+      - run: npm ci
+      - name: Signiertes Druckerpaket und Prüfer aus 0.3.3 übernehmen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path old-release,old-extracted | Out-Null
+          gh release download v0.3.3 --repo Lauorez/erechnung --pattern 'E-Rechnungs-Assistent-0.3.3-x64-Setup.exe' --dir old-release
+          $oldSetup = Resolve-Path 'old-release/E-Rechnungs-Assistent-0.3.3-x64-Setup.exe'
+          $hash = (Get-FileHash -LiteralPath $oldSetup -Algorithm SHA256).Hash
+          if ($hash -ne 'C82D547E919D02768F7C636FB9F117C8F36CBA10E1CBB088B931B18A15FCB89B') {
+            throw 'Die Prüfsumme des bisherigen Setups stimmt nicht.'
+          }
+          & 'C:\Program Files\7-Zip\7z.exe' x -y '-oold-extracted' $oldSetup
+          if ($LASTEXITCODE -ne 0) { throw 'Das bisherige Setup konnte nicht entpackt werden.' }
+          $payload = 'old-extracted/$PLUGINSDIR/ERechnungsAssistent'
+          foreach ($name in @('Printer.msix', 'PrinterCertificate.cer', 'WindowsAppRuntime.msix')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $payload $name))) { throw "Fehlende Paketdatei: $name" }
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $payload 'Printer.msix')
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $payload 'PrinterCertificate.cer'))
+          if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
+            throw 'Zertifikat und Druckerpaket stimmen nicht überein.'
+          }
+          Copy-Item -LiteralPath 'old-extracted/resources/validators' -Destination 'apps/desktop/src-tauri/resources' -Recurse -Force
+          New-Item -ItemType Directory -Force -Path 'artifacts/old-printer' | Out-Null
+          Copy-Item -LiteralPath (Join-Path $payload 'Printer.msix') -Destination 'artifacts/old-printer/Printer.msix'
+          Copy-Item -LiteralPath (Join-Path $payload 'PrinterCertificate.cer') -Destination 'artifacts/old-printer/PrinterCertificate.cer'
+          Copy-Item -LiteralPath (Join-Path $payload 'WindowsAppRuntime.msix') -Destination 'artifacts/old-printer/WindowsAppRuntime.msix'
+      - name: Installer-Tests
+        run: npx vitest run test/windows-installer.test.ts
+      - name: Setup 0.3.4 bauen
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1 -SkipChecks -SkipPrinterBuild -PrinterPackagePath artifacts/old-printer/Printer.msix -PrinterDependencyPath artifacts/old-printer/WindowsAppRuntime.msix -PrinterCertificatePath artifacts/old-printer/PrinterCertificate.cer
+          if ($LASTEXITCODE -ne 0) { throw 'Der Installer-Build ist fehlgeschlagen.' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: E-Rechnungs-Assistent-0.3.4-Windows
+          path: |
+            artifacts/windows/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe
+            artifacts/windows/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe.sha256
