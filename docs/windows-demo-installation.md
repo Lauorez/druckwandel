@@ -2,7 +2,7 @@
 
 ## Aktueller Stand vom 27.09.2026
 
-Anwendung **0.3.3** und Drucker **0.1.0.12** wurden ohne Rechteerhöhung installiert. Der Drucker-Task ist NativeAOT (`ERechnung.VirtualPrinter.Native.dll`) und projiziert `PrintWorkflowVirtualPrinterTriggerDetails` explizit. Direkter `StartDocPrinter`-Test, WPF/XPS und der GDI-Kaltstart bestehen. Der [Installationsbericht 0.3.3](installation-0.3.3-2026-09-27.md) enthält Pfad, Prüfsumme und die Signaturgrenze. Die Berichte zu [0.3.2](installation-0.3.2-2026-09-27.md) und 0.3.1 sind historisch: 0.3.2 enthielt das defekte MSIX 0.1.0.6, der Druck endete vor der PDF-Übergabe.
+Anwendung **0.3.4** ergänzt die Administratorabfrage für das Entwicklungszertifikat. Der Drucker **0.1.0.12** bleibt unverändert. Der [Installationsbericht 0.3.4](installation-0.3.4-2026-09-27.md) beschreibt den neuen Ablauf. Die reale Druckprüfung aus [0.3.3](installation-0.3.3-2026-09-27.md) bleibt die Referenz für den NativeAOT-Drucker.
 
 ## Prüfergebnis vom 11.09.2026
 
@@ -44,7 +44,7 @@ npm run installer:windows
 
 Das Build-Skript prüft die Vollständigkeit der Validatoren und des Druckerpakets. Der native Drucker-Task wird vor dem MSIX-Paket mit .NET NativeAOT gebaut. Die JSON-Verarbeitung verwendet generierte Typinformationen; der Hintergrundprozess benötigt kein global installiertes .NET und keinen `WinRT.Host.dll`-Bootstrapper. Die Hauptanwendung bleibt ein Tauri-Release-Build.
 
-Ergebnis dieses Stands: `artifacts/windows/E-Rechnungs-Assistent-0.3.3-x64-Setup.exe`, SHA-256 `c82d547e919d02768f7c636fb9f117c8f36cba10e1cbb088b931b18a15fcb89b`. Die öffentliche `.cer` darf für den oben beschriebenen IT-Schritt weitergegeben werden. Die private `.pfx` darf nicht in das Vorführpaket. Eine öffentlich vertrauenswürdige Signatur ist damit nicht vorhanden.
+Ergebnis dieses Stands: `artifacts/windows/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe`. Die öffentliche `.cer` liegt nur für den beschriebenen Administratorschritt im Paket. Die private `.pfx` darf nicht in das Vorführpaket. Eine öffentlich vertrauenswürdige Signatur ist damit nicht vorhanden.
 
 Das Setup normal starten, nicht „Als Administrator“. Bei einem Update legt das Setup zuerst einen Snapshot unter `%LOCALAPPDATA%\de.erechnung.converter\update-backup\<Version>` an (`WIEDERHERSTELLUNG.txt` im selben Ordner). Arbeitsentwürfe und `Dokumente\E-Rechnungsarchiv` bleiben unangetastet. Eine kleinere Versionsnummer als die bereits installierte wird abgewiesen. Das Setup aktualisiert den Drucker nur, wenn die Paketversion neuer ist. Die Deinstallation entfernt den Drucker, nicht das Archiv.
 

@@ -28,20 +28,21 @@ Lokale Desktop-Anwendung zum Übernehmen, Prüfen, Erzeugen und Archivieren elek
 
 ## Installation
 
-Windows 11 Version 24H2 oder neuer (Build 26100), 64-Bit. Die aktuelle Fassung ist **0.3.3** mit Drucker **0.1.0.12**.
+Windows 11 Version 24H2 oder neuer (Build 26100), 64-Bit. Die aktuelle Fassung ist **0.3.4** mit Drucker **0.1.0.12**.
 
-Setup und Prüfsumme stehen im [Release v0.3.3](https://github.com/Lauorez/erechnung/releases/tag/v0.3.3):
+Setup und Prüfsumme stehen im [Release v0.3.4](https://github.com/Lauorez/erechnung/releases/tag/v0.3.4):
 
-- [E-Rechnungs-Assistent-0.3.3-x64-Setup.exe](https://github.com/Lauorez/erechnung/releases/download/v0.3.3/E-Rechnungs-Assistent-0.3.3-x64-Setup.exe)
-- [SHA-256](https://github.com/Lauorez/erechnung/releases/download/v0.3.3/E-Rechnungs-Assistent-0.3.3-x64-Setup.exe.sha256)
+- [E-Rechnungs-Assistent-0.3.4-x64-Setup.exe](https://github.com/Lauorez/erechnung/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe)
+- [SHA-256](https://github.com/Lauorez/erechnung/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe.sha256)
+- [Öffentliches Druckerzertifikat für die IT](https://github.com/Lauorez/erechnung/releases/download/v0.3.4/ERechnung.Dev.cer)
 
-SHA-256 der Setup-Datei: `c82d547e919d02768f7c636fb9f117c8f36cba10e1cbb088b931b18a15fcb89b`
+SHA-256 der Setup-Datei: `723b4e0004899ad20e1eb66c6ebfb75bd16446e76b32ae2b82d75f50442cc661`
 
 Die Datei normal starten, nicht über „Als Administrator ausführen“. Das Setup installiert Anwendung und Drucker für das angemeldete Benutzerkonto nach `%LOCALAPPDATA%\E-Rechnungs-Assistent` und legt den Drucker **E-Rechnung** an. Node, Rust, .NET SDK und eine eigene Java-Installation sind dafür nicht nötig. Ein Update behält Entwürfe, Archiv und Vorlagengedächtnis. Der Drucker bleibt dabei registriert und wird nur ersetzt, wenn das enthaltene Paket neuer ist. Die Deinstallation entfernt den Drucker, nicht `Dokumente\E-Rechnungsarchiv`.
 
-Das Setup selbst ist unsigniert. Das enthaltene Druckerpaket ist mit dem Entwicklungszertifikat `CN=ERechnung Development` signiert. Eine öffentlich vertrauenswürdige Codesignatur liegt nicht vor. Auf einem fremden Rechner vertraut Windows diesem Zertifikat nicht von allein. Für eine Erstinstallation muss die IT die mitgelieferte Datei [ERechnung.Dev.cer](https://github.com/Lauorez/erechnung/releases/download/v0.3.3/ERechnung.Dev.cer) vorher im Computerspeicher `LocalMachine\TrustedPeople` hinterlegen. Ein Import nur in den Benutzer-Zertifikatspeicher genügt nicht. Das Setup importiert keine Zertifikate, fordert keine Rechteerhöhung an und bricht ab, wenn der Drucker nicht eingerichtet werden kann. Auf einem Rechner, auf dem dieses Zertifikat bereits im Computerspeicher liegt, läuft die Installation im normalen Benutzerkonto.
+Das Setup selbst ist unsigniert. Das enthaltene Druckerpaket ist mit dem Entwicklungszertifikat `CN=ERechnung Development` signiert. Eine öffentlich vertrauenswürdige Codesignatur liegt nicht vor. Auf einem fremden Rechner vertraut Windows diesem Zertifikat nicht von allein. Falls nötig, fragt das Setup einmalig nach Administratorrechten, prüft Zertifikat und Paket erneut und hinterlegt das passende öffentliche Zertifikat in `LocalMachine\TrustedPeople`. Danach läuft die Installation im normalen Benutzerkonto weiter. Wer die Windows-Abfrage nicht bestätigen kann, benötigt vorab eine Freigabe durch die IT. Ein Import nur in den Benutzer-Zertifikatspeicher genügt nicht.
 
-Ablauf und Grenzen: [Installationsbericht 0.3.3](docs/installation-0.3.3-2026-09-27.md), [Windows-Vorführpaket](docs/windows-demo-installation.md).
+Ablauf und Grenzen: [Installationsbericht 0.3.4](docs/installation-0.3.4-2026-09-27.md), [Windows-Vorführpaket](docs/windows-demo-installation.md).
 
 ## Start auf dem Windows-Vorführrechner
 
@@ -54,14 +55,14 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup-windows.ps1
 ```
 
-Das Build-Skript lädt fehlende Werkzeuge für das Benutzerkonto nach. Der NSIS-Installer installiert die Anwendung und das Druckerpaket für den aktuellen Benutzer. **Für eine vollständige Installation auf einem neuen Rechner ohne Administratorrechte muss das MSIX-Druckerpaket öffentlich vertrauenswürdig signiert sein.** Beim vorhandenen Entwicklungszertifikat muss die IT vorher Zertifikatvertrauen in `LocalMachine\TrustedPeople` eingerichtet haben. Ein Import allein in den Benutzer-Zertifikatspeicher genügt dafür nicht. Das gemeinsame Setup verändert keine Zertifikatsspeicher und fordert keine Rechteerhöhung an.
+Das Build-Skript lädt fehlende Werkzeuge für das Benutzerkonto nach. Der NSIS-Installer installiert die Anwendung und das Druckerpaket für den aktuellen Benutzer. **Für eine vollständige Erstinstallation ohne Administratorfreigabe muss das MSIX-Druckerpaket öffentlich vertrauenswürdig signiert sein.** Beim vorhandenen Entwicklungszertifikat fragt das Setup bei Bedarf einmalig nach Administratorrechten, um das Zertifikat in `LocalMachine\TrustedPeople` zu hinterlegen. Auf verwalteten Rechnern kann die IT diesen Schritt vorab übernehmen.
 
 Ergebnis:
 
 - `artifacts\windows\E-Rechnungs-Assistent-<Version>-x64-Setup.exe`
 - `artifacts\demo\muster-rechnung.pdf`
 
-Die Setup-Datei enthält Anwendung, Drucker, Windows App Runtime, WebView2-Offline-Installer und lokale Prüfer samt Java. Der Drucker-Background-Task ist nativ kompiliert; die Druckoberfläche enthält ihre .NET-Laufzeit. Auf dem Zielrechner werden keine Entwicklungswerkzeuge benötigt. Beim Vorführbuild muss das oben beschriebene Zertifikatvertrauen bereits bestehen. Eine gescheiterte Druckerinstallation bricht das Setup ab. Vorführablauf und Grenzen: [Windows-Vorführpaket](docs/windows-demo-installation.md).
+Die Setup-Datei enthält Anwendung, Drucker, Windows App Runtime, WebView2-Offline-Installer und lokale Prüfer samt Java. Der Drucker-Background-Task ist nativ kompiliert; die Druckoberfläche enthält ihre .NET-Laufzeit. Auf dem Zielrechner werden keine Entwicklungswerkzeuge benötigt. Eine abgelehnte Zertifikatfreigabe oder gescheiterte Druckerinstallation bricht das Setup ab. Vorführablauf und Grenzen: [Windows-Vorführpaket](docs/windows-demo-installation.md).
 
 `validators:fetch` muss auf Windows laufen: die gebündelte JRE ist plattformabhängig. Eine auf dem Mac geladene Darwin-JRE darf nicht in den Windows-Installer.
 
@@ -92,7 +93,7 @@ Der aktuelle Vorführbuild verwendet ein Entwicklungszertifikat. Eine beliebige 
 
 ### WP5: virtueller E-Rechnungsdrucker
 
-Normale Anwender verwenden den gemeinsamen Windows-Installer. Die Einrichtung für das aktuelle Benutzerkonto benötigt bei vertrauenswürdiger Paketsignatur keine Administratorrechte. Entwicklungszertifikate müssen vorab durch die IT freigegeben werden; eine normale Windows-Sicherheitsabfrage ersetzt dieses Zertifikatvertrauen nicht.
+Normale Anwender verwenden den gemeinsamen Windows-Installer. Die Einrichtung für das aktuelle Benutzerkonto benötigt bei vertrauenswürdiger Paketsignatur keine Administratorrechte. Bei der Entwicklungssignatur fordert das Setup nur für den einmaligen Zertifikatimport Administratorrechte an; auf verwalteten Rechnern kann die IT den Import vorab übernehmen.
 
 Die folgenden Einzelbefehle bleiben nur für die Entwicklung und gezielte Druckerdiagnose erhalten. Voraussetzung ist Windows 11 24H2 (Build 26100 oder neuer). Das Entwicklungspaket wird lokal signiert. Build in einer normalen PowerShell:
 
