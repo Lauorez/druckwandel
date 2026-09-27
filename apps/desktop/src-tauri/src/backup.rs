@@ -989,6 +989,42 @@ fn confirm_to(roots: &Roots) -> Result<RestorePreview, String> {
     finish_restore_journal(roots, journal)
 }
 
+fn next_overflow_path(replaced: &Path, name: &str) -> PathBuf {
+    let overflow = replaced.join(format!("{name}-nach-unterbrechung"));
+    if !overflow.exists() {
+        return overflow;
+    }
+    for suffix in 2..1000 {
+        let candidate = replaced.join(format!("{name}-nach-unterbrechung-{suffix}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    replaced.join(format!("{name}-nach-unterbrechung-{}", Uuid::new_v4()))
+}
+
+fn relocate_live(src: &Path, replaced: &Path, name: &str) -> Result<(), String> {
+    if !src.exists() {
+        return Ok(());
+    }
+    let dest = if replaced.join(name).exists() {
+        // The first move already succeeded. Keep anything written after the
+        // interruption instead of letting apply_tree overwrite it in place.
+        next_overflow_path(replaced, name)
+    } else {
+        replaced.join(name)
+    };
+    if src.is_file() {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        return fs::rename(src, &dest)
+            .or_else(|_| fs::copy(src, &dest).and_then(|_| fs::remove_file(src)))
+            .map_err(|e| e.to_string());
+    }
+    move_dir(src, &dest)
+}
+
 fn finish_swap(
     roots: &Roots,
     journal: &Journal,
@@ -996,35 +1032,16 @@ fn finish_swap(
     replaced: &Path,
 ) -> Result<(), String> {
     fs::create_dir_all(replaced).map_err(|e| e.to_string())?;
-    let archive = roots.archive().root;
-    if archive.exists() && !replaced.join("E-Rechnungsarchiv").exists() {
-        move_dir(&archive, &replaced.join("E-Rechnungsarchiv"))?;
-    }
-    let workspace = roots.workspace();
-    if workspace.exists() && !replaced.join("workspace").exists() {
-        move_dir(&workspace, &replaced.join("workspace"))?;
-    }
-    if roots.drafts().exists() && !replaced.join("drafts").exists() {
-        move_dir(&roots.drafts(), &replaced.join("drafts"))?;
-    }
-    if roots.learning().exists() && !replaced.join("correction-memory.json").exists() {
-        fs::create_dir_all(replaced).ok();
-        fs::rename(roots.learning(), replaced.join("correction-memory.json"))
-            .or_else(|_| {
-                fs::copy(roots.learning(), replaced.join("correction-memory.json"))
-                    .and_then(|_| fs::remove_file(roots.learning()))
-            })
-            .map_err(|e| e.to_string())?;
-    }
-    let key = roots.archive().signing_key;
-    if key.exists() && !replaced.join("archive-signing-key-v1.bin").exists() {
-        fs::copy(&key, replaced.join("archive-signing-key-v1.bin")).map_err(|e| e.to_string())?;
-        fs::remove_file(&key).map_err(|e| e.to_string())?;
-    }
-    let datev = roots.datev();
-    if datev.exists() && !replaced.join("Steuerkanzlei").exists() {
-        move_dir(&datev, &replaced.join("Steuerkanzlei"))?;
-    }
+    relocate_live(&roots.archive().root, replaced, "E-Rechnungsarchiv")?;
+    relocate_live(&roots.workspace(), replaced, "workspace")?;
+    relocate_live(&roots.drafts(), replaced, "drafts")?;
+    relocate_live(&roots.learning(), replaced, "correction-memory.json")?;
+    relocate_live(
+        &roots.archive().signing_key,
+        replaced,
+        "archive-signing-key-v1.bin",
+    )?;
+    relocate_live(&roots.datev(), replaced, "Steuerkanzlei")?;
     apply_tree(unpacked, roots)?;
     let _ = journal;
     Ok(())
@@ -1261,6 +1278,64 @@ mod tests {
         confirm_to(&roots).unwrap();
         let replaced = fs::read_dir(roots.replaced()).unwrap().next().unwrap().unwrap().path();
         assert!(replaced.join("E-Rechnungsarchiv").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn invoice_numbers(database: &Path) -> Vec<String> {
+        let db = Connection::open(database).unwrap();
+        let mut statement = db
+            .prepare("SELECT invoice_number FROM archive_entries ORDER BY invoice_number")
+            .unwrap();
+        statement
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn resume_keeps_work_written_after_interrupted_restore() {
+        let (root, roots) = sandbox();
+        archive::save_and_archive_to(
+            &roots.archive(),
+            &roots.documents,
+            test_archive_request("RE-OLD", "xrechnung"),
+        )
+        .unwrap();
+        let dest = root.join("keep.erechnung");
+        create_to(&roots, &dest, password()).unwrap();
+        preview_to(&roots, &dest, password()).unwrap();
+        let mut journal = read_journal(&roots).unwrap().unwrap();
+        journal.state = "replacing".into();
+        let replaced = roots.replaced().join(&journal.id);
+        journal.replaced = Some(replaced.to_string_lossy().into_owned());
+        write_journal(&roots, &journal).unwrap();
+        fs::create_dir_all(&replaced).unwrap();
+        move_dir(&roots.archive().root, &replaced.join("E-Rechnungsarchiv")).unwrap();
+        fs::create_dir_all(roots.workspace()).unwrap();
+        move_dir(&roots.workspace(), &replaced.join("workspace")).unwrap();
+        archive::save_and_archive_to(
+            &roots.archive(),
+            &roots.documents,
+            test_archive_request("RE-NEW", "xrechnung"),
+        )
+        .unwrap();
+        let doc = import_to(&roots.workspace(), "neu.pdf", b"%PDF-n", None, None).unwrap();
+        save_to(&roots.workspace(), &doc.id, 0, &snapshot()).unwrap();
+        resume_to(&roots).unwrap();
+        assert_eq!(
+            invoice_numbers(&roots.archive().database),
+            vec!["RE-OLD".to_string()]
+        );
+        assert_eq!(
+            invoice_numbers(
+                &replaced
+                    .join("E-Rechnungsarchiv-nach-unterbrechung")
+                    .join("archiv.sqlite3")
+            ),
+            vec!["RE-NEW".to_string()]
+        );
+        assert!(replaced.join("workspace-nach-unterbrechung").exists());
         fs::remove_dir_all(root).unwrap();
     }
 

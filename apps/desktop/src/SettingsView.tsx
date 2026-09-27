@@ -341,7 +341,7 @@ function BackupSettings({ onMessage, onError }: { onMessage: (value: string) => 
     <p>Letzte Sicherung: {formatBackupTime(status?.lastBackupAtMs)}{status?.lastPath ? ` · ${status.lastPath}` : ""}</p>
     {status?.sameVolume && status.lastPath ? <p className="datev-notice" role="note">Die letzte Sicherung liegt auf demselben Datenträger wie die Arbeitsdaten.</p> : null}
     {status?.pendingRestore ? <div className="datev-notice" role="status">
-      <p>Eine Wiederherstellung wurde unterbrochen. Die bisherigen Daten wurden nicht gelöscht.</p>
+      <p>Eine Wiederherstellung wurde unterbrochen. Bitte zuerst fortsetzen. Vorherige Daten und Angaben, die danach neu entstanden sind, bleiben gesondert erhalten.</p>
       <button type="button" disabled={busy} onClick={() => void run(async () => {
         const result = await resumeRestore();
         setPreview(undefined);
