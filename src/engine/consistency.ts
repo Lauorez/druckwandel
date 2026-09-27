@@ -66,6 +66,13 @@ function item(path: string, label: string, kind: ConsistencyKind | undefined, so
   return { path, label, kind, sourceValue, outputValue };
 }
 
+function netAmountForSource(source: string, calculated?: CalculatedInvoice): string {
+  const taxExclusive = calculated?.totals.taxExclusive ?? "";
+  const lineNet = calculated?.totals.lineNet ?? "";
+  if (compareMoney(source, lineNet) === "match") return lineNet;
+  return taxExclusive || lineNet;
+}
+
 export function compareInvoiceToSource(extraction: ExtractionResult, draft: ReviewDraft, calculated?: CalculatedInvoice): ContentConsistency {
   const field = (name: keyof ExtractionResult["fields"]) => extraction.fields[name]?.value ?? "";
   const prepaid = calculated ? prepaidAmountOf(calculated) : undefined;
@@ -75,7 +82,7 @@ export function compareInvoiceToSource(extraction: ExtractionResult, draft: Revi
     item("issueDate", "Rechnungsdatum", compareText(field("issueDate"), draft.issueDate), field("issueDate"), draft.issueDate),
     item("seller.name", "Absender", compareText(field("sellerName"), draft.seller.name), field("sellerName"), draft.seller.name),
     item("buyer.name", "Empfänger", compareText(field("buyerName"), draft.buyer.name), field("buyerName"), draft.buyer.name),
-    item("totals.lineNet", "Nettobetrag", compareMoney(field("lineNet"), calculated?.totals.taxExclusive ?? calculated?.totals.lineNet ?? ""), field("lineNet"), calculated?.totals.taxExclusive ?? calculated?.totals.lineNet ?? ""),
+    item("totals.lineNet", "Nettobetrag", compareMoney(field("lineNet"), netAmountForSource(field("lineNet"), calculated)), field("lineNet"), netAmountForSource(field("lineNet"), calculated)),
     item("totals.taxTotal", "Umsatzsteuer", compareMoney(field("taxTotal"), calculated?.totals.taxTotal ?? ""), field("taxTotal"), calculated?.totals.taxTotal ?? ""),
     hasPrepaid ? item("totals.taxInclusive", "Rechnungsbetrag", compareMoney(field("taxInclusive"), calculated?.totals.taxInclusive ?? ""), field("taxInclusive"), calculated?.totals.taxInclusive ?? "") : undefined,
     item("totals.payable", hasPrepaid ? "Zahlbetrag" : "Rechnungsbetrag", compareMoney(field("payable") || field("taxInclusive"), calculated?.totals.payable ?? ""), field("payable") || field("taxInclusive"), calculated?.totals.payable ?? ""),
