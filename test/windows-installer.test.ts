@@ -46,7 +46,7 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(installer).toContain("Ensure-DevelopmentCertificateTrusted");
     expect(installer).toContain("Cert:\\LocalMachine\\TrustedPeople");
     expect(installer).not.toContain("Import-Certificate");
-    expect(installer).not.toContain("-Verb RunAs");
+    expect(installer).toContain("-Verb RunAs");
     expect(installer).toContain("Add-AppxPackage");
     expect(installer).toContain("Wait-ForPrinter");
 

@@ -24,14 +24,14 @@ Node, Rust, .NET SDK und eine gesonderte Java-Installation sind auf dem Zielrech
 
 ## Wichtige Grenze des aktuellen Vorführbuilds
 
-Es ist kein öffentlich vertrauenswürdiges Code-Signing-Zertifikat vorhanden. Das Drucker-MSIX ist deshalb mit dem Entwicklungszertifikat signiert. Auf diesem Entwicklungsrechner ist das Zertifikat bereits in `LocalMachine\TrustedPeople` hinterlegt. Eine erfolgreiche Benutzerinstallation hier beweist keine erstmalige Installation auf einem fremden Rechner ohne vorherige IT-Freigabe.
+Es ist kein öffentlich vertrauenswürdiges Code-Signing-Zertifikat vorhanden. Das Drucker-MSIX ist deshalb mit dem Entwicklungszertifikat signiert. Ab Setup 0.3.4 prüft der Installer bei der ersten Installation, ob Windows diesem Zertifikat vertraut. Falls nicht, erscheint eine Windows-Abfrage für Administratorrechte. Der erhöhte Hilfsschritt prüft Paketidentität, Signatur und Zertifikat erneut und hinterlegt nur das passende öffentliche Zertifikat in `LocalMachine\TrustedPeople`. Danach installiert das normale Benutzerkonto Anwendung und Drucker.
 
 Auf einem anderen Rechner gibt es zwei reguläre Wege:
 
 1. Für die spätere Verteilung: Druckerpaket und Setup öffentlich vertrauenswürdig signieren. Danach kann ein Standardbenutzer installieren, soweit lokale Unternehmensrichtlinien die App erlauben.
-2. Für einen beaufsichtigten Vorführtest: Die IT hinterlegt das öffentliche Entwicklungszertifikat vorab im lokalen Computerspeicher `TrustedPeople`. Dieser einmalige Vertrauensschritt braucht Administratorrechte. Anschließend läuft das Setup im normalen Benutzerkonto.
+2. Für einen beaufsichtigten Vorführtest: Eine Person mit Administratorrechten bestätigt die Abfrage des Setups. Alternativ kann die IT das öffentliche Entwicklungszertifikat vorab im lokalen Computerspeicher `TrustedPeople` hinterlegen. Dieser einmalige Vertrauensschritt braucht Administratorrechte.
 
-Das Setup importiert keine Zertifikate, aktiviert keinen Entwicklermodus, startet keine Systemdienste neu und fordert keine Rechteerhöhung an. Wenn der Drucker nicht eingerichtet werden kann, bricht es die Installation ab und meldet einen Fehler. Es gibt keinen als vollständig ausgegebenen App-only-Fallback.
+Das Setup aktiviert keinen Entwicklermodus und startet keine Systemdienste neu. Wird die Administratorabfrage abgelehnt oder durch eine Unternehmensrichtlinie verhindert, bricht die vollständige Installation mit einer Fehlermeldung ab. Es gibt keinen als vollständig ausgegebenen App-only-Fallback.
 
 Die Anforderung „auf einem beliebigen fremden Rechner erstmalig vollständig ohne Admin“ bleibt ohne vertrauenswürdige Signatur unerfüllt. Windows-Zertifikatvertrauen lässt sich nicht durch eine anders verpackte EXE ersetzen. Siehe [Microsoft: MSIX-Signierung](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide) und [MSIX-Zertifikatfehler](https://learn.microsoft.com/en-us/windows/msix/msix-troubleshooting-guide).
 
