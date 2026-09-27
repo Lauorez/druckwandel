@@ -169,13 +169,14 @@ struct ManifestFile {
 }
 
 #[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ManifestJava {
     #[serde(default)]
     relative_path: String,
 }
 
 #[derive(Default, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 struct ManifestTool {
     engine_version: String,
     rule_version: String,
@@ -320,6 +321,12 @@ fn inner_text(block: &str, tag: &str) -> String {
 
 fn map_location(location: &str, code: &str) -> String {
     let haystack = format!("{location} {code}");
+    match code {
+        "BR-DE-10" => return "deliveryAddress.city".into(),
+        "BR-DE-11" => return "deliveryAddress.postalCode".into(),
+        "BR-IC-12" => return "deliveryAddress.countryCode".into(),
+        _ => {}
+    }
     if haystack.contains("BuyerReference") || haystack.contains("BR-DE-15") || haystack.contains("BT-10") {
         return "buyerReference".into();
     }
@@ -381,6 +388,15 @@ pub(crate) fn evaluate_kosit(outcome: &ProcessOutcome, rule_version: &str, engin
             attribute(block, "location").unwrap_or(""),
             &inner_text(block, "text"),
         ));
+    }
+    for block in collect_inner(report, "message") {
+        if attribute(block, "level") == Some("error") {
+            issues.push(issue(
+                attribute(block, "code").unwrap_or("XML"),
+                attribute(block, "xpathLocation").unwrap_or(""),
+                &inner_text(block, "message"),
+            ));
+        }
     }
     if valid_attr.as_deref() == Some("true") && outcome.code == 0 && rejected {
         if issues.is_empty() {
@@ -515,12 +531,17 @@ pub(crate) fn evaluate_verapdf(outcome: &ProcessOutcome, rule_version: &str, eng
     }).unwrap_or_default();
     let compliant = attribute(&validation_tag, "isCompliant").map(str::to_ascii_lowercase);
     let flavour = attribute(&validation_tag, "flavour").unwrap_or_default().to_ascii_uppercase();
+    let pdfa3b = if flavour.is_empty() {
+        attribute(&validation_tag, "profileName").is_some_and(|name| name.eq_ignore_ascii_case("PDF/A-3B validation profile"))
+    } else {
+        flavour == "3B" || flavour == "PDF/A-3B"
+    };
     let failed_parse = report.contains("failedToParse=\"1\"") || report.contains("encrypted=\"1\"");
     let details_tag = report.find("<details").and_then(|index| {
         report[index..].find('>').map(|end| report[index..=index + end].to_string())
     }).unwrap_or_default();
     let failed_checks = attribute(&details_tag, "failedChecks").unwrap_or("0").parse::<i32>().unwrap_or(1);
-    let passed = outcome.code == 0 && compliant.as_deref() == Some("true") && flavour.contains("3B") && !failed_parse && failed_checks == 0;
+    let passed = outcome.code == 0 && compliant.as_deref() == Some("true") && pdfa3b && !failed_parse && failed_checks == 0;
     if !passed {
         return OfficialReport {
             schema_version: 1,
@@ -573,7 +594,7 @@ fn java_offline_args() -> [&'static str; 9] {
         "-Dhttps.proxyHost=127.0.0.1",
         "-Dhttps.proxyPort=9",
         "-Djavax.xml.accessExternalDTD=",
-        "-Djavax.xml.accessExternalSchema=",
+        "-Djavax.xml.accessExternalSchema=file,jar:file",
         "-Djavax.xml.accessExternalStylesheet=",
     ]
 }
@@ -721,7 +742,8 @@ fn run_verapdf(bundle: &ValidatorBundle, pdf: &[u8], cancel: &AtomicBool) -> Res
     let invoice = work.join("invoice.pdf");
     fs::write(&invoice, pdf).map_err(|error| error.to_string())?;
     let mut command = Command::new(&bundle.java);
-    command.args(java_offline_args()).arg("-jar").arg(&bundle.verapdf_jar).args([
+    command.args(java_offline_args()).arg("-cp").arg(&bundle.verapdf_jar).args([
+        "org.verapdf.apps.GreenfieldCliWrapper",
         "--flavour",
         "3b",
         "--format",
@@ -862,26 +884,27 @@ pub(crate) fn validate_prepared_invoice(
     })
 }
 
-pub(crate) fn ticket_matches(
-    ticket: &ValidationTicket,
-    document_id: &str,
-    source_revision: i64,
-    format: &str,
-    xml: &str,
-    pdf: &[u8],
-    snapshot: &str,
-    original_hash: &str,
-) -> Result<(), String> {
+pub(crate) struct ExportCandidate<'a> {
+    pub document_id: &'a str,
+    pub source_revision: i64,
+    pub format: &'a str,
+    pub xml: &'a str,
+    pub pdf: &'a [u8],
+    pub snapshot: &'a str,
+    pub original_hash: &'a str,
+}
+
+pub(crate) fn ticket_matches(ticket: &ValidationTicket, candidate: &ExportCandidate<'_>) -> Result<(), String> {
     if !ticket.report.valid || ticket.report.status != "passed" {
         return Err("Die unabhängige Prüfung ist nicht erfolgreich abgeschlossen.".into());
     }
-    if ticket.document_id != document_id
-        || ticket.source_revision != source_revision
-        || ticket.format != format
-        || ticket.xml_sha256 != sha256_hex(xml.as_bytes())
-        || ticket.pdf_sha256 != sha256_hex(pdf)
-        || ticket.snapshot_hash != sha256_hex(snapshot.as_bytes())
-        || ticket.original_hash != original_hash
+    if ticket.document_id != candidate.document_id
+        || ticket.source_revision != candidate.source_revision
+        || ticket.format != candidate.format
+        || ticket.xml_sha256 != sha256_hex(candidate.xml.as_bytes())
+        || ticket.pdf_sha256 != sha256_hex(candidate.pdf)
+        || ticket.snapshot_hash != sha256_hex(candidate.snapshot.as_bytes())
+        || ticket.original_hash != candidate.original_hash
     {
         return Err("Die Rechnung wurde nach der Prüfung geändert. Bitte die Ausgabe erneut starten.".into());
     }
@@ -891,6 +914,20 @@ pub(crate) fn ticket_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_manifest_preserves_paths_and_versions() {
+        let source = include_str!("../resources/validators/manifest.json");
+        let manifest: ManifestFile = serde_json::from_str(source).unwrap();
+        let json: serde_json::Value = serde_json::from_str(source).unwrap();
+        assert_eq!(manifest.java.relative_path, json["java"]["relativePath"].as_str().unwrap());
+        for (name, tool) in [("kosit", manifest.kosit), ("mustang", manifest.mustang), ("verapdf", manifest.verapdf)] {
+            assert!(!tool.engine_version.is_empty());
+            assert!(!tool.rule_version.is_empty());
+            assert_eq!(tool.engine_version, json[name]["engineVersion"].as_str().unwrap());
+            assert_eq!(tool.rule_version, json[name]["ruleVersion"].as_str().unwrap());
+        }
+    }
 
     fn outcome(report: &str, code: i32) -> ProcessOutcome {
         ProcessOutcome {
@@ -921,6 +958,14 @@ mod tests {
     }
 
     #[test]
+    fn kosit_maps_varl_messages() {
+        let report = r#"<rep:report valid="false"><rep:message level="error" code="BR-DE-10" xpathLocation="Delivery/Address">Lieferort fehlt.</rep:message></rep:report>"#;
+        let failed = evaluate_kosit(&outcome(report, 1), "local", "local");
+        assert!(!failed.valid);
+        assert!(failed.issues.iter().any(|issue| issue.code == "BR-DE-10" && issue.path == "deliveryAddress.city" && issue.message == "Lieferort fehlt."));
+    }
+
+    #[test]
     fn mustang_requires_summary() {
         let passed = evaluate_mustang(&outcome(include_str!("../../../../test/fixtures/validation/mustang-valid.xml"), 0), "factur-x", "2.16.2");
         assert!(passed.valid);
@@ -935,6 +980,14 @@ mod tests {
         assert!(passed.valid);
         let failed = evaluate_verapdf(&outcome(include_str!("../../../../test/fixtures/validation/verapdf-invalid.xml"), 1), "pdfa-3b", "1.28.2");
         assert!(!failed.valid);
+    }
+
+    #[test]
+    fn verapdf_accepts_current_profile_name_but_rejects_other_profiles() {
+        let report = include_str!("../../../../test/fixtures/validation/verapdf-profile-name.xml");
+        assert!(evaluate_verapdf(&outcome(report, 0), "pdfa-3b", "1.28.2").valid);
+        assert!(!evaluate_verapdf(&outcome(&report.replace("PDF/A-3B", "PDF/A-2B"), 0), "pdfa-3b", "1.28.2").valid);
+        assert!(!evaluate_verapdf(&outcome(&report.replace("isCompliant=\"true\"", "isCompliant=\"false\""), 0), "pdfa-3b", "1.28.2").valid);
     }
 
     #[test]
@@ -969,9 +1022,12 @@ mod tests {
                 issues: vec![],
             },
         };
-        assert!(ticket_matches(&ticket, &ticket.document_id, 1, "xrechnung", "xml", b"pdf", "snap", "orig").is_ok());
-        assert!(ticket_matches(&ticket, &ticket.document_id, 1, "xrechnung", "xml-changed", b"pdf", "snap", "orig").is_err());
+        let mut candidate = ExportCandidate { document_id: &ticket.document_id, source_revision: 1, format: "xrechnung", xml: "xml", pdf: b"pdf", snapshot: "snap", original_hash: "orig" };
+        assert!(ticket_matches(&ticket, &candidate).is_ok());
+        candidate.xml = "xml-changed";
+        assert!(ticket_matches(&ticket, &candidate).is_err());
+        candidate.xml = "xml";
         ticket.report.valid = false;
-        assert!(ticket_matches(&ticket, &ticket.document_id, 1, "xrechnung", "xml", b"pdf", "snap", "orig").is_err());
+        assert!(ticket_matches(&ticket, &candidate).is_err());
     }
 }

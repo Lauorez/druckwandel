@@ -1,14 +1,14 @@
 import type { DatevProfile, RevenueAccount } from "../../../src/export/datev/types.js";
 
-export function DatevProfileForm({profile:p,onChange,onSave,busy,dirty}:{profile:DatevProfile;onChange:(p:DatevProfile)=>void;onSave:()=>void;busy:boolean;dirty:boolean}) {
+export function DatevProfileForm({profile:p,onChange,onSave,busy,dirty,embedded}:{profile:DatevProfile;onChange:(p:DatevProfile)=>void;onSave:()=>void;busy:boolean;dirty:boolean;embedded?:boolean}) {
   const change=(patch:Partial<DatevProfile>)=>onChange({...p,...patch,confirmed:false});
   const field=(label:string,key:"name"|"consultant"|"client"|"fiscalYearStart"|"collectiveDebtor",type="text")=><label><span>{label}</span><input type={type} value={p[key]} onChange={e=>change({[key]:e.target.value})}/></label>;
   const seller=(label:string,key:"name"|"vatId"|"taxRegistrationId")=><label><span>{label}</span><input value={p.seller[key]??""} onChange={e=>change({seller:{...p.seller,[key]:e.target.value}})}/></label>;
   const address=(label:string,key:"line1"|"postalCode"|"city")=><label><span>{label}</span><input value={p.seller.address[key]} onChange={e=>change({seller:{...p.seller,address:{...p.seller.address,[key]:e.target.value}}})}/></label>;
   const updateAccount=(index:number,patch:Partial<RevenueAccount>)=>change({revenueAccounts:p.revenueAccounts.map((a,i)=>i===index?{...a,...patch}:a)});
-  return <fieldset disabled={busy} className="datev-profile">
+  return <fieldset disabled={busy} className={`datev-profile${embedded?" embedded":""}`}>
     <legend>Angaben der Steuerkanzlei</legend>
-    <p>Bitte gemeinsam mit Ihrer Steuerkanzlei einrichten. Kontonummern werden nicht aus Rechnungen geraten. Diese erste Version unterstützt normale deutsche Ausgangsrechnungen in EUR mit 7 % oder 19 % Umsatzsteuer und Sollversteuerung.</p>
+    {!embedded && <p>Bitte gemeinsam mit Ihrer Steuerkanzlei einrichten. Kontonummern werden nicht aus Rechnungen geraten. Diese erste Version unterstützt normale deutsche Ausgangsrechnungen in EUR mit 7 % oder 19 % Umsatzsteuer und Sollversteuerung.</p>}
     <div className="datev-fields">{field("Bezeichnung","name")}{field("Beraternummer","consultant")}{field("Mandantennummer","client")}{field("Beginn des Wirtschaftsjahres","fiscalYearStart","date")}
       <label><span>Sachkontenlänge</span><select value={p.accountLength} onChange={e=>change({accountLength:Number(e.target.value)})}>{[4,5,6,7,8].map(n=><option key={n} value={n}>{n} Stellen</option>)}</select></label>
       <label><span>Kontenrahmen</span><select value={p.chart} onChange={e=>change({chart:e.target.value as "03"|"04"})}><option value="03">SKR03</option><option value="04">SKR04</option></select></label>
@@ -33,6 +33,8 @@ export function DatevProfileForm({profile:p,onChange,onSave,busy,dirty}:{profile
     <div className="datev-fields">{field("Sammelkundenkonto (optional)","collectiveDebtor")}</div>
     <label className="datev-check"><input type="checkbox" checked={p.collectiveDebtorConfirmed} onChange={e=>change({collectiveDebtorConfirmed:e.target.checked})}/>Die Kanzlei hat dieses Sammelkundenkonto ausdrücklich freigegeben.</label>
     <label className="datev-check"><input type="checkbox" checked={p.confirmed} onChange={e=>onChange({...p,confirmed:e.target.checked})}/>Betrieb, Konten und Buchungseinstellungen wurden mit der Steuerkanzlei abgestimmt.</label>
-    <button type="button" className="primary" onClick={onSave}>{dirty?"Kanzleiangaben speichern":"Kanzleiangaben gespeichert"}</button>
+    <div className="datev-save-row">
+      <button type="button" className="primary" onClick={onSave} disabled={!dirty}>Speichern</button>
+    </div>
   </fieldset>;
 }

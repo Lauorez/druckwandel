@@ -26,6 +26,38 @@ describe("persistent draft boundary", () => {
       .toEqual({ source: "original.pdf",draft: s.draft });
     expect(() => parseLegacyDraft('{"schemaVersion":1,"draft":{}}')).toThrow();
   });
+  it("rejects corrupt seller contacts and transformation entries before rendering", () => {
+    const s = fixture();
+    expect(() => parseWorkspaceSnapshot(JSON.stringify({ ...s, draft: { ...s.draft, seller: { ...s.draft.seller, email: null } } }))).toThrow();
+    s.extraction.fields.invoiceNumber = { name: "invoiceNumber", value: "RE1", confidence: 1, sourceTokenIds: [], sourceText: "RE1", transformations: [] };
+    const damaged = JSON.parse(JSON.stringify(s));
+    damaged.extraction.fields.invoiceNumber.transformations = [null];
+    expect(() => parseWorkspaceSnapshot(JSON.stringify(damaged))).toThrow();
+  });
+  it("migrates old drafts without document type or allowances", () => {
+    const s = fixture();
+    const { invoiceType:_t, precedingInvoiceNumber:_n, precedingInvoiceDate:_d, precedingInvoices:_p, prepaidAmount:_pre, finalInvoice:_f, prepaymentInvoice:_prepay, allowances:_a, ...legacyDraft } = s.draft;
+    const old = { ...legacyDraft, lines: s.draft.lines.map(({ allowances:_ignored, ...line }) => line) };
+    const parsed = parseWorkspaceSnapshot(JSON.stringify({ ...s, draft: old, initialDraft: old }));
+    expect(parsed.draft.invoiceType).toBe("380");
+    expect(parsed.draft.precedingInvoiceNumber).toBe("");
+    expect(parsed.draft.finalInvoice).toBe(false);
+    expect(parsed.draft.prepaymentInvoice).toBe(false);
+    expect(parsed.draft.prepaidAmount).toBe("");
+    expect(parsed.draft.precedingInvoices).toEqual([]);
+    expect(parsed.draft.allowances).toEqual([]);
+    expect(parsed.draft.lines.every(line => Array.isArray(line.allowances))).toBe(true);
+  });
+  it("migrates 19 % to the standard tax case and does not guess 0 %", () => {
+    const s = fixture();
+    const base = { id: "1", description: "Leistung", quantity: "1", unitCode: "C62", netUnitPrice: "100", sourceTokenIds: [] as string[] };
+    const zero = { ...s.draft, lines: [{ ...base, taxRate: "0" }] };
+    const parsedZero = parseWorkspaceSnapshot(JSON.stringify({ ...s, draft: zero, initialDraft: zero }));
+    expect(parsedZero.draft.lines[0]?.taxCase).toBe("");
+    const nineteen = { ...s.draft, lines: [{ ...base, taxRate: "19" }] };
+    const parsed19 = parseWorkspaceSnapshot(JSON.stringify({ ...s, draft: nineteen, initialDraft: nineteen }));
+    expect(parsed19.draft.lines[0]).toMatchObject({ taxCase: "S19", taxRate: "19", exemptionReason: "" });
+  });
   it("serializes saves and drains newer changes before a document switch", async () => {
     vi.useFakeTimers();
     const s = fixture();

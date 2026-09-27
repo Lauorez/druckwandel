@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -64,9 +64,8 @@ function Test-CertificateTrusted {
     param([Parameter(Mandatory = $true)][string]$Thumbprint)
 
     $stores = @(
-        "Cert:\CurrentUser\TrustedPeople",
-        "Cert:\CurrentUser\Root",
-        "Cert:\LocalMachine\TrustedPeople"
+        "Cert:\LocalMachine\TrustedPeople",
+        "Cert:\LocalMachine\Root"
     )
     foreach ($store in $stores) {
         $match = Get-ChildItem -Path $store -ErrorAction SilentlyContinue |
@@ -79,9 +78,31 @@ function Test-CertificateTrusted {
     return $false
 }
 
-function Install-DevelopmentCertificate {
+function Assert-CompletePrinterPackage {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        foreach ($name in @("CompanionApp.exe", "CompanionApp.runtimeconfig.json", "coreclr.dll", "hostfxr.dll", "System.Private.CoreLib.dll", "ERechnung.VirtualPrinter.Native.dll", "ERechnung.VirtualPrinter.Tasks.winmd")) {
+            if (-not $archive.GetEntry($name)) { throw "Das Druckerpaket ist unvollständig: $name fehlt." }
+        }
+        foreach ($name in @("WinRT.Host.dll", "WinRT.Host.runtimeconfig.json", "ERechnung.VirtualPrinter.Tasks.dll")) {
+            if ($archive.GetEntry($name)) { throw "Das Druckerpaket enthält einen nicht eigenständigen Task-Host: $name." }
+        }
+        $reader = [System.IO.StreamReader]::new($archive.GetEntry("CompanionApp.runtimeconfig.json").Open())
+        try { $runtime = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+        if ($runtime.runtimeOptions.framework -or $runtime.runtimeOptions.frameworks) {
+            throw "Das Druckerpaket benötigt eine externe .NET-Installation und ist nicht vollständig."
+        }
+        $manifestReader = [System.IO.StreamReader]::new($archive.GetEntry("AppxManifest.xml").Open())
+        try { $manifestContent = $manifestReader.ReadToEnd() } finally { $manifestReader.Dispose() }
+        if ($manifestContent -notmatch "<Path>ERechnung\.VirtualPrinter\.Native\.dll</Path>") {
+            throw "Das Druckerpaket aktiviert den Hintergrundtask nicht über die native Bibliothek."
+        }
+    } finally { $archive.Dispose() }
+}
+
+function Assert-DevelopmentCertificateTrusted {
     param(
-        [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$Thumbprint
     )
 
@@ -89,12 +110,7 @@ function Install-DevelopmentCertificate {
         return
     }
 
-    Write-SetupLog "Das Testzertifikat wird nur für das aktuelle Benutzerkonto übernommen."
-    Import-Certificate -FilePath $Path -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
-    Import-Certificate -FilePath $Path -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
-    if (-not (Test-CertificateTrusted -Thumbprint $Thumbprint)) {
-        throw "Das Testzertifikat konnte nicht im Benutzer-Zertifikatspeicher abgelegt werden."
-    }
+    throw "Dieser Vorführbuild verwendet ein Entwicklungszertifikat, dem Windows noch nicht vertraut. Für eine Installation ohne Administratorrechte auf einem neuen Rechner wird ein öffentlich vertrauenswürdig signiertes Druckerpaket benötigt. Alternativ muss die IT das mitgelieferte Zertifikat vorher in LocalMachine\TrustedPeople freigeben. Das Setup verändert keine Zertifikatsspeicher."
 }
 
 function Wait-ForPrinter {
@@ -136,6 +152,7 @@ try {
     if ($identity.Name -ne $packageName) {
         throw "Unerwartetes Druckerpaket: $($identity.Name)."
     }
+    Assert-CompletePrinterPackage -Path $PackagePath
 
     $packageSignature = Get-AuthenticodeSignature -LiteralPath $PackagePath
     if (-not $packageSignature.SignerCertificate -or $packageSignature.Status -eq "HashMismatch") {
@@ -159,13 +176,13 @@ try {
             throw "Testzertifikat und Druckerpaket gehören nicht zusammen."
         }
         if (-not $ValidateOnly) {
-            Install-DevelopmentCertificate -Path $CertificatePath -Thumbprint $certificate.Thumbprint
+            Assert-DevelopmentCertificateTrusted -Thumbprint $certificate.Thumbprint
             $packageSignature = Get-AuthenticodeSignature -LiteralPath $PackagePath
         }
     }
 
     if (-not $ValidateOnly -and $packageSignature.Status -ne "Valid") {
-        Write-SetupLog "Windows bewertet die Paketsignatur als $($packageSignature.Status). Die Anmeldung wird trotzdem für den aktuellen Benutzer versucht."
+        throw "Windows vertraut der Paketsignatur nicht: $($packageSignature.Status). Die Installation wird abgebrochen."
     }
     if ($ValidateOnly) {
         Write-SetupLog "Druckerpaket, Abhängigkeit und Signaturen sind vollständig."
@@ -220,26 +237,6 @@ try {
     $printer = Wait-ForPrinter -TimeoutSeconds $QueueTimeoutSeconds
     if (-not $printer) {
         throw "Windows hat den Drucker nicht innerhalb von $QueueTimeoutSeconds Sekunden bereitgestellt."
-    }
-
-    $workflowServices = @(Get-Service -Name "PrintWorkflowUserSvc*" -ErrorAction SilentlyContinue)
-    if ($workflowServices.Count -eq 0) {
-        throw "Der Windows-Druckdienst wurde nicht gefunden."
-    }
-    foreach ($workflowService in $workflowServices) {
-        try {
-            if ($workflowService.Status -eq "Running") {
-                Restart-Service -InputObject $workflowService -Force -ErrorAction Stop
-            } else {
-                Start-Service -InputObject $workflowService -ErrorAction Stop
-            }
-        } catch {
-            Write-SetupLog "Der Druckdienst $($workflowService.Name) konnte ohne erhöhte Rechte nicht neu gestartet werden."
-        }
-    }
-    $stoppedServices = @(Get-Service -Name "PrintWorkflowUserSvc*" | Where-Object Status -NE "Running")
-    if ($stoppedServices.Count -gt 0 -and -not (Get-Printer -Name $printerName -ErrorAction SilentlyContinue)) {
-        throw "Der Windows-Druckdienst konnte nicht gestartet werden."
     }
 
     Write-SetupLog "Der E-Rechnungsdrucker ist bereit."

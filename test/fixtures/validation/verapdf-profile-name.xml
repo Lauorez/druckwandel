@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<report>
+  <buildInformation><releaseDetails id="core" version="1.28.2" buildDate="2025-07-15T16:07:00+02:00"></releaseDetails></buildInformation>
+  <jobs><job>
+    <item size="37577"><name>invoice.pdf</name></item>
+    <validationReport jobEndStatus="normal" profileName="PDF/A-3B validation profile" statement="PDF file is compliant with Validation Profile requirements." isCompliant="true">
+      <details passedRules="146" failedRules="0" passedChecks="1595" failedChecks="0"></details>
+    </validationReport>
+  </job></jobs>
+  <batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0">
+    <validationReports compliant="1" nonCompliant="0" failedJobs="0">1</validationReports>
+  </batchSummary>
+</report>

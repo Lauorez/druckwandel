@@ -12,13 +12,8 @@ import {
   type PDFObject,
 } from "pdf-lib";
 import { SRGB_ICC } from "./srgb-icc.js";
-
-export class HybridPdfError extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message);
-    this.name = "HybridPdfError";
-  }
-}
+import { HybridPdfError } from "./hybrid-pdf-error.js";
+export { HybridPdfError } from "./hybrid-pdf-error.js";
 
 export interface PdfAttachment {
   filename: string;
@@ -244,6 +239,16 @@ function addOutputIntent(document: PDFDocument): void {
   document.catalog.set(PDFName.of("OutputIntents"), document.context.obj([intent]));
 }
 
+function updateFileIdentifier(document: PDFDocument): void {
+  const identifier = PDFHexString.of(crypto.randomUUID().replaceAll("-", ""));
+  const existing = document.context.trailerInfo.ID;
+  const original = existing instanceof PDFArray ? existing.get(0) : undefined;
+  document.context.trailerInfo.ID = document.context.obj([
+    original instanceof PDFHexString || original instanceof PDFString ? original : identifier,
+    identifier,
+  ]);
+}
+
 export async function convertToPdfA3(sourcePdf: Uint8Array): Promise<Uint8Array> {
   let document: PDFDocument;
   try {
@@ -260,6 +265,7 @@ export async function convertToPdfA3(sourcePdf: Uint8Array): Promise<Uint8Array>
   ensureNoInteractiveForm(document);
   ensureAllFontsEmbedded(document);
   addOutputIntent(document);
+  updateFileIdentifier(document);
   document.catalog.set(PDFName.of("Lang"), PDFString.of("de-DE"));
   const markInfo = document.context.obj({ Marked: true });
   document.catalog.set(PDFName.of("MarkInfo"), document.context.register(markInfo));
@@ -308,6 +314,7 @@ export async function embedCiiInPdf(sourcePdf: Uint8Array, ciiXml: string, optio
   document.catalog.set(PDFName.of("Metadata"), document.context.register(metadata));
   document.catalog.set(PDFName.of("Lang"), PDFString.of("de-DE"));
   addOutputIntent(document);
+  updateFileIdentifier(document);
   return document.save({ useObjectStreams: false, addDefaultPage: false, updateFieldAppearances: false });
 }
 

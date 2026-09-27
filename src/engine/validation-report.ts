@@ -37,6 +37,9 @@ export interface ProcessOutcome {
 }
 
 const FIELD_HINTS: Array<[RegExp, string]> = [
+  [/BR-DE-10\b/, "deliveryAddress.city"],
+  [/BR-DE-11\b/, "deliveryAddress.postalCode"],
+  [/BR-IC-12\b/, "deliveryAddress.countryCode"],
   [/BuyerReference|BT-10|BR-DE-15|Leitweg/i, "buyerReference"],
   [/ID\[|cbc:ID|InvoiceNumber|BT-1\b|BR-02/i, "invoiceNumber"],
   [/IssueDate|BT-2\b/i, "issueDate"],
@@ -57,7 +60,11 @@ const FIELD_HINTS: Array<[RegExp, string]> = [
   [/Buyer.*City|buyer.*address\.city/i, "buyer.address.city"],
   [/Buyer.*Postal|buyer.*address\.postalCode/i, "buyer.address.postalCode"],
   [/Buyer.*Country|buyer.*address\.countryCode/i, "buyer.address.countryCode"],
-  [/InvoiceLine|IncludedSupplyChainTradeLineItem|BR-16|lines/i, "lines"],
+  [/InvoiceTypeCode|CreditNoteTypeCode|BT-3\b|BR-DE-17/i, "invoiceType"],
+  [/BillingReference|PrecedingInvoice|BT-25|InvoiceReferencedDocument/i, "precedingInvoice.invoiceNumber"],
+  [/PrepaidAmount|TotalPrepaidAmount|BT-113/i, "prepaidAmount"],
+  [/AllowanceCharge|SpecifiedTradeAllowanceCharge|BT-92|BT-99|allowances/i, "allowances"],
+  [/InvoiceLine|CreditNoteLine|IncludedSupplyChainTradeLineItem|BR-16|lines/i, "lines"],
   [/GrandTotal|PayableAmount|BT-112|BR-CO-15|totals\.taxInclusive/i, "totals.taxInclusive"],
   [/TaxTotal|BT-110|BR-CO-14|totals\.taxTotal/i, "totals.taxTotal"],
   [/DuePayable|BT-115|BR-CO-16|totals\.payable/i, "totals.payable"],
@@ -78,21 +85,47 @@ export function mapOfficialLocationToPath(location: string, code = ""): string {
 export function germanFieldLabel(path: string): string {
   const lineMatch = path.match(/^lines\.(\d+)\.(.+)$/);
   if (lineMatch?.[1]) {
-    const field = lineMatch[2] === "name"
+    const lineField = lineMatch[2] ?? "";
+    const field = lineField === "name"
       ? "Beschreibung"
-      : lineMatch[2] === "quantity"
+      : lineField === "quantity"
         ? "Menge"
-        : lineMatch[2] === "netUnitPrice"
+        : lineField === "netUnitPrice"
           ? "Einzelpreis"
-          : lineMatch[2] === "tax.rate"
-            ? "Steuersatz"
-            : lineMatch[2];
+          : lineField === "tax.rate"
+            ? "Steuerfall"
+            : lineField === "tax.exemptionReason"
+              ? "Grund der Steuerbefreiung"
+              : lineField.startsWith("allowances")
+                ? "Nachlass"
+                : lineField;
     return `Position ${Number(lineMatch[1]) + 1}: ${field}`;
+  }
+  const allowanceMatch = path.match(/^allowances\.(\d+)\.(.+)$/);
+  if (allowanceMatch?.[1]) {
+    const field = allowanceMatch[2] === "tax.rate" ? "Steuerfall" : allowanceMatch[2] === "tax.exemptionReason" ? "Grund der Steuerbefreiung" : "Zu- oder Abschlag";
+    return `${field} ${Number(allowanceMatch[1]) + 1}`;
+  }
+  const precedingMatch = path.match(/^precedingInvoices\.(\d+)\.(.+)$/);
+  if (precedingMatch?.[1]) {
+    const field = precedingMatch[2] === "issueDate" ? "Datum" : precedingMatch[2] === "paidAmount" ? "Betrag" : "Nummer";
+    return `Bisherige Rechnung ${Number(precedingMatch[1]) + 1}: ${field}`;
   }
   return {
     invoiceNumber: "Rechnungsnummer",
+    invoiceType: "Belegart",
+    "precedingInvoice.invoiceNumber": "Ursprungsrechnung",
+    "precedingInvoice.issueDate": "Datum der Ursprungsrechnung",
+    prepaidAmount: "Bereits gezahlt",
+    allowances: "Zu- und Abschläge",
     buyerReference: "Bestellnummer oder Leitweg-ID",
     issueDate: "Rechnungsdatum",
+    dueDate: "Fälligkeitsdatum",
+    serviceDate: "Leistungsdatum",
+    "deliveryAddress.line1": "Lieferanschrift: Straße",
+    "deliveryAddress.city": "Lieferanschrift: Ort",
+    "deliveryAddress.postalCode": "Lieferanschrift: Postleitzahl",
+    "deliveryAddress.countryCode": "Lieferland",
     currency: "Währung",
     "seller.name": "Absender: Name",
     "seller.address.line1": "Absender: Straße und Hausnummer",
@@ -108,7 +141,10 @@ export function germanFieldLabel(path: string): string {
     "buyer.address.city": "Empfänger: Ort",
     "buyer.address.postalCode": "Empfänger: Postleitzahl",
     "buyer.address.countryCode": "Empfänger: Land",
+    "buyer.vatId": "Empfänger: Umsatzsteuer-ID",
     lines: "Leistungen und Artikel",
+    "totals.lineNet": "Positionssumme",
+    "totals.taxExclusive": "Nettobetrag",
     "totals.taxTotal": "Umsatzsteuer",
     "totals.taxInclusive": "Rechnungsbetrag",
     "totals.payable": "Zahlbetrag",
@@ -130,11 +166,12 @@ export function evaluateVeraPdfOutcome(outcome: ProcessOutcome, ruleVersion: str
   const validationTag = report.match(/<(?:[\w.-]+:)?validationReport\b[^>]*>/i)?.[0] ?? "";
   const compliant = attribute(validationTag, "isCompliant")?.toLowerCase();
   const flavour = attribute(validationTag, "flavour") ?? "";
+  const pdfa3b = flavour ? /^(?:PDF\/A-)?3B$/i.test(flavour) : attribute(validationTag, "profileName")?.toUpperCase() === "PDF/A-3B VALIDATION PROFILE";
   const failedParse = /failedToParse\s*=\s*"([1-9]\d*)"/i.test(report) || /encrypted\s*=\s*"([1-9]\d*)"/i.test(report);
   const failedChecks = Number(attribute(report.match(/<(?:[\w.-]+:)?details\b[^>]*>/i)?.[0] ?? "", "failedChecks") ?? "0");
   const issues = collectTags(report, "rule").filter((block) => attribute(block, "status")?.toLowerCase() === "failed")
     .map((block) => issue("verapdf", attribute(block, "clause") ?? "PDFA", flavour, innerText(block, "description") || innerText(block, "message") || "Die PDF erfüllt PDF/A-3 nicht.", "error"));
-  const passed = outcome.code === 0 && compliant === "true" && /3b/i.test(flavour) && !failedParse && failedChecks === 0;
+  const passed = outcome.code === 0 && compliant === "true" && pdfa3b && !failedParse && failedChecks === 0;
   if (!passed) {
     if (!issues.length) issues.push({ engine: "verapdf", severity: "error", code: "PDFA", path: "document", message: "Die PDF/A-3-Prüfung ist fehlgeschlagen. Nicht jedes PDF kann umgewandelt werden." });
     return { schemaVersion: 1, status: compliant ? "failed" : "unreadable-report", valid: false, engine: "verapdf", engineVersion, ruleVersion, issues };
@@ -158,7 +195,7 @@ function collectTags(source: string, tag: string): string[] {
   const matches: string[] = [];
   const pattern = new RegExp(`<(?:[\\w.-]+:)?${tag}\\b([^>]*)>([\\s\\S]*?)</(?:[\\w.-]+:)?${tag}>|<(?:[\\w.-]+:)?${tag}\\b([^>]*)/>`, "gi");
   for (const match of source.matchAll(pattern)) {
-    matches.push(`${match[1] ?? match[3] ?? ""} ${match[2] ?? ""}`);
+    matches.push(match[0]);
   }
   return matches;
 }
@@ -195,6 +232,8 @@ export function evaluateKositOutcome(outcome: ProcessOutcome, ruleVersion: strin
   const issues = [
     ...collectTags(report, "failed-assert").map((block) => issue("kosit", attribute(block, "id") ?? "", attribute(block, "location") ?? block, innerText(block, "text") ?? block)),
     ...collectTags(report, "xml-syntax-error").map((block) => issue("kosit", "XML", "", attribute(block, "message") ?? block)),
+    ...collectTags(report, "message").filter(block => attribute(block, "level") === "error")
+      .map(block => issue("kosit", attribute(block, "code") ?? "XML", attribute(block, "xpathLocation") ?? "", innerText(block, "message") ?? "")),
   ];
   const passed = validAttr === "true" && !rejected && (accepted || !report.includes("assessment")) && outcome.code === 0;
   if (validAttr === "true" && outcome.code === 0 && rejected) {

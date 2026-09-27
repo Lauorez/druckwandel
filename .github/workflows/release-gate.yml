@@ -1,0 +1,28 @@
+name: Release-Gate
+
+# Portabler Lauf auf GitHub-hosted Ubuntu. Windows-Cargo, .NET, Installer und
+# echte Validatoren bleiben lokal (`npm run release:gate`). Kein Windows-Runner
+# und kein DATEV-Prüfprogramm werden hier als bestanden gewertet.
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run release:gate -- --portable
+      - name: Gate-Bericht
+        if: always()
+        run: node -e "console.log(require('fs').readFileSync('artifacts/release-gate.json','utf8'))"

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emitSettingsChanged } from "./settingsWindow.js";
 import type { DatevProfile, DatevSource } from "../../../src/export/datev/types.js";
 export interface DatevExport { id:string;createdAtMs:number;state:"pending"|"complete";manifest:string;error:string|null }
 export interface DatevExportPage { entries:DatevExport[];total:number }
@@ -9,7 +10,10 @@ export interface DatevExportRequest {
 }
 export const datevStore = {
   profile:()=>invoke<string|null>("datev_get_profile"),
-  saveProfile:(contents:string)=>invoke<void>("datev_save_profile",{contents}),
+  saveProfile: async (contents: string) => {
+    await invoke<void>("datev_save_profile", { contents });
+    await emitSettingsChanged("datev");
+  },
   source:(id:string)=>invoke<DatevSource>("archive_datev_source",{id}),
   status:(documentIds:string[])=>invoke<string[]>("datev_export_status",{documentIds}),
   duplicates:(archiveIds:string[])=>invoke<string[]>("datev_check_duplicates",{archiveIds}),
@@ -18,6 +22,15 @@ export const datevStore = {
   resume:(id:string)=>invoke<DatevExport>("datev_resume_export",{id}),
   open:(id:string)=>invoke<void>("datev_open_export",{id}),
 };
+export function parseStoredDatevProfile(raw: string | null | undefined): DatevProfile {
+  if (!raw) return emptyDatevProfile();
+  const profile = JSON.parse(raw) as DatevProfile;
+  if (profile.schemaVersion !== 1 || !profile.seller?.address || !Array.isArray(profile.revenueAccounts) || !Array.isArray(profile.debtors)) {
+    throw new Error("Die gespeicherten Kanzleiangaben sind beschädigt.");
+  }
+  return profile;
+}
+
 export function emptyDatevProfile(): DatevProfile {
   return {schemaVersion:1,name:"Meine Steuerkanzlei",consultant:"",client:"",fiscalYearStart:`${new Date().getFullYear()}-01-01`,accountLength:4,chart:"03",seller:{name:"",address:{line1:"",postalCode:"",city:"",countryCode:"DE"}},confirmed:false,accountingMethod:"",periodRule:"",locking:"",collectiveDebtor:"",collectiveDebtorConfirmed:false,debtors:[],revenueAccounts:[{id:"standard19",label:"Erlöse 19 %",taxRate:"19",account:"",mode:"automatic",taxKey:""},{id:"standard7",label:"Erlöse 7 %",taxRate:"7",account:"",mode:"automatic",taxKey:""}]};
 }

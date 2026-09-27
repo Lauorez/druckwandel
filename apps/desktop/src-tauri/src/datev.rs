@@ -358,6 +358,7 @@ fn artifact_path(root: &Path, id: &str, name: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 fn finish(root: &Path, id: &str) -> Result<ExportSummary, String> {
+    Uuid::parse_str(id).map_err(|_| "Ungültige Exportkennung.".to_string())?;
     let mut db = database(root)?;
     let summary = load(&db, id)?;
     let operation = (|| -> Result<(), String> {
@@ -445,6 +446,7 @@ pub(crate) fn datev_get_profile(app: AppHandle) -> Result<Option<String>, String
 }
 #[tauri::command]
 pub(crate) fn datev_save_profile(app: AppHandle, contents: String) -> Result<(), String> {
+    let _lock = crate::guard::exclusive();
     super::workspace::datev_profile(&app, Some(&contents)).map(|_| ())
 }
 #[tauri::command]
@@ -496,6 +498,7 @@ pub(crate) fn datev_create_export(
     app: AppHandle,
     request: ExportRequest,
 ) -> Result<ExportSummary, String> {
+    let _lock = crate::guard::exclusive();
     if request.files.is_empty() || request.files.len() > 2 || request.repeat_reason.len() > 2000 {
         return Err("Ungültiger Exportumfang.".into());
     }
@@ -647,13 +650,16 @@ pub(crate) fn datev_list_exports(
 }
 #[tauri::command]
 pub(crate) fn datev_resume_export(app: AppHandle, id: String) -> Result<ExportSummary, String> {
+    let _lock = crate::guard::exclusive();
     finish(&root(&app)?, &id)
 }
 #[tauri::command]
 pub(crate) fn datev_open_export(app: AppHandle, id: String) -> Result<(), String> {
+    let _lock = crate::guard::exclusive();
+    Uuid::parse_str(&id).map_err(|_| "Ungültige Exportkennung.".to_string())?;
     let root = root(&app)?;
     finish(&root, &id)?;
-    super::archive::open_native(&root.join("Dateien").join(id))
+    super::archive::open_native(&root.join("Dateien").join(&id))
 }
 
 #[cfg(test)]
@@ -846,6 +852,7 @@ mod tests {
             assert!(artifact_path(&s.0, &id, path).is_err(), "{path}");
         }
         assert!(artifact_path(&s.0, "../escape", "file").is_err());
+        assert!(finish(&s.0, "../escape").unwrap_err().contains("Ungültige"));
         assert!(
             artifact_path(&s.0, &id, "Belege/test.pdf")
                 .unwrap()

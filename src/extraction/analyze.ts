@@ -16,12 +16,12 @@ export function analyzeDocumentPages(
 
   const net = fields.lineNet;
   const tax = fields.taxTotal;
-  const payable = fields.payable;
-  if (net && tax && payable && !decimal(net.value).add(tax.value).eq(payable.value)) {
+  const gross = fields.taxInclusive ?? fields.payable;
+  if (net && tax && gross && !decimal(net.value).add(tax.value).eq(gross.value)) {
     net.confidence = Math.min(net.confidence, 0.6);
     tax.confidence = Math.min(tax.confidence, 0.6);
-    payable.confidence = Math.min(payable.confidence, 0.6);
-    warnings.push({ code: "TOTALS_MISMATCH", message: "Erkanntes Netto plus Steuer entspricht nicht dem erkannten Zahlbetrag; manuelle Prüfung erforderlich." });
+    gross.confidence = Math.min(gross.confidence, 0.6);
+    warnings.push({ code: "TOTALS_MISMATCH", message: "Erkanntes Netto plus Steuer entspricht nicht dem erkannten Rechnungsbetrag; manuelle Prüfung erforderlich." });
   }
   if (net && table.lineItems.length > 0) {
     const lineSum = table.lineItems.reduce((sum, line) => sum.add(line.netAmount), decimal(0));

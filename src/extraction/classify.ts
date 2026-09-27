@@ -28,7 +28,7 @@ const rules: Rule[] = [
   { name: "lineNet", labels: /(?:nettobetrag|summe netto|net total|^\s*netto\s*:)/i, value: new RegExp(amountValue), confidence: 0.91, normalize: normalizeAmount },
   { name: "taxTotal", labels: /\b(?:umsatzsteuer|mwst|ust|vat)\b\.?(?![-.\s]*(?:id|ident))(?:\s+\d+[,.]?\d*\s*%)?/i, value: new RegExp(amountValue), confidence: 0.89, normalize: normalizeAmount },
   { name: "taxInclusive", labels: /(?:bruttobetrag|summe brutto|gross total|^\s*gesamt\s*:)/i, value: new RegExp(amountValue), confidence: 0.92, normalize: normalizeAmount },
-  { name: "payable", labels: /(?:zahlbetrag|rechnungsbetrag|gesamtbetrag|zu zahlen|amount due|^\s*gesamt\s*:)/i, value: new RegExp(amountValue), confidence: 0.95, normalize: normalizeAmount },
+  { name: "payable", labels: /(?:zahlbetrag|rechnungsbetrag|gesamtbetrag|zu zahlen|restbetrag|noch zu zahlen|amount due|^\s*gesamt\s*:)/i, value: new RegExp(amountValue), confidence: 0.95, normalize: normalizeAmount },
 ];
 
 const BUYER_MARKER = /^(?:rechnung\s+an|rechnungsempfänger(?:in)?|rechnungsempfaenger(?:in)?|rechnungsadresse|kundenadresse|lieferanschrift|bill(?:ed)?\s+to)\s*:?\s*(.*)$|^(?:empfänger(?:in)?|empfaenger(?:in)?|kunde|an)\s*:\s*(.*)$|^(?:empfänger(?:in)?|empfaenger(?:in)?)\s*$/i;

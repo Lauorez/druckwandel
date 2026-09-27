@@ -20,10 +20,28 @@ Lokale Desktop-Anwendung zum Übernehmen, Prüfen, Erzeugen und Archivieren elek
 - deutsche Betragsdarstellung und -eingabe bei kanonischen, exakten Dezimalwerten im Core
 - lokales Vorlagengedächtnis für bestätigte Ergänzungen und zuvor nicht erkannte Positionstabellen
 - integriertes Rechnungsarchiv mit PDF/XML-Ablage, SQLite-Suche und verketteten SHA-256-Prüfsummen
+- kennwortgeschützte lokale Sicherung und Wiederherstellung von Archiv, Entwürfen und Schlüssel
 - optionale digitale Bestätigung neuer Archiveinträge mit einem lokalen Ed25519-Schlüssel
 - sichtbare Pflichtfeldvalidierung, atomare Entwürfe sowie XRechnung- und ZUGFeRD-Ausgabe
 - nativer Windows-11-Print-Support-Virtual-Printer mit lokaler OXPS-zu-PDF-Konvertierung
 - positive und negative Testfälle
+
+## Installation
+
+Windows 11 Version 24H2 oder neuer (Build 26100), 64-Bit. Die aktuelle Fassung ist **0.3.3** mit Drucker **0.1.0.12**.
+
+Setup und Prüfsumme stehen im [Release v0.3.3](https://github.com/Lauorez/erechnung/releases/tag/v0.3.3):
+
+- [E-Rechnungs-Assistent-0.3.3-x64-Setup.exe](https://github.com/Lauorez/erechnung/releases/download/v0.3.3/E-Rechnungs-Assistent-0.3.3-x64-Setup.exe)
+- [SHA-256](https://github.com/Lauorez/erechnung/releases/download/v0.3.3/E-Rechnungs-Assistent-0.3.3-x64-Setup.exe.sha256)
+
+SHA-256 der Setup-Datei: `c82d547e919d02768f7c636fb9f117c8f36cba10e1cbb088b931b18a15fcb89b`
+
+Die Datei normal starten, nicht über „Als Administrator ausführen“. Das Setup installiert Anwendung und Drucker für das angemeldete Benutzerkonto nach `%LOCALAPPDATA%\E-Rechnungs-Assistent` und legt den Drucker **E-Rechnung** an. Node, Rust, .NET SDK und eine eigene Java-Installation sind dafür nicht nötig. Ein Update behält Entwürfe, Archiv und Vorlagengedächtnis. Der Drucker bleibt dabei registriert und wird nur ersetzt, wenn das enthaltene Paket neuer ist. Die Deinstallation entfernt den Drucker, nicht `Dokumente\E-Rechnungsarchiv`.
+
+Das Setup selbst ist unsigniert. Das enthaltene Druckerpaket ist mit dem Entwicklungszertifikat `CN=ERechnung Development` signiert. Eine öffentlich vertrauenswürdige Codesignatur liegt nicht vor. Auf einem fremden Rechner vertraut Windows diesem Zertifikat nicht von allein. Für eine Erstinstallation muss die IT die mitgelieferte Datei [ERechnung.Dev.cer](https://github.com/Lauorez/erechnung/releases/download/v0.3.3/ERechnung.Dev.cer) vorher im Computerspeicher `LocalMachine\TrustedPeople` hinterlegen. Ein Import nur in den Benutzer-Zertifikatspeicher genügt nicht. Das Setup importiert keine Zertifikate, fordert keine Rechteerhöhung an und bricht ab, wenn der Drucker nicht eingerichtet werden kann. Auf einem Rechner, auf dem dieses Zertifikat bereits im Computerspeicher liegt, läuft die Installation im normalen Benutzerkonto.
+
+Ablauf und Grenzen: [Installationsbericht 0.3.3](docs/installation-0.3.3-2026-09-27.md), [Windows-Vorführpaket](docs/windows-demo-installation.md).
 
 ## Start auf dem Windows-Vorführrechner
 
@@ -36,14 +54,14 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup-windows.ps1
 ```
 
-Das Skript braucht **keine Administratorrechte**. Fehlende Werkzeuge (Node 22, Rust, .NET SDK 10) werden nur für das aktuelle Benutzerkonto nachgeladen. Visual Studio Build Tools und das Windows-SDK werden nicht maschinenweit installiert; `signtool` kommt aus dem NuGet-Paket der Windows SDK BuildTools. Der NSIS-Installer installiert die App für den aktuellen Benutzer. Das Testzertifikat landet in `CurrentUser\TrustedPeople`, nicht in `LocalMachine`.
+Das Build-Skript lädt fehlende Werkzeuge für das Benutzerkonto nach. Der NSIS-Installer installiert die Anwendung und das Druckerpaket für den aktuellen Benutzer. **Für eine vollständige Installation auf einem neuen Rechner ohne Administratorrechte muss das MSIX-Druckerpaket öffentlich vertrauenswürdig signiert sein.** Beim vorhandenen Entwicklungszertifikat muss die IT vorher Zertifikatvertrauen in `LocalMachine\TrustedPeople` eingerichtet haben. Ein Import allein in den Benutzer-Zertifikatspeicher genügt dafür nicht. Das gemeinsame Setup verändert keine Zertifikatsspeicher und fordert keine Rechteerhöhung an.
 
 Ergebnis:
 
-- `artifacts\windows\E-Rechnungs-Assistent-0.3.0-x64-Setup.exe`
+- `artifacts\windows\E-Rechnungs-Assistent-<Version>-x64-Setup.exe`
 - `artifacts\demo\muster-rechnung.pdf`
 
-Nur die Setup-Datei installieren – nicht `npm run desktop` und nicht ein macOS-DMG. Beim Entwicklungsbuild kann SmartScreen bzw. eine Zertifikatsabfrage erscheinen; das lokale Testzertifikat einmalig zulassen. Danach die Musterrechnung in der App öffnen, Angaben prüfen, die Übereinstimmung bestätigen, beide Ausgaben speichern, anschließend Archiv und DATEV. Optional denselben Beleg über den Drucker **E-Rechnung** drucken.
+Die Setup-Datei enthält Anwendung, Drucker, Windows App Runtime, WebView2-Offline-Installer und lokale Prüfer samt Java. Der Drucker-Background-Task ist nativ kompiliert; die Druckoberfläche enthält ihre .NET-Laufzeit. Auf dem Zielrechner werden keine Entwicklungswerkzeuge benötigt. Beim Vorführbuild muss das oben beschriebene Zertifikatvertrauen bereits bestehen. Eine gescheiterte Druckerinstallation bricht das Setup ab. Vorführablauf und Grenzen: [Windows-Vorführpaket](docs/windows-demo-installation.md).
 
 `validators:fetch` muss auf Windows laufen: die gebündelte JRE ist plattformabhängig. Eine auf dem Mac geladene Darwin-JRE darf nicht in den Windows-Installer.
 
@@ -66,13 +84,17 @@ Der auslieferbare Windows-Build besteht für Anwender aus genau einer Setup-Date
 npm run installer:windows
 ```
 
+Vor dem Installer läuft `npm run release:gate` (TypeScript, Rust, .NET, Validatoren, Schwachstellen, isolierte Updateprüfung, Abnahmematrix). `npm run release:gate -- --portable` ist der CI-Lauf ohne Windows-Werkzeuge; ausstehende Schritte gelten nicht als bestanden. Herkunft der gebündelten Komponenten: [docs/components.md](docs/components.md). Pilot: [docs/pilot-guide.md](docs/pilot-guide.md). Matrix: [docs/acceptance-matrix.md](docs/acceptance-matrix.md). Produktionssignaturen: `npm run installer:windows -- -SigningMode Production` (Zertifikat/Signierdienst extern).
+
 Das Ergebnis liegt unter `artifacts/windows/E-Rechnungs-Assistent-<Version>-x64-Setup.exe`; daneben wird eine SHA-256-Prüfsumme erzeugt. Das Setup prüft vor der Installation Windows 11 24H2, Paketidentität und Signaturen, richtet den Drucker für den aktuellen Windows-Benutzer ein und wartet auf seine betriebsbereite Registrierung. Bei einer normalen Deinstallation wird auch der Drucker entfernt. Bei einem Programm-Update bleibt er bestehen und wird nur aktualisiert, wenn das eingebettete Paket neuer ist.
 
-Der aktuelle Entwicklungsbuild enthält ausschließlich den öffentlichen Teil des lokalen Testzertifikats und kann bei der ersten Installation eine Windows-Sicherheitsabfrage auslösen. Für eine Kundenfreigabe müssen Druckerpaket, Anwendung und Setup vertrauenswürdig signiert werden; ein Produktionsbuild lehnt selbstsignierte Druckerpakete und eine unsignierte Setup-Datei ab.
+Der aktuelle Vorführbuild verwendet ein Entwicklungszertifikat. Eine beliebige fremde Windows-Installation vertraut diesem Zertifikat nicht automatisch. Für eine Kundenfreigabe müssen Druckerpaket, Anwendung und Setup vertrauenswürdig signiert werden; ein Produktionsbuild lehnt selbstsignierte Druckerpakete und eine unsignierte Setup-Datei ab.
 
 ### WP5: virtueller E-Rechnungsdrucker
 
-Die folgenden Einzelbefehle bleiben nur für die Entwicklung und gezielte Druckerdiagnose erhalten. Normale Anwender verwenden ausschließlich den gemeinsamen Windows-Installer. Voraussetzung ist Windows 11 24H2 (Build 26100 oder neuer). Das Entwicklungspaket wird lokal signiert. Build in einer normalen PowerShell:
+Normale Anwender verwenden den gemeinsamen Windows-Installer. Die Einrichtung für das aktuelle Benutzerkonto benötigt bei vertrauenswürdiger Paketsignatur keine Administratorrechte. Entwicklungszertifikate müssen vorab durch die IT freigegeben werden; eine normale Windows-Sicherheitsabfrage ersetzt dieses Zertifikatvertrauen nicht.
+
+Die folgenden Einzelbefehle bleiben nur für die Entwicklung und gezielte Druckerdiagnose erhalten. Voraussetzung ist Windows 11 24H2 (Build 26100 oder neuer). Das Entwicklungspaket wird lokal signiert. Build in einer normalen PowerShell:
 
 ```powershell
 npm run wp5:build
@@ -80,7 +102,7 @@ npm run wp5:build
 
 Den E-Rechnungs-Assistenten zuerst einmal starten oder einen der mit `npm run desktop:build` erzeugten Installer installieren. Dadurch wird das lokale Protokoll `erechnung-review://` registriert.
 
-Die einmalige Druckerinstallation muss wegen des Entwicklungszertifikats in einer **als Administrator gestarteten PowerShell** erfolgen:
+`npm run wp5:install` setzt nur das Druckerpaket erneut. Für die Installation im Benutzerkonto muss Windows der Paketsignatur bereits vertrauen. Bei einem Entwicklungszertifikat erfordert das eine vorherige IT-Freigabe in `LocalMachine\TrustedPeople`; der Zertifikatsspeicher des Benutzerkontos genügt nicht. Auch die Reparatur einer hängen gebliebenen Druckwarteschlange mit einem maschinenweiten Spooler-Neustart benötigt Administratorrechte:
 
 ```powershell
 # Falls das frühere PoC-Paket aus dem Ordner drucker noch installiert ist:
@@ -142,7 +164,7 @@ Jede in der installierten Anwendung fertig gespeicherte E-Rechnung wird automati
 
 SHA-256-Prüfsummen schützen beide Dateien. Jeder Eintrag enthält zusätzlich die Prüfsumme seines Vorgängers und bildet dadurch eine fortlaufende Kette. **Archiv prüfen** kontrolliert SQLite-Datenbank, laufende Nummern, Kettenanschlüsse, PDF/XML-Dateien und vorhandene Signaturen und schreibt einen verständlichen Bericht nach `E-Rechnungsarchiv\Prüfberichte`. Optional können neue Einträge mit einem lokal erzeugten Ed25519-Schlüssel digital bestätigt werden. Der private Schlüssel liegt ausschließlich im lokalen Anwendungsordner; das Aktivieren oder Deaktivieren verändert frühere Einträge nicht.
 
-Die Funktion erkennt lokale Veränderungen, ersetzt aber weder eine gesetzliche Aufbewahrungsrichtlinie noch unveränderbaren Speicher, externe Zeitstempel oder eine qualifizierte elektronische Signatur. Für belastbare Langzeitaufbewahrung müssen Archivordner, SQLite-Datenbank und lokaler Schlüssel regelmäßig gemeinsam gesichert und organisatorische Lösch- und Zugriffsregeln ergänzt werden.
+Die Funktion erkennt lokale Veränderungen, ersetzt aber weder eine gesetzliche Aufbewahrungsrichtlinie noch unveränderbaren Speicher, externe Zeitstempel oder eine qualifizierte elektronische Signatur. Archiv, Entwürfe, Vorlagengedächtnis, Kanzleiexporte und der lokale Schlüssel lassen sich unter **Einstellungen → Sicherung** in eine kennwortgeschützte `.erechnung`-Datei schreiben. Die Wiederherstellung prüft das Paket zuerst und behält den bisherigen Stand lokal. Eine Kopie auf derselben Festplatte schützt nicht vor einem Plattenausfall.
 
 Der vollständige technische Datenfluss und die Sicherheitsgrenzen sind in [docs/architecture.md](docs/architecture.md) beschrieben.
 
@@ -152,7 +174,7 @@ Der vollständige technische Datenfluss und die Sicherheitsgrenzen sind in [docs
 
 Der Lauf erzeugt das anonymisierte Referenzkorpus, prüft Felder, Positionen, Warnungen und blockierte Sonderfälle und testet zusätzlich 250 reproduzierbare, künstlich erzeugte Rechnungen. Die Reports liegen unter artifacts/corpus-report.json und artifacts/synthetic-fuzz-report.json. Das Gate ist Bestandteil von npm run check und des Desktop-Release-Builds. Seed-Reproduktion, lokale echte Rechnungen und Hinweise zur sicheren Anonymisierung sind in [docs/wp6-corpus.md](docs/wp6-corpus.md) beschrieben.
 
-Die ergänzenden Workspace-, Wiederanlauf- und echten Windows-Drucktests für 0.3.0 sind in [docs/wp7-acceptance.md](docs/wp7-acceptance.md) dokumentiert. Die verbindliche lokale XML-Prüfung vor der Fertigstellung steht in [docs/wp8-acceptance.md](docs/wp8-acceptance.md). Hybrid-PDF/PDF/A steht in [docs/wp9-acceptance.md](docs/wp9-acceptance.md).
+Die ergänzenden Workspace-, Wiederanlauf- und echten Windows-Drucktests für 0.3.0 sind in [docs/wp7-acceptance.md](docs/wp7-acceptance.md) dokumentiert. Die verbindliche lokale XML-Prüfung vor der Fertigstellung steht in [docs/wp8-acceptance.md](docs/wp8-acceptance.md). Hybrid-PDF/PDF/A steht in [docs/wp9-acceptance.md](docs/wp9-acceptance.md). Sicherung und Wiederherstellung stehen in [docs/wp12-acceptance.md](docs/wp12-acceptance.md).
 
 ## Externe Validierung
 
@@ -175,12 +197,27 @@ npm run validate:zugferd -- test/fixtures/generated/zugferd-en16931.xml
 
 KoSIT und Mustang prüfen unterschiedliche Profile. Eine Factur-X-CII darf deshalb nicht als XRechnung-Ergebnis des KoSIT-Szenarios bewertet werden.
 
+Reproduzierbare Prüfungen des gebündelten Pakets:
+
+```powershell
+npm run validators:fetch
+npm run check:xml
+npm run check:pdf
+npm run check:native
+```
+
+`check:xml` prüft die unterstützten Rechnungsfälle jeweils als UBL und CII. `check:pdf` erzeugt die Musterrechnung, übernimmt ihre Rechnungsdaten und prüft die fertige Hybrid-PDF mit veraPDF und Mustang. Beide verwenden standardmäßig die gebündelte Java-Laufzeit. Die Berichte liegen unter `artifacts/xml-regressions/` und `artifacts/hybrid-regression/`. `check:native` führt Clippy mit Warnungen als Fehler und die Rust-Tests aus. `npm run check` umfasst Core- und Desktop-Typprüfung, Tests einschließlich UI sowie Referenzkorpus und Fuzz-Prüfung.
+
+Ergebnisse und verbleibende Abnahmegrenzen des Codebase-Cleanups: [Prüfbericht vom 11.09.2026](docs/cleanup-audit-2026-09-11.md).
+
 ## Funktionsgrenzen dieses Stands
 
-Unterstützt sind normale Rechnungen mit positionsbezogener Umsatzsteuer. Noch nicht enthalten sind Gutschriften, Belegzuschläge/-abschläge, Vorauszahlungen, Rundungsbeträge, mehrere Zahlungswege und komplexe Steuerfälle. Solche Fälle müssen vor produktivem Einsatz ergänzt und mit offiziellen Referenzvalidatoren regressiongetestet werden.
+Unterstützt sind normale Rechnungen, Gutschriften und Korrekturen mit Ursprungsbezug, Belegzuschläge/-abschläge, Abschlags-, Anzahlungs- und Schlussrechnungen mit bereits gezahlten Beträgen und Belegbezügen sowie die ausdrücklich wählbaren Steuerfälle Standardsteuer, Reverse Charge, Steuerfreiheit, innergemeinschaftliche Lieferung und steuerbare 0 %. Innergemeinschaftliche Lieferungen benötigen ein Leistungsdatum und explizite Lieferangaben; bei XRechnung auch Lieferort und Postleitzahl. Die externen Regressionstests decken diese Fälle ab.
+
+Noch nicht enthalten sind Rundungsausgleich, mehrere Zahlungswege sowie weitere Steuerkategorien. DATEV bleibt für Gutschriften/Korrekturen, Abschlags-/Anzahlungs-/Schlussrechnungen und die Steuerfälle AE/E/K/Z gesperrt. Scans brauchen den gesonderten lokalen OCR-Weg oder manuelle Erfassung. Die automatischen Prüfungen ersetzen keinen echten DATEV-Testimport oder Windows-Installations- und Drucktest.
 
 Standardstände:
 
 - XRechnung 3.0.2 / KoSIT-Konfiguration 2026-01-31, Prüfmotor 1.6.3
-- ZUGFeRD 2.5.2 / Factur-X 1.09.2 EN16931, Profilkennung `urn:cen.eu:en16931:2017`; XML-Prüfung über Mustang, PDF/A-3b über veraPDF im gebündelten Paket
+- ZUGFeRD / Factur-X EN16931, Profilkennung `urn:cen.eu:en16931:2017`; XML-Prüfung über Mustang 2.26.0, PDF/A-3b über veraPDF 1.28.2 im gebündelten Paket
 - UBL 2.1 und UN/CEFACT CII D16B Syntax

@@ -12,6 +12,7 @@ public sealed class ReviewHandoffStore
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true
     };
+    private static readonly PrintJsonContext JsonContext = new(JsonOptions);
 
     public ReviewHandoffStore(string rootPath)
     {
@@ -64,7 +65,7 @@ public sealed class ReviewHandoffStore
             }
 
             File.Move(temporaryPdfPath, targetPdfPath, overwrite: true);
-            AtomicWrite(metadataPath, JsonSerializer.Serialize(metadata, JsonOptions));
+            AtomicWrite(metadataPath, JsonSerializer.Serialize(metadata, JsonContext.ReviewHandoffRecord));
         }
         finally
         {

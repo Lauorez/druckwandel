@@ -25,8 +25,22 @@
   CreateDirectory "$PLUGINSDIR\ERechnungsAssistent"
   SetOutPath "$PLUGINSDIR\ERechnungsAssistent"
   File /oname=InstallPrinter.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\InstallPrinter.ps1"
+  File /oname=UpdateGuard.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\UpdateGuard.ps1"
   File /oname=Printer.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\Printer.msix"
   File /oname=WindowsAppRuntime.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\WindowsAppRuntime.msix"
+
+  ${If} $UpdateMode = 1
+    DetailPrint "Sicherungsstand vor der Aktualisierung ..."
+    nsExec::ExecToStack /TIMEOUT=120000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\UpdateGuard.ps1" -Action PrepareUpdate -IncomingVersion "${VERSION}"'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+      DetailPrint "$1"
+      MessageBox MB_ICONSTOP|MB_OK "Die Aktualisierung wurde abgebrochen, bevor Dateien ersetzt wurden. Der bisherige Datenbestand bleibt unverändert.$\r$\n$\r$\n$1" /SD IDOK
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
+  ${EndIf}
 
   !if /FileExists "${ERECHNUNG_INSTALLER_PAYLOAD}\PrinterCertificate.cer"
     File /oname=PrinterCertificate.cer "${ERECHNUNG_INSTALLER_PAYLOAD}\PrinterCertificate.cer"
@@ -41,12 +55,34 @@
   Pop $1
   ${If} $0 != 0
     DetailPrint "$1"
-    MessageBox MB_ICONEXCLAMATION|MB_OK "Der E-Rechnungsdrucker konnte ohne Administratorrechte nicht eingerichtet werden. Die Anwendung wird trotzdem installiert.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\E-Rechnungs-Assistent-Installation.log"
+    MessageBox MB_ICONSTOP|MB_OK "Der E-Rechnungsdrucker konnte nicht eingerichtet werden. Die vollständige Installation wird abgebrochen.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\E-Rechnungs-Assistent-Installation.log" /SD IDOK
+    SetErrorLevel 1
+    Abort
   ${Else}
     DetailPrint "Der E-Rechnungsdrucker ist bereit."
   ${EndIf}
   ; File changes NSIS' output directory. Restore Tauri's application directory
   ; before the generated installer copies its executable and resources.
+  SetOutPath $INSTDIR
+!macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+  ${If} ${RunningX64}
+    StrCpy $R8 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  ${Else}
+    StrCpy $R8 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  ${EndIf}
+  InitPluginsDir
+  CreateDirectory "$PLUGINSDIR\ERechnungsAssistent"
+  SetOutPath "$PLUGINSDIR\ERechnungsAssistent"
+  File /oname=UpdateGuard.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\UpdateGuard.ps1"
+  DetailPrint "Installierte Version wird festgehalten ..."
+  nsExec::ExecToStack /TIMEOUT=60000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\UpdateGuard.ps1" -Action RecordInstalledVersion -IncomingVersion "${VERSION}"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    DetailPrint "$1"
+  ${EndIf}
   SetOutPath $INSTDIR
 !macroend
 

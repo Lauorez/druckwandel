@@ -1,6 +1,19 @@
-export type InvoiceTypeCode = "380" | "381";
-export type TaxCategoryCode = "S" | "Z" | "E" | "AE";
+export const INVOICE_TYPE_CODES = ["380", "381", "384", "326"] as const;
+export type InvoiceTypeCode = (typeof INVOICE_TYPE_CODES)[number];
+export type TaxCategoryCode = "S" | "Z" | "E" | "AE" | "K";
 export type UnitCode = "C62" | "HUR" | "DAY" | "KGM" | "LTR" | "MTR";
+
+export function isInvoiceTypeCode(value: string): value is InvoiceTypeCode {
+  return (INVOICE_TYPE_CODES as readonly string[]).includes(value);
+}
+
+export function isCreditOrCorrection(type: InvoiceTypeCode): boolean {
+  return type === "381" || type === "384";
+}
+
+export function isPartialInvoice(type: InvoiceTypeCode): boolean {
+  return type === "326";
+}
 
 export interface Address {
   line1: string;
@@ -19,6 +32,22 @@ export interface Party {
   contact?: { name?: string; email?: string; phone?: string };
 }
 
+export interface AllowanceCharge {
+  charge: boolean;
+  amount: string;
+  reason?: string;
+  reasonCode?: string;
+  percent?: string;
+  baseAmount?: string;
+  tax: { categoryCode: TaxCategoryCode; rate: string; exemptionReason?: string; exemptionReasonCode?: string };
+}
+
+export interface PrecedingInvoiceReference {
+  invoiceNumber: string;
+  issueDate?: string;
+  paidAmount?: string;
+}
+
 export interface InvoiceLine {
   id: string;
   name: string;
@@ -26,7 +55,8 @@ export interface InvoiceLine {
   quantity: string;
   unitCode: UnitCode;
   netUnitPrice: string;
-  tax: { categoryCode: TaxCategoryCode; rate: string; exemptionReason?: string };
+  tax: { categoryCode: TaxCategoryCode; rate: string; exemptionReason?: string; exemptionReasonCode?: string };
+  allowances?: AllowanceCharge[];
 }
 
 export interface PaymentInfo {
@@ -44,6 +74,7 @@ export interface InvoiceInput {
   issueDate: string;
   dueDate?: string;
   serviceDate?: string;
+  deliveryAddress?: Address;
   currency: string;
   buyerReference: string;
   seller: Party;
@@ -51,6 +82,23 @@ export interface InvoiceInput {
   lines: InvoiceLine[];
   payment: PaymentInfo;
   notes?: string[];
+  precedingInvoice?: PrecedingInvoiceReference;
+  precedingInvoices?: PrecedingInvoiceReference[];
+  prepaidAmount?: string;
+  finalInvoice?: boolean;
+  prepaymentInvoice?: boolean;
+  allowances?: AllowanceCharge[];
+}
+
+export function resolvedPrecedingInvoices(invoice: {
+  precedingInvoice?: PrecedingInvoiceReference;
+  precedingInvoices?: PrecedingInvoiceReference[];
+}): PrecedingInvoiceReference[] {
+  if (invoice.precedingInvoices?.length) {
+    return invoice.precedingInvoices.filter((item) => item.invoiceNumber.trim());
+  }
+  if (invoice.precedingInvoice?.invoiceNumber.trim()) return [invoice.precedingInvoice];
+  return [];
 }
 
 export interface TaxBreakdown {
@@ -59,6 +107,7 @@ export interface TaxBreakdown {
   taxableAmount: string;
   taxAmount: string;
   exemptionReason?: string;
+  exemptionReasonCode?: string;
 }
 
 export interface InvoiceTotals {

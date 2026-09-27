@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { createCorpusReport, evaluateExtraction, type CorpusManifest } from "../src/evaluation/corpus.js";
+import { createQualityReport } from "../src/evaluation/quality-report.js";
 import { extractInvoicePdf } from "../src/extraction/index.js";
 
 function argument(name: string): string | undefined {
@@ -46,8 +47,14 @@ for (const corpusCase of manifest.cases) {
 }
 
 const report = createCorpusReport(relative(process.cwd(), manifestPath), evaluations);
+const qualityPath = resolve(argument("--quality-report") ?? "artifacts/quality-report.json");
+const quality = createQualityReport(evaluations, report.generatedAt);
 await mkdir(dirname(reportPath), { recursive: true });
 await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+await writeFile(qualityPath, JSON.stringify(quality, null, 2) + "\n", "utf8");
 console.log(`\nKorpus: ${report.totals.passedCases}/${report.totals.cases} Fälle, ${report.totals.matchedFields}/${report.totals.expectedFields} Felder, ${report.totals.matchedLineItems}/${report.totals.expectedLineItems} Positionen.`);
+console.log(`Qualität: Felder ${(quality.fieldAccuracy.rate * 100).toFixed(1)} %, Positionen ${(quality.lineItemAccuracy.rate * 100).toFixed(1)} %, ${quality.neededCorrections.length} Korrekturen, ${quality.blocks.length} Blockierungen.`);
+console.log(quality.disclaimer);
 console.log(`Report: ${reportPath}`);
+console.log(`Qualitätsbericht: ${qualityPath}`);
 if (!report.passed) process.exitCode = 1;

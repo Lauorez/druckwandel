@@ -11,6 +11,8 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsPackageType>MSIX</WindowsPackageType>
     <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <NativePrinterTaskPath>$(MSBuildThisFileDirectory)..\..\..\artifacts\printer-native\$(RuntimeIdentifier)\ERechnung.VirtualPrinter.Tasks.dll</NativePrinterTaskPath>
     <DefaultLanguage>de-DE</DefaultLanguage>
     <EnableDefaultPriItems>false</EnableDefaultPriItems>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
@@ -27,11 +29,16 @@
 
   <ItemGroup>
     <ProjectReference Include="../PrintCore/PrintCore.csproj" />
-    <ProjectReference Include="../VirtualPrinter.Tasks/VirtualPrinter.Tasks.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\*.png" />
+    <Content Include="$(NativePrinterTaskPath)" Link="ERechnung.VirtualPrinter.Native.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$([System.IO.Path]::ChangeExtension('$(NativePrinterTaskPath)', '.winmd'))" Link="ERechnung.VirtualPrinter.Tasks.winmd">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Config\PrinterPdc.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -44,21 +51,6 @@
   </ItemGroup>
 
   <Target Name="IncludeTasksWinmd" AfterTargets="Build">
-    <ItemGroup>
-      <_TasksWinmdSource
-        Include="..\VirtualPrinter.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\ERechnung.VirtualPrinter.Tasks.winmd"
-        Condition="Exists('..\VirtualPrinter.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\ERechnung.VirtualPrinter.Tasks.winmd')" />
-      <_TasksWinmdSource
-        Include="..\VirtualPrinter.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\ERechnung.VirtualPrinter.Tasks.winmd"
-        Condition="'@(_TasksWinmdSource)' == '' and Exists('..\VirtualPrinter.Tasks\bin\$(Platform)\$(Configuration)\$(TargetFramework)\ERechnung.VirtualPrinter.Tasks.winmd')" />
-    </ItemGroup>
-    <Copy
-      SourceFiles="@(_TasksWinmdSource)"
-      DestinationFolder="$(OutputPath)"
-      SkipUnchangedFiles="true"
-      Condition="'@(_TasksWinmdSource)' != ''" />
-    <Error
-      Text="ERechnung.VirtualPrinter.Tasks.winmd wurde nicht erzeugt. Background-Task kann nicht registriert werden."
-      Condition="'@(_TasksWinmdSource)' == ''" />
+    <Error Condition="!Exists('$(NativePrinterTaskPath)')" Text="Der native Drucker-Task fehlt. Zuerst drucker/scripts/build-native-task.ps1 ausführen." />
   </Target>
 </Project>

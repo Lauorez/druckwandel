@@ -1,4 +1,5 @@
 import { Decimal } from "decimal.js";
+import { hasPrepaidAmount } from "../../domain/calculate.js";
 import { money } from "../../domain/money.js";
 import { isIsoDate } from "../../domain/validate.js";
 import { partyIdentity, readInvoiceSnapshot } from "../invoice-snapshot.js";
@@ -52,7 +53,9 @@ export function previewDatev(profile: DatevProfile, sources: DatevSource[], assi
       if (duplicates.has(duplicateKey)) throw new Error("Mögliche doppelte oder abweichende Ausgabe derselben Rechnungsnummer. Bitte nur die richtige Rechnung auswählen.");
       duplicates.add(duplicateKey);
       if (partyIdentity(invoice.seller)!==partyIdentity(profile.seller)) throw new Error("Der Absender stimmt nicht mit dem bestätigten eigenen Betrieb überein.");
-      if (invoice.currency!=="EUR" || invoice.invoiceType!=="380" || invoice.buyer.address.countryCode!=="DE") throw new Error("Unterstützt werden normale inländische Ausgangsrechnungen in EUR.");
+      if (invoice.invoiceType!=="380") throw new Error("Gutschriften, Korrekturen, Abschlags- und Anzahlungsrechnungen sind für den DATEV-Export noch nicht freigegeben.");
+      if (invoice.finalInvoice || invoice.prepaymentInvoice || hasPrepaidAmount(invoice)) throw new Error("Schlussrechnungen, Anzahlungsrechnungen und bereits gezahlte Beträge sind für den DATEV-Export noch nicht freigegeben.");
+      if (invoice.currency!=="EUR" || invoice.buyer.address.countryCode!=="DE") throw new Error("Unterstützt werden normale inländische Ausgangsrechnungen in EUR.");
       if (!date(invoice.issueDate) || invoice.issueDate<profile.fiscalYearStart || invoice.issueDate>=end) throw new Error("Das Rechnungsdatum liegt außerhalb des eingerichteten Wirtschaftsjahres. Bitte das Kanzleiprofil entsprechend einstellen.");
       if (!/^[A-Za-z0-9_$&%*+\-/]{1,36}$/.test(invoice.invoiceNumber)) throw new Error("Die Rechnungsnummer ist für DATEV nicht zulässig (maximal 36 Zeichen; keine Leerzeichen, Umlaute oder Punkte). Sie wird nicht automatisch geändert.");
       if (invoice.dueDate && !date(invoice.dueDate)) throw new Error("Das Fälligkeitsdatum ist für DATEV ungültig.");
@@ -63,7 +66,7 @@ export function previewDatev(profile: DatevProfile, sources: DatevSource[], assi
       if (!debtor) throw new Error("Für diesen Kunden fehlt die von der Kanzlei bestätigte Kontonummer.");
       const assignment = assignments.find(a=>a.archiveId===source.archiveId);
       const text = checkedText(assignment?.bookingText??invoice.buyer.name,60,"Buchungstext");
-      const groups = new Map<string,{net:Decimal;accountId:string}>();
+      const groups = new Map<string,{net:Decimal;accountId:string;taxRate:string}>();
       if (new Set(invoice.calculatedLines.map(l=>l.id)).size!==invoice.calculatedLines.length) throw new Error("Doppelte Positionsnummern verhindern eine eindeutige Kontierung.");
       for (const line of invoice.calculatedLines) {
         const rate = new Decimal(line.tax.rate).toFixed();
@@ -74,8 +77,23 @@ export function previewDatev(profile: DatevProfile, sources: DatevSource[], assi
         if (!a) throw new Error(`Bitte das Erlöskonto für Position ${line.id} eindeutig zuordnen.`);
         const net = new Decimal(line.netAmount);
         if (net.lt(0)) throw new Error("Negative Rechnungspositionen werden noch nicht unterstützt.");
-        const group = groups.get(a.id)??{net:new Decimal(0),accountId:a.id};
+        const group = groups.get(a.id)??{net:new Decimal(0),accountId:a.id,taxRate:rate};
         group.net=group.net.add(net); groups.set(a.id,group);
+      }
+      for (const tax of invoice.taxes) {
+        const rate = new Decimal(tax.rate).toFixed();
+        const matching = [...groups.values()].filter(g=>g.taxRate===rate);
+        const lineNet = matching.reduce((s,g)=>s.add(g.net),new Decimal(0));
+        const adjustment = lineNet.sub(tax.taxableAmount);
+        let remaining = adjustment;
+        if (remaining.isZero()) continue;
+        if (!matching.length || lineNet.isZero()) throw new Error("Ein Zu- oder Abschlag trifft auf keinen passenden Steuersatz der Positionen.");
+        for (const [index, group] of matching.entries()) {
+          const share = index===matching.length-1 ? remaining : adjustment.mul(group.net).div(lineNet).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          group.net = group.net.sub(share);
+          remaining = remaining.sub(share);
+          if (group.net.lt(0)) throw new Error("Nach belegweiten Zu-/Abschlägen würde ein Erlöskonto negativ. Bitte die Kontierung mit der Kanzlei prüfen.");
+        }
       }
       const invoiceRows: Booking[] = [];
       for (const group of groups.values()) {

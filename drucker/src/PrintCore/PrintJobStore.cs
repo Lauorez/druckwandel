@@ -9,13 +9,15 @@ public sealed class PrintJobStore
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+        Converters = { new JsonStringEnumConverter<PrintJobStatus>(JsonNamingPolicy.CamelCase) }
     };
 
     private static readonly JsonSerializerOptions EventJsonOptions = new(JsonOptions)
     {
         WriteIndented = false
     };
+    private static readonly PrintJsonContext JsonContext = new(JsonOptions);
+    private static readonly PrintJsonContext EventJsonContext = new(EventJsonOptions);
 
     public PrintJobStore(string rootPath)
     {
@@ -127,7 +129,7 @@ public sealed class PrintJobStore
     {
         try
         {
-            return JsonSerializer.Deserialize<PrintJobRecord>(File.ReadAllText(path), JsonOptions);
+            return JsonSerializer.Deserialize(File.ReadAllText(path), JsonContext.PrintJobRecord);
         }
         catch (JsonException)
         {
@@ -141,7 +143,7 @@ public sealed class PrintJobStore
 
     private void Save(PrintJobRecord job)
     {
-        AtomicWrite(GetJobJsonPath(job.JobId), JsonSerializer.Serialize(job, JsonOptions));
+        AtomicWrite(GetJobJsonPath(job.JobId), JsonSerializer.Serialize(job, JsonContext.PrintJobRecord));
     }
 
     private void WriteSessionIndex(PrintJobRecord job)
@@ -154,7 +156,7 @@ public sealed class PrintJobStore
     {
         var entry = new PrintJobEvent(DateTimeOffset.UtcNow, job.JobId, status, message);
         string path = Path.Combine(LogsPath, $"{job.JobId:D}.jsonl");
-        File.AppendAllText(path, JsonSerializer.Serialize(entry, EventJsonOptions) + Environment.NewLine);
+        File.AppendAllText(path, JsonSerializer.Serialize(entry, EventJsonContext.PrintJobEvent) + Environment.NewLine);
     }
 
     private string GetJobJsonPath(Guid jobId) => Path.Combine(JobsPath, $"{jobId:D}.json");

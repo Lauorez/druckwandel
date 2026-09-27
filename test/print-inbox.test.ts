@@ -16,7 +16,8 @@ describe("print inbox reconciliation", () => {
     expect(printJobIdFromDeepLink(`erechnung-review://print-job/${id}?source=windows`)).toBe(id);
     expect(printJobIdFromDeepLink(`https://print-job/${id}`)).toBeUndefined();
     expect(printJobIdFromDeepLink(`erechnung-review://other/${id}`)).toBeUndefined();
-    expect(printJobIdFromDeepLink("erechnung-review://print-job/../../invoice.pdf")).toBeUndefined();
+    expect(printJobIdFromDeepLink("file:///C:/Users/x/invoice.pdf")).toBeUndefined();
+    expect(printJobIdFromDeepLink("erechnung-review://print-job/C:/Users/x/secret.pdf")).toBeUndefined();
   });
 
   it("treats existing files as history on startup", () => {

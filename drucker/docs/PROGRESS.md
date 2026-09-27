@@ -58,7 +58,7 @@ Die GitHub-Actions-Windows-CI läuft auf einem frischen Windows-Build-26100-Syst
 1. .NET-/WinUI-/CsWinRT-Release-Build,
 2. Erzeugung eines Development-Zertifikats,
 3. Erstellung und SHA-256-Signatur des MSIX,
-4. Prüfung auf `AppxManifest.xml`, PDC, Background-DLL, WINMD, `WinRT.Host.dll`, PRI-Ressourcen und Signatur,
+4. Prüfung auf `AppxManifest.xml`, PDC, `ERechnung.VirtualPrinter.Native.dll`, WINMD, gebündelte Druckoberflächen-Laufzeit, PRI-Ressourcen und Signatur,
 5. Prüfung, dass das fertige Manifest die Virtual-Printer-Erweiterung und kein `OutputFileTypes` enthält,
 6. maschinenweites Vertrauen des Testzertifikats unter `LocalMachine\TrustedPeople`,
 7. Installation des Pakets,

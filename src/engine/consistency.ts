@@ -1,3 +1,4 @@
+import { prepaidAmountOf } from "../domain/calculate.js";
 import type { CalculatedInvoice } from "../domain/types.js";
 import { decimal, money } from "../domain/money.js";
 import type { ExtractionResult } from "../extraction/types.js";
@@ -67,14 +68,17 @@ function item(path: string, label: string, kind: ConsistencyKind | undefined, so
 
 export function compareInvoiceToSource(extraction: ExtractionResult, draft: ReviewDraft, calculated?: CalculatedInvoice): ContentConsistency {
   const field = (name: keyof ExtractionResult["fields"]) => extraction.fields[name]?.value ?? "";
+  const prepaid = calculated ? prepaidAmountOf(calculated) : undefined;
+  const hasPrepaid = Boolean(prepaid?.gt(0));
   const rows: Array<ConsistencyItem | undefined> = [
     item("invoiceNumber", "Rechnungsnummer", compareText(field("invoiceNumber"), draft.invoiceNumber), field("invoiceNumber"), draft.invoiceNumber),
     item("issueDate", "Rechnungsdatum", compareText(field("issueDate"), draft.issueDate), field("issueDate"), draft.issueDate),
     item("seller.name", "Absender", compareText(field("sellerName"), draft.seller.name), field("sellerName"), draft.seller.name),
     item("buyer.name", "Empfänger", compareText(field("buyerName"), draft.buyer.name), field("buyerName"), draft.buyer.name),
-    item("totals.lineNet", "Nettobetrag", compareMoney(field("lineNet"), calculated?.totals.lineNet ?? ""), field("lineNet"), calculated?.totals.lineNet ?? ""),
+    item("totals.lineNet", "Nettobetrag", compareMoney(field("lineNet"), calculated?.totals.taxExclusive ?? calculated?.totals.lineNet ?? ""), field("lineNet"), calculated?.totals.taxExclusive ?? calculated?.totals.lineNet ?? ""),
     item("totals.taxTotal", "Umsatzsteuer", compareMoney(field("taxTotal"), calculated?.totals.taxTotal ?? ""), field("taxTotal"), calculated?.totals.taxTotal ?? ""),
-    item("totals.payable", "Rechnungsbetrag", compareMoney(field("payable") || field("taxInclusive"), calculated?.totals.payable ?? ""), field("payable") || field("taxInclusive"), calculated?.totals.payable ?? ""),
+    hasPrepaid ? item("totals.taxInclusive", "Rechnungsbetrag", compareMoney(field("taxInclusive"), calculated?.totals.taxInclusive ?? ""), field("taxInclusive"), calculated?.totals.taxInclusive ?? "") : undefined,
+    item("totals.payable", hasPrepaid ? "Zahlbetrag" : "Rechnungsbetrag", compareMoney(field("payable") || field("taxInclusive"), calculated?.totals.payable ?? ""), field("payable") || field("taxInclusive"), calculated?.totals.payable ?? ""),
   ];
   if (extraction.lineItems.length > 0 && draft.lines.length !== extraction.lineItems.length) {
     rows.push({
@@ -91,7 +95,9 @@ export function compareInvoiceToSource(extraction: ExtractionResult, draft: Revi
       if (!line) break;
       const amountKind = compareMoney(source.netAmount, (() => {
         try {
-          return money(decimal(line.quantity).mul(line.netUnitPrice));
+          const allowances = line.allowances ?? [];
+          const adjustment = allowances.reduce((sum, item) => item.charge ? sum.add(item.amount) : sum.sub(item.amount), decimal(0));
+          return money(decimal(line.quantity).mul(line.netUnitPrice).add(adjustment));
         } catch {
           return line.netUnitPrice;
         }

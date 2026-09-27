@@ -1,11 +1,6 @@
 import type { ExtractionResult, TextLine } from "../extraction/types.js";
 
 export type UnsupportedCaseCode =
-  | "CREDIT_NOTE"
-  | "REVERSE_CHARGE"
-  | "TAX_EXEMPTION"
-  | "ALLOWANCE_OR_DISCOUNT"
-  | "ADVANCE_OR_FINAL_INVOICE"
   | "ROUNDING_ADJUSTMENT"
   | "NEGATIVE_LINE"
   | "OCR_REQUIRED";
@@ -24,11 +19,6 @@ interface TextRule {
 }
 
 const TEXT_RULES: TextRule[] = [
-  { code: "CREDIT_NOTE", pattern: /\b(?:gutschrift|stornorechnung|credit\s+note)\b/i, message: "Gutschriften und Stornorechnungen werden noch nicht sicher unterstützt." },
-  { code: "REVERSE_CHARGE", pattern: /\b(?:reverse\s+charge|steuerschuldnerschaft\s+des\s+leistungsempfängers)\b|§\s*13b\s*ustg/i, message: "Rechnungen, bei denen der Empfänger die Umsatzsteuer schuldet, werden noch nicht unterstützt." },
-  { code: "TAX_EXEMPTION", pattern: /\b(?:steuerfrei|steuerbefreit|tax\s+exempt)\b|§\s*4\s*ustg/i, message: "Rechnungen ohne Umsatzsteuer brauchen zusätzliche Angaben und werden noch nicht unterstützt." },
-  { code: "ALLOWANCE_OR_DISCOUNT", pattern: /\b(?:rabatt|nachlass|rechnungsabschlag|bonus)\b/i, message: "Rabatte oder Zuschläge auf die gesamte Rechnung werden noch nicht unterstützt." },
-  { code: "ADVANCE_OR_FINAL_INVOICE", pattern: /\b(?:abschlagsrechnung|schlussrechnung|anzahlungsrechnung|vorauszahlungsrechnung)\b/i, message: "Abschlags-, Anzahlungs- und Schlussrechnungen werden noch nicht unterstützt." },
   { code: "ROUNDING_ADJUSTMENT", pattern: /\b(?:rundungsdifferenz|rundungsausgleich)\b/i, message: "Zusätzliche Beträge zum Ausgleichen von Rundungen werden noch nicht unterstützt." },
 ];
 
@@ -48,7 +38,7 @@ export function detectUnsupportedCases(extraction: ExtractionResult): Unsupporte
   if (negativeLine) {
     cases.push({
       code: "NEGATIVE_LINE",
-      message: "Negative Rechnungspositionen werden noch nicht unterstützt.",
+      message: "Negative Rechnungspositionen werden noch nicht unterstützt. Nachlässe bitte als Zu-/Abschlag erfassen.",
       sourceTokenIds: negativeLine.sourceTokenIds,
       sourceText: negativeLine.sourceText,
     });

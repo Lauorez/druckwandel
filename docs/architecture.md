@@ -58,7 +58,7 @@ Bei PDFs ohne ausreichenden Textlayer meldet die App den notwendigen OCR-Fallbac
 
 Geldwerte werden intern nie als JavaScript-number, sondern als kanonische Dezimalstrings gespeichert, zum Beispiel 1234.56. Der UI-Adapter akzeptiert und zeigt deutsche Schreibweise (1.234,56), wandelt sie beim Bearbeiten aber wieder in das kanonische Format um. Decimal.js übernimmt Multiplikation, Rundung, Steuergruppen und Summen.
 
-Die Buttons **Für Behörden speichern** und **Als PDF-Rechnung speichern** hängen an getrennten Profilen von validateReviewDraft. Fehlende Pflichtangaben werden mit deutschen Feldnamen angezeigt. BR-DE-15 fordert die Käuferreferenz nur für XRechnung; ein ansonsten gültiger EN-16931-Draft darf ohne diesen Wert als ZUGFeRD exportiert werden. Erst ein für das jeweilige Format gültiger Draft wird in InvoiceInput umgewandelt und von EInvoiceEngine.calculate noch einmal berechnet und geprüft.
+Die Buttons **Für Behörden speichern** und **Als PDF-Rechnung speichern** hängen an getrennten Profilen von validateReviewDraft. Die Belegart (Rechnung, Gutschrift, Rechnungskorrektur, Abschlag, Anzahlung, Schlussrechnung) gehört zum Entwurf. Gutschrift und Korrektur brauchen die Ursprungsrechnung. Abschlag, Anzahlung und Schlussrechnung führen bereits gezahlte Beträge und Belegbezüge; der Zahlbetrag ist der Rechnungsbetrag abzüglich dieser Beträge. Der Steuerfall ist ausdrücklich wählbar (19 %, 7 %, Reverse Charge, Steuerfreiheit, innergemeinschaftliche Lieferung, 0 % steuerbar); 0 % allein legt die Kategorie nicht fest. Reverse Charge und innergemeinschaftliche Lieferung brauchen die Umsatzsteuer-IDs beider Parteien sowie einen Befreiungsgrund. Fehlende Pflichtangaben werden mit deutschen Feldnamen angezeigt. BR-DE-15 fordert die Käuferreferenz nur für XRechnung; ein ansonsten gültiger EN-16931-Draft darf ohne diesen Wert als ZUGFeRD exportiert werden. Erst ein für das jeweilige Format gültiger Draft wird in InvoiceInput umgewandelt und von EInvoiceEngine.calculate noch einmal berechnet und geprüft.
 
 ## 4. Ausgabe
 
@@ -97,11 +97,27 @@ Bei XRechnung ist `rechnung.pdf` die sichtbare Quellrechnung und `rechnungsdaten
 
 PDF und XML erhalten jeweils eine SHA-256-Prüfsumme. Neue Einträge mit unabhängigem Prüfnachweis verwenden die Kettenvariante v3 und binden zusätzlich den Hash des maschinenlesbaren Prüfberichts. Ältere Einträge ohne Bericht bleiben v1 oder v2 und werden unverändert nach dem damaligen Verfahren geprüft; sie gelten nicht rückwirkend als unabhängig geprüft.
 
-Optional erzeugt Rust einen Ed25519-Schlüssel im plattformspezifischen lokalen Anwendungsordner. Der private 32-Byte-Schlüssel verlässt den Rechner nicht; SQLite speichert nur den öffentlichen Schlüssel und dessen SHA-256-Kennung. Signiert wird der ASCII-kodierte Kettenhash. Dadurch bleiben bereits signierte Einträge auch dann mathematisch prüfbar, wenn der Schutz für neue Einträge später deaktiviert wird. Eine Schlüsselrotation und Betriebssystem-Keychain-Anbindung sind bewusst spätere Härtungsschritte.
+Optional erzeugt Rust einen Ed25519-Schlüssel im plattformspezifischen lokalen Anwendungsordner und schützt ihn unter Windows mit DPAPI im Benutzerkontext. Vorhandene 32-Byte-Schlüsseldateien werden beim Lesen in dieses Format übernommen. Der private Schlüssel verlässt den Rechner ungeschützt nicht; portable Sicherungen verschlüsseln ihn mit einem vom Nutzer gewählten Kennwort über die Bibliothek `age`. SQLite speichert nur den öffentlichen Schlüssel und dessen SHA-256-Kennung. Signiert wird der ASCII-kodierte Kettenhash. Dadurch bleiben bereits signierte Einträge auch dann mathematisch prüfbar, wenn der Schutz für neue Einträge später deaktiviert wird. Eine Schlüsselrotation bleibt ein späterer Härtungsschritt.
 
 Die Hash-Kette ist Manipulationserkennung, kein externer Vertrauensanker. Wer zugleich Schreibzugriff auf alle Dateien, die Datenbank und lokale Schlüssel besitzt, kann auch lokale Beweise angreifen. Unveränderbarer Objektspeicher, qualifizierte Zeitstempel, Berechtigungskonzept, Aufbewahrungsfristen und dokumentierte Verfahrensabläufe bleiben außerhalb des Anwendungs-Scope und dürfen durch die UI nicht behauptet werden.
 
 Die Archivsuche arbeitet seitenweise mit höchstens 100 Treffern pro Ansicht. Dadurch bleiben Startzeit und Speicherbedarf auch bei einem über Jahre gewachsenen Archiv begrenzt; die frühere stille Obergrenze von 500 Einträgen existiert nicht mehr.
+
+## 7. Sicherung und Wiederherstellung
+
+`backup.rs` schreibt eine Anwendungssicherung als `.erechnung`-Datei. Vor dem Kopieren werden Schreibzugriffe auf Archiv, Arbeitsbestand, DATEV-Export und Vorlagengedächtnis kurz angehalten. SQLite-Dateien entstehen über die Backup-API, nicht durch Kopieren einer laufenden WAL-Datei. Unveränderliche PDF/XML-Dateien und Originale werden anschließend anhand dieses Snapshots kopiert. Das Paket enthält ein versioniertes Inhaltsverzeichnis mit Prüfsummen.
+
+Wiederherstellung schreibt zuerst in einen isolierten Staging-Ordner, prüft Kennwort, Pfade, Schema, Dateien und Archivkette und zeigt eine Vorschau. Erst nach Bestätigung wird der aktuelle Bestand in `%LOCALAPPDATA%\de.erechnung.converter\replaced\<id>` verschoben und die Sicherung übernommen. Ein dauerhaftes Vorgangsprotokoll ermöglicht das Fortsetzen nach einem Abbruch; verdächtige Dateien werden nicht automatisch gelöscht. Zwei unabhängige Archivketten werden nicht zusammengeführt. Eine Erinnerung erscheint, wenn noch nie oder länger als 14 Tage nicht gesichert wurde. Eine Kopie auf demselben Datenträger wird nicht als Schutz gegen Plattenausfall dargestellt.
+
+## 8. Auslieferung und Diagnose
+
+`npm run release:gate` ist der gemeinsame Qualitätszaun vor einem Windows-Installer. Fehlschläge blockieren; nicht verfügbare Schritte (offizielles DATEV-Prüfprogramm, Produktionssignaturen, portabler CI-Lauf ohne Cargo/Validatoren) bleiben sichtbar ausstehend und gelten nicht als bestanden. Herkunft der gebündelten Prüfer und Laufzeiten steht in [components.md](components.md). Ein Produktionsbuild darf das Gate nicht überspringen und keine Testzertifikate verwenden.
+
+Updates über den NSIS-Installer legen vor dem Ersetzen der Anwendungsdateien einen Snapshot unter `%LOCALAPPDATA%\de.erechnung.converter\update-backup\<Version>` an und verweigern eine kleinere Versionsnummer. Der Wiederherstellungshinweis liegt als `WIEDERHERSTELLUNG.txt` in diesem Ordner. Die Deinstallation entfernt nicht `Dokumente\E-Rechnungsarchiv`.
+
+Native Eingaben sind begrenzt: Deep Links nur `erechnung-review://print-job/<UUID>`, Datei-/JSON-/XML-Größen, Canonicalize gegen Junctions, begrenzte Prüferausgaben. Java-Prüfer starten ohne Konsolenfenster und ohne Dateiprotokoll der Belege; die Prüfung ist abbrechbar. Ein Diagnosebericht unter Einstellungen enthält Versionen, Zähler und Komponentenstatus, nicht PDF/XML, Bankdaten oder persönliche Pfade, und wird nicht automatisch versendet.
+
+Die Abnahmematrix ([acceptance-matrix.md](acceptance-matrix.md)) unterscheidet lokale Automatisierung von Hardware-, DATEV- und Pilotnachweisen. Ungeprüfte Zeilen werden nicht aus einem bestandenen Unit-Test übernommen. Der native Fenstertest für WP14 ist `scripts/smoke-release.mjs`.
 
 ## Plattformgrenze
 

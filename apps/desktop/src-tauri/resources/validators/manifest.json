@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-09-07",
+  "checkedAt": "2026-09-11",
   "java": {
     "vendor": "Eclipse Temurin",
     "version": "21",
@@ -16,14 +16,15 @@
     "repository": "kosit/xrechnung",
     "license": "EUPL-1.2",
     "source": "https://github.com/itplr-kosit/validator/releases/tag/v1.6.3",
-    "configurationSource": "https://github.com/itplr-kosit/validator-configuration-xrechnung"
+    "configurationSource": "https://github.com/itplr-kosit/validator-configuration-xrechnung",
+    "configurationTag": "v2026-01-31"
   },
   "mustang": {
-    "engineVersion": "2.16.2",
+    "engineVersion": "2.26.0",
     "ruleVersion": "factur-x-en16931",
-    "jar": "mustang/Mustang-CLI-2.16.2.jar",
+    "jar": "mustang/Mustang-CLI-2.26.0.jar",
     "license": "Apache-2.0",
-    "source": "https://repo1.maven.org/maven2/org/mustangproject/Mustang-CLI/2.16.2/"
+    "source": "https://repo.maven.apache.org/maven2/org/mustangproject/Mustang-CLI/2.26.0/"
   },
   "verapdf": {
     "engineVersion": "1.28.2",

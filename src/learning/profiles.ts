@@ -10,6 +10,7 @@ export interface LearningProfile {
   createdAt: string;
   updatedAt: string;
   memory: CorrectionMemory;
+  undoMemory?: CorrectionMemory;
 }
 
 export interface LearningProfileStore {
@@ -65,6 +66,7 @@ export function parseLearningProfileStore(contents: string | null | undefined): 
       ...profile,
       name: profile.name.trim(),
       memory: parseCorrectionMemory(JSON.stringify(profile.memory)),
+      ...(profile.undoMemory ? { undoMemory: parseCorrectionMemory(JSON.stringify(profile.undoMemory)) } : {}),
     })).slice(0, 20);
     if (profiles.length === 0) return emptyLearningProfileStore();
     const activeProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId)
@@ -116,6 +118,22 @@ export function replaceActiveMemory(store: LearningProfileStore, memory: Correct
   const active = activeLearningProfile(store);
   return {
     ...store,
-    profiles: store.profiles.map((profile) => profile.id === active.id ? { ...profile, memory, updatedAt: now } : profile),
+    profiles: store.profiles.map((profile) => profile.id === active.id
+      ? { ...profile, undoMemory: active.memory, memory, updatedAt: now }
+      : profile),
+  };
+}
+
+export function undoActiveMemory(store: LearningProfileStore, now = new Date().toISOString()): LearningProfileStore | null {
+  const active = activeLearningProfile(store);
+  if (!active.undoMemory) return null;
+  const restored = active.undoMemory;
+  return {
+    ...store,
+    profiles: store.profiles.map((profile) => {
+      if (profile.id !== active.id) return profile;
+      const { undoMemory: _undo, ...rest } = profile;
+      return { ...rest, memory: restored, updatedAt: now };
+    }),
   };
 }

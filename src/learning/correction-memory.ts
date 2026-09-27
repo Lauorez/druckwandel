@@ -14,6 +14,32 @@ export const LEARNABLE_FIELD_NAMES = [
 
 export type LearnableFieldName = typeof LEARNABLE_FIELD_NAMES[number];
 
+export const LEARNABLE_FIELD_LABELS: Record<LearnableFieldName, string> = {
+  invoiceNumber: "Rechnungsnummer",
+  issueDate: "Rechnungsdatum",
+  dueDate: "Fälligkeitsdatum",
+  serviceDate: "Leistungsdatum",
+  currency: "Währung",
+  buyerReference: "Bestellnummer oder Leitweg-ID",
+  sellerName: "Absender: Name",
+  sellerAddressLine1: "Absender: Straße und Hausnummer",
+  sellerPostalCode: "Absender: Postleitzahl",
+  sellerCity: "Absender: Ort",
+  sellerCountryCode: "Absender: Land",
+  sellerVatId: "Absender: Umsatzsteuer-ID",
+  buyerName: "Empfänger: Name",
+  buyerAddressLine1: "Empfänger: Straße und Hausnummer",
+  buyerPostalCode: "Empfänger: Postleitzahl",
+  buyerCity: "Empfänger: Ort",
+  buyerCountryCode: "Empfänger: Land",
+  buyerVatId: "Empfänger: Umsatzsteuer-ID",
+  iban: "IBAN",
+  bic: "BIC",
+  paymentTerms: "Zahlungsbedingungen",
+};
+
+export type LearnedRuleOrigin = "save" | "mark";
+
 export type FieldSourceSelections = Partial<Record<LearnableFieldName, string[]>>;
 
 interface RelativeBox extends BoundingBox {}
@@ -30,6 +56,8 @@ export interface LearnedFieldRule {
   suffix: string;
   region?: true;
   templateKey?: string;
+  enabled?: boolean;
+  origin?: LearnedRuleOrigin;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,6 +75,9 @@ export interface LearnedTableRule {
     total: number;
   };
   defaultTaxRate: string;
+  templateKey?: string;
+  enabled?: boolean;
+  origin?: LearnedRuleOrigin;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,6 +102,17 @@ export interface AppliedCorrectionsResult {
   extraction: ExtractionResult;
   appliedFields: LearnableFieldName[];
   appliedTable: boolean;
+  skippedFields: LearnableFieldName[];
+}
+
+export interface LearnedAssignmentView {
+  id: string;
+  kind: "field" | "table";
+  field?: LearnableFieldName;
+  label: string;
+  context: string;
+  enabled: boolean;
+  origin: LearnedRuleOrigin | "unknown";
 }
 
 export function emptyCorrectionMemory(): CorrectionMemory {
@@ -106,6 +148,8 @@ export function parseCorrectionMemory(contents: string | null | undefined): Corr
         && typeof candidate.suffix === "string"
         && (candidate.region === undefined || candidate.region === true)
         && (candidate.templateKey === undefined || typeof candidate.templateKey === "string")
+        && (candidate.enabled === undefined || typeof candidate.enabled === "boolean")
+        && (candidate.origin === undefined || candidate.origin === "save" || candidate.origin === "mark")
         && typeof candidate.createdAt === "string"
         && typeof candidate.updatedAt === "string";
     });
@@ -127,6 +171,9 @@ export function parseCorrectionMemory(contents: string | null | undefined): Corr
         && [columns.description, columns.quantity, columns.unitPrice, columns.total]
           .every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1)
         && typeof candidate.defaultTaxRate === "string"
+        && (candidate.templateKey === undefined || typeof candidate.templateKey === "string")
+        && (candidate.enabled === undefined || typeof candidate.enabled === "boolean")
+        && (candidate.origin === undefined || candidate.origin === "save" || candidate.origin === "mark")
         && typeof candidate.createdAt === "string"
         && typeof candidate.updatedAt === "string";
     });
@@ -227,7 +274,7 @@ function layoutKey(extraction: ExtractionResult): string {
 // Only fixed labels and their geometry describe a reusable template. Names,
 // addresses, invoice numbers and dates must not invalidate the template.
 function templateKey(extraction: ExtractionResult): string | undefined {
-  const labels = /^(?:rechnung|rechnungsnummer|rechnungsdatum|belegnummer|datum|kundennummer|kunden-nr\.?|rechnungs-nr\.?|unternehmen|bankverbindung|steuerangaben|iban|bic|ust-idnr\.?|ust-id\.?|steuernr\.?|geschäftsführer|bank|position|pos\.?|beschreibung|bezeichnung|menge|anzahl|einzelpreis|gesamtpreis|gesamtbetrag|netto|brutto|auftragskennung|zahlungsbedingungen)$/i;
+  const labels = /^(?:rechnung|rechnungsnummer|rechnungsdatum|belegnummer|datum|kundennummer|kunden-nr\.?|rechnungs-nr\.?|unternehmen|bankverbindung|steuerangaben|iban|bic|ust-idnr\.?|ust-id\.?|steuernr\.?|geschäftsführer|bank|position|pos\.?|beschreibung|bezeichnung|tätigkeit|taetigkeit|menge|anzahl|satz|wert|einzelpreis|gesamtpreis|gesamtbetrag|endbetrag|leistung|artikel|netto|brutto|auftragskennung|zahlungsbedingungen)$/i;
   const anchors = extraction.pages.flatMap((page) => page.tokens.flatMap((token) => {
     const label = token.text.split(":")[0]!.trim();
     if (!labels.test(label)) return [];
@@ -392,8 +439,15 @@ function relativeBox(extraction: ExtractionResult, line: TextLine): RelativeBox 
 }
 
 function sameContext(rule: Pick<LearnedFieldRule, "layoutKey" | "scopeKeys" | "templateKey">, keys: string[], currentLayoutKey: string, currentTemplateKey?: string): boolean {
-  return rule.layoutKey === currentLayoutKey || rule.scopeKeys.some((key) => keys.includes(key))
-    || (rule.templateKey !== undefined && rule.templateKey === currentTemplateKey);
+  const templateMatch = Boolean(rule.templateKey && currentTemplateKey && rule.templateKey === currentTemplateKey);
+  const layoutMatch = rule.layoutKey === currentLayoutKey;
+  if (templateMatch || layoutMatch) return true;
+  if (rule.templateKey || currentTemplateKey) return false;
+  return rule.scopeKeys.some((key) => keys.includes(key));
+}
+
+function ruleEnabled(rule: { enabled?: boolean }): boolean {
+  return rule.enabled !== false;
 }
 
 function affixRange(text: string, prefix: string, suffix: string): { start: number; end: number } | null {
@@ -479,7 +533,11 @@ export function sourceAssignmentError(field: LearnableFieldName, raw: string, co
   return FIELD_ASSIGNMENT_HINTS[field] ?? "Bitte prüfen Sie den markierten Wert. Entfernen Sie zum Beispiel eine mitmarkierte Beschriftung.";
 }
 
-function matchingRegion(extraction: ExtractionResult, rule: LearnedFieldRule): { line: TextLine; raw: string } | null {
+type RegionMatch =
+  | { quality: "exact" | "shifted"; line: TextLine; raw: string; score: number }
+  | { quality: "ambiguous"; score: number };
+
+function matchingRegion(extraction: ExtractionResult, rule: LearnedFieldRule): RegionMatch | null {
   const page = extraction.pages.find((candidate) => candidate.page === rule.page);
   if (page) {
     // Match the saved text block, not its entire horizontal row. A small margin
@@ -491,7 +549,7 @@ function matchingRegion(extraction: ExtractionResult, rule: LearnedFieldRule): {
         && y >= rule.box.y - 0.006 && y <= rule.box.y + rule.box.height + 0.006;
     });
     const exact = readoutFromTokens(extraction, rule, tokens);
-    if (exact) return exact;
+    if (exact) return { ...exact, quality: "exact", score: 0 };
   }
   return matchingShiftedRegion(extraction, rule);
 }
@@ -512,7 +570,7 @@ function readoutFromTokens(
   return range ? { line, raw: line.text.slice(range.start, range.end) } : null;
 }
 
-function matchingShiftedRegion(extraction: ExtractionResult, rule: LearnedFieldRule): { line: TextLine; raw: string } | null {
+function matchingShiftedRegion(extraction: ExtractionResult, rule: LearnedFieldRule): RegionMatch | null {
   const hint = FIELD_HINTS[rule.field];
   const issueDate = extraction.fields.issueDate?.value;
   const candidates = extraction.lines.flatMap((line) => {
@@ -545,10 +603,14 @@ function matchingShiftedRegion(extraction: ExtractionResult, rule: LearnedFieldR
     return [{ line: source, raw, score: verticalDistance + pagePenalty + centerDistance + hintBonus }];
   });
   candidates.sort((left, right) => left.score - right.score);
-  return candidates[0] ?? null;
+  const best = candidates[0];
+  if (!best) return null;
+  if (candidates[1] && candidates[1].score - best.score < 0.04) return { quality: "ambiguous", score: best.score };
+  if (best.score > 0.28) return null;
+  return { line: best.line, raw: best.raw, quality: "shifted", score: best.score };
 }
 
-function nearestMatchingLine(extraction: ExtractionResult, rule: LearnedFieldRule): { line: TextLine; raw: string } | null {
+function nearestMatchingLine(extraction: ExtractionResult, rule: LearnedFieldRule): RegionMatch | null {
   if (rule.region) return matchingRegion(extraction, rule);
   const page = extraction.pages.find((candidate) => candidate.page === rule.page);
   if (!page) return null;
@@ -570,14 +632,17 @@ function nearestMatchingLine(extraction: ExtractionResult, rule: LearnedFieldRul
     return [{ line: source, raw: source.text.slice(range.start, range.end), score }];
   });
   candidates.sort((left, right) => left.score - right.score);
-  return candidates[0] ?? null;
+  const best = candidates[0];
+  if (!best) return null;
+  if (candidates[1] && candidates[1].score - best.score < 0.02) return { quality: "ambiguous", score: best.score };
+  return { line: best.line, raw: best.raw, quality: "exact", score: best.score };
 }
 
-function extractionField(rule: LearnedFieldRule, line: TextLine, raw: string, value: string): ExtractedField {
+function extractionField(rule: LearnedFieldRule, line: TextLine, raw: string, value: string, quality: "exact" | "shifted"): ExtractedField {
   return {
     name: rule.field,
     value,
-    confidence: 0.84,
+    confidence: quality === "exact" ? 0.84 : 0.66,
     sourceTokenIds: line.tokenIds,
     sourceText: line.text,
     transformations: [{ operation: "learned-layout", input: raw.trim(), output: value }],
@@ -683,6 +748,7 @@ function learnTableRule(
   draft: ReviewDraft,
   scopeKeys: string[],
   currentLayoutKey: string,
+  currentTemplateKey: string | undefined,
   now: string,
   existingRules: LearnedTableRule[],
 ): LearnedTableRule | null {
@@ -712,6 +778,9 @@ function learnTableRule(
     startY,
     columns,
     defaultTaxRate: mostCommon(draft.lines.map((line) => canonicalNumber(line.taxRate, 2) ?? ""), "19.00"),
+    ...(currentTemplateKey ? { templateKey: currentTemplateKey } : {}),
+    enabled: true,
+    origin: "save",
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -781,19 +850,28 @@ function parseLearnedTable(extraction: ExtractionResult, rule: LearnedTableRule)
 export function applyLearnedCorrections(extraction: ExtractionResult, memory: CorrectionMemory): AppliedCorrectionsResult {
   const fields = { ...extraction.fields };
   const appliedFields: LearnableFieldName[] = [];
+  const skippedFields: LearnableFieldName[] = [];
   const keys = extractionIdentityKeys(extraction);
   const currentLayoutKey = layoutKey(extraction);
   const currentTemplateKey = templateKey(extraction);
   const newestRules = [...memory.rules].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   for (const rule of newestRules) {
-    if (appliedFields.includes(rule.field) || !sameContext(rule, keys, currentLayoutKey, currentTemplateKey)) continue;
+    if (!ruleEnabled(rule) || appliedFields.includes(rule.field) || skippedFields.includes(rule.field) || !sameContext(rule, keys, currentLayoutKey, currentTemplateKey)) continue;
     if (rule.mode === "fill" && fields[rule.field]) continue;
     const match = nearestMatchingLine(extraction, rule);
-    if (!match) continue;
+    if (!match || match.quality === "ambiguous") {
+      if (match?.quality === "ambiguous") skippedFields.push(rule.field);
+      continue;
+    }
+    const existing = fields[rule.field];
+    if (existing && match.quality === "shifted" && match.score > 0.08) {
+      skippedFields.push(rule.field);
+      continue;
+    }
     const issueDate = fields.issueDate?.value ?? extraction.fields.issueDate?.value;
     const value = normalizeSourceValue(rule.field, match.raw, issueDate ? { issueDate } : {});
     if (!value) continue;
-    fields[rule.field] = extractionField(rule, match.line, match.raw, value);
+    fields[rule.field] = extractionField(rule, match.line, match.raw, value, match.quality);
     appliedFields.push(rule.field);
   }
   let lineItems = extraction.lineItems;
@@ -801,7 +879,7 @@ export function applyLearnedCorrections(extraction: ExtractionResult, memory: Co
   if (lineItems.length === 0) {
     const newestTableRules = [...memory.tableRules].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     for (const rule of newestTableRules) {
-      if (!sameContext(rule, keys, currentLayoutKey)) continue;
+      if (!ruleEnabled(rule) || !sameContext(rule, keys, currentLayoutKey, currentTemplateKey)) continue;
       const learnedItems = parseLearnedTable(extraction, rule);
       if (learnedItems.length === 0) continue;
       lineItems = learnedItems;
@@ -809,10 +887,17 @@ export function applyLearnedCorrections(extraction: ExtractionResult, memory: Co
       break;
     }
   }
-  const warnings = appliedTable
-    ? [...extraction.warnings, { code: "LEARNED_TABLE", message: "Leistungen und Artikel wurden anhand einer ähnlichen Rechnung ergänzt. Bitte prüfen Sie die Angaben." }]
-    : extraction.warnings;
-  return { extraction: { ...extraction, fields, lineItems, warnings }, appliedFields, appliedTable };
+  const warnings = [...extraction.warnings];
+  if (appliedTable) {
+    warnings.push({ code: "LEARNED_TABLE", message: "Leistungen und Artikel wurden anhand einer ähnlichen Rechnung ergänzt. Bitte prüfen Sie die Angaben." });
+  }
+  if (skippedFields.length > 0) {
+    warnings.push({
+      code: "LEARNED_UNCERTAIN",
+      message: "Mindestens eine gemerkte Stelle passt in dieser Rechnung nicht eindeutig. Der bisher erkannte Wert bleibt unverändert.",
+    });
+  }
+  return { extraction: { ...extraction, fields, lineItems, warnings }, appliedFields, appliedTable, skippedFields };
 }
 
 /** Upgrade legacy whole-row rules only using a document in their original scope. */
@@ -824,8 +909,10 @@ export function upgradeLegacyFieldRules(extraction: ExtractionResult, memory: Co
   const rules = memory.rules.map((rule) => {
     if (rule.region || !sameContext(rule, keys, currentLayoutKey)) return rule;
     const match = nearestMatchingLine(extraction, rule);
-    const value = match ? normalizeSourceValue(rule.field, match.raw, extraction.fields.issueDate?.value ? { issueDate: extraction.fields.issueDate.value } : {}) : null;
-    const located = match && value ? locateValue(extraction, rule.field, value, match.line.tokenIds) : null;
+    const value = match && match.quality !== "ambiguous"
+      ? normalizeSourceValue(rule.field, match.raw, extraction.fields.issueDate?.value ? { issueDate: extraction.fields.issueDate.value } : {})
+      : null;
+    const located = match && match.quality !== "ambiguous" && value ? locateValue(extraction, rule.field, value, match.line.tokenIds) : null;
     const box = located ? relativeBox(extraction, located.line) : null;
     if (!located || !box) return rule;
     changed = true;
@@ -901,6 +988,8 @@ export function learnCorrections(
       prefix: postalCity ? "" : located.prefix,
       suffix: postalCity ? "" : located.suffix,
       region: true,
+      enabled: true,
+      origin: selections[field] ? "mark" : "save",
       ...(currentTemplateKey ? { templateKey: currentTemplateKey } : {}),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -914,7 +1003,7 @@ export function learnCorrections(
   let tableSkipped = false;
   if (tableChanged) {
     const tableRule = extraction.lineItems.length === 0
-      ? learnTableRule(extraction, correctedDraft, scopeKeys, currentLayoutKey, now, tableRules)
+      ? learnTableRule(extraction, correctedDraft, scopeKeys, currentLayoutKey, currentTemplateKey, now, tableRules)
       : null;
     if (tableRule) {
       tableRules = [...tableRules.filter((rule) => rule.id !== tableRule.id), tableRule].slice(-50);
@@ -932,5 +1021,51 @@ export function learnCorrections(
     tableChanged,
     tableLearned,
     tableSkipped,
+  };
+}
+
+function assignmentContext(prefix: string, suffix: string): string {
+  const snippet = [prefix, suffix]
+    .map((value) => value.replace(/\s+/g, " ").trim())
+    .find((value) => value.length >= 3 && /[A-Za-zÄÖÜäöüß]/.test(value) && !/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(value.replace(/\s/g, "")));
+  return snippet ? `neben „${snippet.slice(0, 40)}${snippet.length > 40 ? "…" : ""}“` : "Gemerkte Stelle in der Rechnung";
+}
+
+export function listLearnedAssignments(memory: CorrectionMemory): LearnedAssignmentView[] {
+  const fields = [...memory.rules]
+    .sort((left, right) => left.field.localeCompare(right.field) || right.updatedAt.localeCompare(left.updatedAt))
+    .map((rule) => ({
+      id: rule.id,
+      kind: "field" as const,
+      field: rule.field,
+      label: LEARNABLE_FIELD_LABELS[rule.field],
+      context: assignmentContext(rule.prefix, rule.suffix),
+      enabled: ruleEnabled(rule),
+      origin: rule.origin ?? "unknown" as const,
+    }));
+  const tables = memory.tableRules.map((rule) => ({
+    id: rule.id,
+    kind: "table" as const,
+    label: "Leistungen und Artikel",
+    context: "Gemerkte Spaltenanordnung",
+    enabled: ruleEnabled(rule),
+    origin: rule.origin ?? "unknown" as const,
+  }));
+  return [...fields, ...tables];
+}
+
+export function setLearnedAssignmentEnabled(memory: CorrectionMemory, id: string, enabled: boolean, now = new Date().toISOString()): CorrectionMemory {
+  return {
+    schemaVersion: 1,
+    rules: memory.rules.map((rule) => rule.id === id ? { ...rule, enabled, updatedAt: now } : rule),
+    tableRules: memory.tableRules.map((rule) => rule.id === id ? { ...rule, enabled, updatedAt: now } : rule),
+  };
+}
+
+export function removeLearnedAssignment(memory: CorrectionMemory, id: string): CorrectionMemory {
+  return {
+    schemaVersion: 1,
+    rules: memory.rules.filter((rule) => rule.id !== id),
+    tableRules: memory.tableRules.filter((rule) => rule.id !== id),
   };
 }

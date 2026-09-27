@@ -10,6 +10,7 @@ describe("gemeinsamer Windows-Installer", () => {
       readFileSync(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
     );
     expect(config.bundle.windows.nsis.installMode).toBe("currentUser");
+    expect(config.bundle.windows.webviewInstallMode.type).toBe("offlineInstaller");
     expect(config.bundle.windows.nsis.installerHooks).toBe("nsis/installer-hooks.nsh");
 
     const hooks = readFileSync(
@@ -17,13 +18,19 @@ describe("gemeinsamer Windows-Installer", () => {
       "utf8",
     );
     expect(hooks).toContain("NSIS_HOOK_PREINSTALL");
+    expect(hooks).toContain("NSIS_HOOK_POSTINSTALL");
     expect(hooks).toContain("NSIS_HOOK_PREUNINSTALL");
     expect(hooks).toContain("CurrentBuildNumber");
     expect(hooks).toContain("$WINDIR\\Sysnative\\WindowsPowerShell");
     expect(hooks).toContain("Printer.msix");
-    expect(hooks).toContain("$UpdateMode <> 1");
+    expect(hooks).toContain("UpdateGuard.ps1");
+    expect(hooks).toContain("PrepareUpdate");
+    expect(hooks).toContain("RecordInstalledVersion");
+    expect(hooks).toContain("$UpdateMode = 1");
     expect(hooks).toContain("SetOutPath $INSTDIR");
-    expect(hooks).toContain("Die Anwendung wird trotzdem installiert");
+    expect(hooks).toContain("Die vollständige Installation wird abgebrochen");
+    expect(hooks).toContain("SetErrorLevel 1");
+    expect(hooks).not.toContain("Die Anwendung wird trotzdem installiert");
   });
 
   it("installiert ausschließlich das erwartete, signierte Druckerpaket", () => {
@@ -34,7 +41,8 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(installer).toContain('$packageName = "ERechnung.VirtualPrinter.PoC"');
     expect(installer).toContain("Get-AuthenticodeSignature");
     expect(installer).toContain("Test-CertificateTrusted");
-    expect(installer).toContain("Cert:\\CurrentUser\\TrustedPeople");
+    expect(installer).toContain("Cert:\\LocalMachine\\TrustedPeople");
+    expect(installer).not.toContain("Import-Certificate");
     expect(installer).not.toContain("-Verb RunAs");
     expect(installer).toContain("Add-AppxPackage");
     expect(installer).toContain("Wait-ForPrinter");
@@ -64,7 +72,10 @@ describe("gemeinsamer Windows-Installer", () => {
       resolve(root, "scripts/build-windows-installer.ps1"),
       "utf8",
     );
-    expect(buildScript).toContain('$SigningMode -eq "Production"');
+    expect(buildScript).toContain("Ein Produktionsbuild darf das Release-Gate nicht überspringen.");
+    expect(buildScript).toContain("release:gate");
+    expect(buildScript).toContain("UpdateGuard.ps1");
+    expect(buildScript).toContain("SignerCertificate.Issuer");
     expect(buildScript).toContain("SignerCertificate.Subject -eq");
     expect(buildScript).toContain("$installerSignature.Status -ne \"Valid\"");
   });

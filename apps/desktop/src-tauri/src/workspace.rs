@@ -19,12 +19,12 @@ const MAX_SNAPSHOT: usize = 20 * 1024 * 1024;
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DocumentSummary {
-    id: String,
+    pub(crate) id: String,
     name: String,
     source_key: Option<String>,
     job_id: Option<String>,
     original_sha256: String,
-    revision: i64,
+    pub(crate) revision: i64,
     status: String,
     updated_at_ms: i64,
     error: Option<String>,
@@ -33,7 +33,7 @@ pub(crate) struct DocumentSummary {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DocumentDetail {
-    document: DocumentSummary,
+    pub(crate) document: DocumentSummary,
     pdf_base64: String,
     snapshot: Option<String>,
 }
@@ -110,7 +110,7 @@ fn database(root: &Path) -> Result<Connection, String> {
     let version: i64 = tx
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version > 1 {
+    if version > 2 {
         return Err("Die Entwürfe benötigen eine neuere Programmversion.".into());
     }
     if version == 0 {
@@ -123,7 +123,14 @@ fn database(root: &Path) -> Result<Connection, String> {
             CREATE INDEX documents_updated ON documents(updated_at_ms DESC);
             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE inbox_seen (source_key TEXT PRIMARY KEY, legacy INTEGER NOT NULL);
-            PRAGMA user_version=1;",
+            CREATE TABLE dismissed_inbox (source_key TEXT PRIMARY KEY);
+            PRAGMA user_version=2;",
+        )
+        .map_err(|e| e.to_string())?;
+    } else if version == 1 {
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS dismissed_inbox (source_key TEXT PRIMARY KEY);
+            PRAGMA user_version=2;",
         )
         .map_err(|e| e.to_string())?;
     }
@@ -163,7 +170,7 @@ fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-fn import_to(
+pub(crate) fn import_to(
     root: &Path,
     name: &str,
     pdf: &[u8],
@@ -225,7 +232,7 @@ fn import_to(
     result
 }
 
-fn read_from(root: &Path, id: &str) -> Result<DocumentDetail, String> {
+pub(crate) fn read_from(root: &Path, id: &str) -> Result<DocumentDetail, String> {
     let db = database(root)?;
     let document = get(&db, id)?;
     let originals = root
@@ -293,7 +300,7 @@ fn validate_snapshot(contents: &str) -> Result<Value, String> {
     Ok(value)
 }
 
-fn save_to(
+pub(crate) fn save_to(
     root: &Path,
     id: &str,
     expected_revision: i64,
@@ -351,6 +358,16 @@ fn scan_to(root: &Path, jobs: Vec<super::PrintJob>) -> Result<Vec<InboxCandidate
     let mut candidates = Vec::new();
     for job in jobs {
         let key = job_key(&job);
+        let dismissed: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM dismissed_inbox WHERE source_key=?1)",
+                [&key],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if dismissed {
+            continue;
+        }
         tx.execute(
             "INSERT OR IGNORE INTO inbox_seen(source_key,legacy) VALUES(?1,?2)",
             params![key, !initialized],
@@ -383,6 +400,51 @@ fn scan_to(root: &Path, jobs: Vec<super::PrintJob>) -> Result<Vec<InboxCandidate
     Ok(candidates)
 }
 
+fn delete_from(root: &Path, id: &str) -> Result<(), String> {
+    if Uuid::parse_str(id).is_err() {
+        return Err("Ungültige Rechnungskennung.".into());
+    }
+    let mut db = database(root)?;
+    let tx = db
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    let document = get(&tx, id)?;
+    if let Some(key) = &document.source_key {
+        tx.execute(
+            "INSERT OR IGNORE INTO dismissed_inbox(source_key) VALUES(?1)",
+            [key],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.execute("DELETE FROM documents WHERE id=?1", [id])
+        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM settings WHERE key='last_opened' AND value=?1",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    let _ = fs::remove_file(root.join("originals").join(format!("{id}.pdf")));
+    Ok(())
+}
+
+fn dismiss_from(root: &Path, key: &str) -> Result<(), String> {
+    if key.is_empty() || key.len() > 2000 {
+        return Err("Ungültige Kennung im Druckeingang.".into());
+    }
+    let mut db = database(root)?;
+    let tx = db
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT OR IGNORE INTO dismissed_inbox(source_key) VALUES(?1)",
+        [key],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) fn workspace_import(
     app: AppHandle,
@@ -392,6 +454,7 @@ pub(crate) fn workspace_import(
     if pdf_base64.len() > MAX_PDF * 4 / 3 + 4 {
         return Err("Die PDF-Datei ist zu groß.".into());
     }
+    let _lock = crate::guard::exclusive();
     let pdf = base64::engine::general_purpose::STANDARD
         .decode(pdf_base64)
         .map_err(|_| "Die PDF-Datei konnte nicht gelesen werden.".to_string())?;
@@ -403,6 +466,7 @@ pub(crate) fn workspace_import_print(
     app: AppHandle,
     path: String,
 ) -> Result<DocumentSummary, String> {
+    let _lock = crate::guard::exclusive();
     let path = super::checked_job_path(&path)?;
     let job = super::print_job_from_path(path.clone(), None)?;
     if job.size > MAX_PDF as u64 {
@@ -430,6 +494,7 @@ pub(crate) fn workspace_save(
     expected_revision: i64,
     contents: String,
 ) -> Result<DocumentSummary, String> {
+    let _lock = crate::guard::exclusive();
     save_to(&root(&app)?, &id, expected_revision, &contents)
 }
 
@@ -466,6 +531,7 @@ pub(crate) fn workspace_list(app: AppHandle, offset: Option<i64>) -> Result<Docu
 
 #[tauri::command]
 pub(crate) fn workspace_activate(app: AppHandle, id: String) -> Result<(), String> {
+    let _lock = crate::guard::exclusive();
     let mut db = database(&root(&app)?)?;
     let tx = db
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -480,6 +546,7 @@ pub(crate) fn workspace_activate(app: AppHandle, id: String) -> Result<(), Strin
 
 #[tauri::command]
 pub(crate) fn workspace_error(app: AppHandle, id: String, message: String) -> Result<(), String> {
+    let _lock = crate::guard::exclusive();
     let db = database(&root(&app)?)?;
     get(&db, &id)?;
     db.execute("UPDATE documents SET error=?1,status=CASE WHEN snapshot IS NULL THEN 'error' ELSE status END WHERE id=?2",
@@ -489,7 +556,20 @@ pub(crate) fn workspace_error(app: AppHandle, id: String, message: String) -> Re
 
 #[tauri::command]
 pub(crate) fn workspace_scan_inbox(app: AppHandle) -> Result<Vec<InboxCandidate>, String> {
+    let _lock = crate::guard::exclusive();
     scan_to(&root(&app)?, super::list_print_jobs()?)
+}
+
+#[tauri::command]
+pub(crate) fn workspace_delete(app: AppHandle, id: String) -> Result<(), String> {
+    let _lock = crate::guard::exclusive();
+    delete_from(&root(&app)?, &id)
+}
+
+#[tauri::command]
+pub(crate) fn workspace_dismiss_inbox(app: AppHandle, key: String) -> Result<(), String> {
+    let _lock = crate::guard::exclusive();
+    dismiss_from(&root(&app)?, &key)
 }
 
 #[cfg(test)]
@@ -576,6 +656,28 @@ mod tests {
             scan_to(&t.0, vec![job("old"), job("new")]).unwrap().len(),
             1
         );
+    }
+    #[test]
+    fn deleted_print_jobs_stay_out_of_the_inbox() {
+        let t = TestRoot::new();
+        assert!(scan_to(&t.0, vec![job("old")]).unwrap()[0].legacy);
+        let imported = import_to(&t.0, "new.pdf", b"%PDF-a", Some("print:new"), Some("new")).unwrap();
+        let original = t.0.join("originals").join(format!("{}.pdf", imported.id));
+        assert!(original.is_file());
+        delete_from(&t.0, &imported.id).unwrap();
+        assert!(!original.exists());
+        assert!(scan_to(&t.0, vec![job("new")]).unwrap().is_empty());
+        let db = database(&t.0).unwrap();
+        assert_eq!(
+            db.query_row("SELECT COUNT(*) FROM documents", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert!(get(&db, &imported.id).is_err());
+        dismiss_from(&t.0, "print:old").unwrap();
+        let remaining = scan_to(&t.0, vec![job("old"), job("later")]).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].key, "print:later");
     }
     #[test]
     fn failed_storage_never_acknowledges_a_revision() {

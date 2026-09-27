@@ -1,6 +1,7 @@
 import { Decimal } from "decimal.js";
 
 const DECIMAL_INPUT = /^-?\d+(?:[.,]\d+)?$/;
+const CANONICAL_DECIMAL = /^-?\d+(?:\.\d+)?$/;
 const GERMAN_GROUPED_INPUT = /^-?\d{1,3}(?:\.\d{3})+(?:,\d+)?$/;
 
 /** Converts German user/PDF input to the canonical dot-decimal representation. */
@@ -15,6 +16,7 @@ export function parseLocalizedDecimal(input: string): string | null {
 
   let normalized = compact;
   if (compact.includes(",")) {
+    if (compact.includes(".") && !GERMAN_GROUPED_INPUT.test(compact)) return null;
     normalized = compact.replaceAll(".", "").replace(",", ".");
   } else if (GERMAN_GROUPED_INPUT.test(compact)) {
     normalized = compact.replaceAll(".", "");
@@ -28,9 +30,10 @@ export function parseLocalizedDecimal(input: string): string | null {
 }
 
 export function formatGermanDecimal(value: string, minimumFractionDigits = 2, maximumFractionDigits = 2): string {
-  const canonical = parseLocalizedDecimal(value);
-  if (canonical === null) return value;
-  const rounded = new Decimal(canonical).toDecimalPlaces(maximumFractionDigits, Decimal.ROUND_HALF_UP);
+  // Domain values already use a decimal point. Re-parsing them as German input
+  // turns a quantity like 1.000 into 1000 and displays the wrong invoice value.
+  if (!CANONICAL_DECIMAL.test(value)) return value;
+  const rounded = new Decimal(value).toDecimalPlaces(maximumFractionDigits, Decimal.ROUND_HALF_UP);
   let [integer = "0", fraction = ""] = rounded.toFixed(maximumFractionDigits).split(".");
   while (fraction.length > minimumFractionDigits && fraction.endsWith("0")) fraction = fraction.slice(0, -1);
   const sign = integer.startsWith("-") ? "-" : "";

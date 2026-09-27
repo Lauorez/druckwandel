@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import type { ExtractedFieldName, ExtractionResult } from "../../../src/extraction/types.js";
 import {
   applyLearnedCorrections,
-  emptyCorrectionMemory,
   learnCorrections,
   normalizeSourceValue,
   selectedSourceLine,
@@ -15,10 +14,7 @@ import {
 } from "../../../src/learning/correction-memory.js";
 import {
   activeLearningProfile,
-  createLearningProfile,
-  deleteLearningProfile,
   emptyLearningProfileStore,
-  renameLearningProfile,
   replaceActiveMemory,
   selectLearningProfile,
   type LearningProfileStore,
@@ -35,15 +31,19 @@ import { PdfReview } from "./PdfReview.js";
 import { assignSourceValue } from "./pdfSelection.js";
 import { ReviewPanel, reviewFieldId, type ActionFeedback } from "./ReviewPanel.js";
 import { loadLearningProfiles, saveLearningProfiles } from "./learningMemoryStore.js";
+import { listenSettingsChanged, openSettingsWindow, type SettingsSection } from "./settingsWindow.js";
+import { SettingsView } from "./SettingsView.js";
+import { subscription } from "./subscription.js";
 import { ArchiveView } from "./ArchiveView.js";
+import { backupStatus, type BackupStatus } from "./backupStore.js";
 import { DatevView } from "./DatevView.js";
 import { cancelInvoiceValidation, saveAndArchiveInvoice, validatePreparedInvoice, type ArchiveMetadata, type OfficialCheckIssue } from "./archiveStore.js";
 import { useWorkspace } from "./useWorkspace.js";
 import { InboxView } from "./InboxView.js";
-import { parseLegacyDraft, type LegacyDraft, type WorkspaceSnapshot } from "./workspaceStore.js";
+import { parseLegacyDraft, toBase64, type LegacyDraft, type WorkspaceSnapshot } from "./workspaceStore.js";
 import { invoiceSnapshot, readInvoiceSnapshot } from "../../../src/export/invoice-snapshot.js";
 import { compareInvoiceToSource, assertExportableConsistency } from "../../../src/engine/consistency.js";
-import { HybridPdfError } from "../../../src/engine/hybrid-pdf.js";
+import { HybridPdfError } from "../../../src/engine/hybrid-pdf-error.js";
 import { germanFieldLabel } from "../../../src/engine/validation-report.js";
 
 function safeFileStem(value: string): string {
@@ -73,15 +73,6 @@ function downloadBytes(fileName: string, contents: Uint8Array, mimeType: string)
   return `Die Datei „${fileName}“ wird gespeichert.`;
 }
 
-function encodeBase64(contents: Uint8Array): string {
-  const chunkSize = 32_768;
-  let binary = "";
-  for (let offset = 0; offset < contents.length; offset += chunkSize) {
-    binary += String.fromCharCode(...contents.subarray(offset, offset + chunkSize));
-  }
-  return btoa(binary);
-}
-
 async function saveDraft(fileName: string, contents: string): Promise<string> {
   if (isTauri()) return invoke<string>("write_review_draft", { fileName, contents });
   return downloadText(fileName, contents, "application/json");
@@ -97,7 +88,6 @@ export function App() {
   const [sourceExtraction, setSourceExtraction] = useState<ExtractionResult>();
   const [draft, setDraft] = useState<ReviewDraft>();
   const [initialDraft, setInitialDraft] = useState<ReviewDraft>();
-  const [learningRuleCount, setLearningRuleCount] = useState(0);
   const [learningProfiles, setLearningProfiles] = useState<LearningProfileStore>(emptyLearningProfileStore);
   const [selectedTokenIds, setSelectedTokenIds] = useState<string[]>([]);
   const [sourceSelections, setSourceSelections] = useState<FieldSourceSelections>({});
@@ -108,6 +98,7 @@ export function App() {
   const sourcePickerRef = useRef<HTMLDivElement>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [analyzing, setAnalyzing] = useState(false);
+  const importing = useRef(false);
   const [activeAction, setActiveAction] = useState<"draft" | "authority" | "pdf">();
   const [validationPhase, setValidationPhase] = useState<string>();
   const [officialIssues, setOfficialIssues] = useState<OfficialCheckIssue[]>([]);
@@ -116,6 +107,9 @@ export function App() {
   const [completed, setCompleted] = useState(false);
   const [hybridConfirmed, setHybridConfirmed] = useState(false);
   const [legacyDraft, setLegacyDraft] = useState<LegacyDraft>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("profiles");
+  const [backupReminder, setBackupReminder] = useState<BackupStatus>();
   const learningStore = useRef<LearningProfileStore>(emptyLearningProfileStore());
   const learningStorePromise = useRef<Promise<LearningProfileStore> | null>(null);
   const selectedTokenSet = useMemo(() => new Set(selectedTokenIds), [selectedTokenIds]);
@@ -128,8 +122,9 @@ export function App() {
     schemaVersion: 1, extractionVersion: "text-layout-v1", sourceExtraction, extraction, draft, initialDraft,
     sourceSelections, pendingSourceFields, completed, hybridConfirmed,
   } : undefined, [sourceExtraction,extraction,draft,initialDraft,sourceSelections,pendingSourceFields,completed,hybridConfirmed]);
-  const work = useWorkspace({ snapshot, build: buildSnapshot, load: restoreDocument, error: setError, isActionActive: Boolean(activeAction) || datevBusy, isImportActive: analyzing });
+  const work = useWorkspace({ snapshot, build: buildSnapshot, load: restoreDocument, clear: clearEditor, error: setError, isActionActive: Boolean(activeAction) || datevBusy, isImportActive: analyzing });
   const printStatus = work.printStatus;
+  const processing = datevBusy || work.busy || analyzing || Boolean(activeAction);
 
 
   function archiveMetadata(invoice: NonNullable<typeof calculated>): ArchiveMetadata {
@@ -148,21 +143,50 @@ export function App() {
     learningStore.current = store;
     learningStorePromise.current = Promise.resolve(store);
     setLearningProfiles(store);
-    const memory = activeLearningProfile(store).memory;
-    setLearningRuleCount(memory.rules.length + memory.tableRules.length);
   }
 
   function ensureLearningStore(): Promise<LearningProfileStore> {
     learningStorePromise.current ??= loadLearningProfiles().then((store) => {
       rememberStore(store);
       return store;
+    }).catch((reason) => {
+      learningStorePromise.current = null;
+      throw reason;
     });
     return learningStorePromise.current;
   }
 
   useEffect(() => {
-    void ensureLearningStore();
+    void ensureLearningStore().catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    const refreshReminder = () => backupStatus().then((status) => {
+      setBackupReminder(status.reminderDue ? status : undefined);
+    }).catch(() => undefined);
+    void refreshReminder();
+    return subscription(listenSettingsChanged((scope) => {
+      if (scope === "backup") void refreshReminder();
+    }));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const stop = subscription(listenSettingsChanged((scope) => {
+      if (cancelled || (scope !== "learning" && scope !== "profiles")) return;
+      learningStorePromise.current = null;
+      void loadLearningProfiles().then((store) => { if (!cancelled) rememberStore(store); }).catch(console.error);
+    }));
+    return () => { cancelled = true; stop(); };
+  }, []);
+
+  async function openSettings(section: SettingsSection = "profiles") {
+    if (work.busy || analyzing || activeAction) return;
+    setSettingsSection(section);
+    const mode = await openSettingsWindow(section);
+    if (mode === "fallback") setSettingsOpen(true);
+  }
 
   useEffect(() => {
     if (sourceTarget) sourcePickerRef.current?.focus();
@@ -170,11 +194,9 @@ export function App() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    let stop: (() => void) | undefined;
-    void listen<{ phase: string }>("invoice-validation-progress", (event) => {
+    return subscription(listen<{ phase: string }>("invoice-validation-progress", (event) => {
       setValidationPhase(event.payload.phase);
-    }).then((unlisten) => { stop = unlisten; }).catch(() => undefined);
-    return () => { stop?.(); };
+    }));
   }, []);
 
   async function buildSnapshot(data: Uint8Array): Promise<WorkspaceSnapshot> {
@@ -199,6 +221,16 @@ export function App() {
       sourceSelections: {},pendingSourceFields: [],completed: false,hybridConfirmed: false };
   }
 
+  function clearEditor() {
+    setPdfBytes(undefined); setFileName("");
+    setSourceExtraction(undefined); setExtraction(undefined);
+    setDraft(undefined); setInitialDraft(undefined);
+    setSourceSelections({}); setPendingSourceFields([]);
+    setCompleted(false); setHybridConfirmed(false); setSelectedTokenIds([]); setSourceTarget(undefined);
+    setSourceValue(""); setSourceError(""); setPageNumber(1); setFeedback(undefined); setOfficialIssues([]);
+    document.title = "E-Rechnungs-Assistent";
+  }
+
   function restoreDocument(data: Uint8Array, name: string, next: WorkspaceSnapshot) {
     setPdfBytes(data); setFileName(name);
     setSourceExtraction(next.sourceExtraction); setExtraction(next.extraction);
@@ -211,18 +243,19 @@ export function App() {
   }
 
   async function openPdfFile(file: File, importedDraft?: LegacyDraft) {
-    if (work.busy || activeAction) { setError("Bitte warten Sie, bis die laufende Verarbeitung abgeschlossen ist."); return; }
+    if (importing.current || work.busy || activeAction || datevBusy) { setError("Bitte warten Sie, bis die laufende Verarbeitung abgeschlossen ist."); return; }
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       setError("Bitte wählen Sie eine Rechnung im PDF-Format aus."); return;
     }
     if (file.size > 100 * 1024 * 1024) { setError("Bitte wählen Sie eine PDF-Datei bis 100 MB."); return; }
+    importing.current = true;
     setAnalyzing(true);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (isTauri()) await work.importFile(file.name,bytes,importedDraft);
       else restoreDocument(bytes,file.name,await buildSnapshot(bytes));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Die Rechnung konnte nicht gelesen werden."); }
-    finally { setAnalyzing(false); }
+    finally { importing.current = false; setAnalyzing(false); }
   }
 
   async function openLegacyFile(file: File) {
@@ -273,6 +306,8 @@ export function App() {
       return;
     }
     setCompleted(false);
+    setHybridConfirmed(false);
+    setOfficialIssues([]);
     setDraft(assignSourceValue(draft, sourceTarget.field, value));
     setSourceSelections((current) => ({ ...current, [sourceTarget.field]: [...selectedTokenIds] }));
     setPendingSourceFields((current) => [...new Set([...current, sourceTarget.field])]);
@@ -340,63 +375,14 @@ export function App() {
     }
   }
 
-  async function persistProfiles(next: LearningProfileStore | null, success: string, failure: string) {
-    if (!next) return;
-    try {
-      await saveLearningProfiles(next);
-      rememberStore(next);
-      setFeedback({ kind: "success", message: success });
-    } catch (reason) {
-      console.error(reason);
-      setFeedback({ kind: "error", message: failure });
-    }
-  }
-
   async function changeLearningProfile(profileId: string) {
-    const next = selectLearningProfile(await ensureLearningStore(), profileId);
     try {
+      const next = selectLearningProfile(await ensureLearningStore(), profileId);
       await saveLearningProfiles(next);
       rememberStore(next);
     } catch (reason) {
       console.error(reason);
       setFeedback({ kind: "error", message: "Das Erkennungsprofil konnte nicht gewechselt werden." });
-    }
-  }
-
-  async function addLearningProfile() {
-    const name = window.prompt("Name des neuen Erkennungsprofils", "Neues Profil")?.trim();
-    if (!name) return;
-    const created = createLearningProfile(await ensureLearningStore(), name);
-    await persistProfiles(created, `Erkennungsprofil „${name}“ wurde angelegt und ist ausgewählt. Es gilt ab der nächsten Rechnung.`, "Das Erkennungsprofil konnte nicht angelegt werden.");
-  }
-
-  async function renameActiveLearningProfile() {
-    const current = activeLearningProfile(await ensureLearningStore());
-    const name = window.prompt("Erkennungsprofil umbenennen", current.name)?.trim();
-    if (!name) return;
-    const renamed = renameLearningProfile(await ensureLearningStore(), current.id, name);
-    await persistProfiles(renamed, `Das Erkennungsprofil heißt jetzt „${name}“.`, "Das Erkennungsprofil konnte nicht umbenannt werden.");
-  }
-
-  async function removeActiveLearningProfile() {
-    const store = await ensureLearningStore();
-    if (store.profiles.length < 2) return;
-    const current = activeLearningProfile(store);
-    if (!window.confirm(`Soll das Erkennungsprofil „${current.name}“ gelöscht werden? Die gemerkten Stellen dieses Profils gehen verloren.`)) return;
-    const removed = deleteLearningProfile(store, current.id);
-    await persistProfiles(removed, `Erkennungsprofil „${current.name}“ wurde gelöscht.`, "Das Erkennungsprofil konnte nicht gelöscht werden.");
-  }
-
-  async function clearLearningMemory() {
-    if (!window.confirm("Sollen die gemerkten Ergänzungen des aktuellen Profils gelöscht werden? Bereits geöffnete Rechnungen bleiben unverändert.")) return;
-    try {
-      const next = replaceActiveMemory(await ensureLearningStore(), emptyCorrectionMemory());
-      await saveLearningProfiles(next);
-      rememberStore(next);
-      setFeedback({ kind: "success", message: "Die gemerkten Ergänzungen dieses Profils wurden gelöscht. Dies gilt ab der nächsten Rechnung." });
-    } catch (reason) {
-      console.error(reason);
-      setFeedback({ kind: "error", message: "Die gemerkten Ergänzungen konnten nicht gelöscht werden." });
     }
   }
 
@@ -488,7 +474,7 @@ export function App() {
     const check = await validatePreparedInvoice({
       format,
       xmlContents: xml,
-      pdfContentsBase64: encodeBase64(pdf),
+      pdfContentsBase64: toBase64(pdf),
       documentId: reference.documentId,
       sourceRevision: reference.sourceRevision,
       snapshot,
@@ -502,7 +488,7 @@ export function App() {
     const result = await saveAndArchiveInvoice({
       format,
       outputFileName: file,
-      pdfContentsBase64: encodeBase64(pdf),
+      pdfContentsBase64: toBase64(pdf),
       xmlContents: xml,
       metadata: archiveMetadata(invoice),
       evidence: { schemaVersion: 1, ...reference, snapshot, hybridConfirmed: true },
@@ -524,7 +510,7 @@ export function App() {
     onDragOver={(event) => event.preventDefault()}
     onDrop={(event) => {
       event.preventDefault();
-      if (datevBusy || work.busy || activeAction) return;
+      if (datevBusy || work.busy || activeAction || analyzing || settingsOpen) return;
       const file = event.dataTransfer.files[0];
       if (file) {
         setView("editor");
@@ -536,11 +522,11 @@ export function App() {
       <div><h1>E‑Rechnungs-Assistent</h1><p>{view === "datev" ? "Rechnungen für die Steuerkanzlei vorbereiten" : view === "archive" ? "Gespeicherte Rechnungen finden und prüfen" : view === "inbox" ? "Rechnungen und angefangene Entwürfe" : fileName || "Rechnung öffnen, Angaben prüfen und speichern"}</p></div>
       <div className="header-actions">
         {isTauri() && <nav className="app-navigation" aria-label="Bereich wählen">
-          <button disabled={datevBusy} className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}>Posteingang ({work.page.total})</button>
-          <button disabled={datevBusy} className={view === "editor" ? "active" : ""} onClick={() => setView("editor")}>Rechnung</button>
-          <button disabled={datevBusy} className={view === "archive" || view === "datev" ? "active" : ""} onClick={() => setView("archive")}>Archiv</button>
+          <button type="button" disabled={processing} aria-current={view === "inbox" ? "page" : undefined} className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}>Posteingang ({work.page.total})</button>
+          <button type="button" disabled={processing} aria-current={view === "editor" ? "page" : undefined} className={view === "editor" ? "active" : ""} onClick={() => setView("editor")}>Rechnung</button>
+          <button type="button" disabled={processing} aria-current={view === "archive" || view === "datev" ? "page" : undefined} className={view === "archive" || view === "datev" ? "active" : ""} onClick={() => setView("archive")}>Archiv</button>
         </nav>}
-        <label className="open-button">Rechnung öffnen<input disabled={datevBusy || work.busy || Boolean(activeAction)} type="file" accept="application/pdf,.pdf" onChange={(event) => {
+        <label className="open-button">Rechnung öffnen<input disabled={processing} type="file" accept="application/pdf,.pdf" onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
           if (file) {
@@ -548,13 +534,19 @@ export function App() {
             void openPdfFile(file);
           }
         }} /></label>
-        {isTauri() && <label className="legacy-open">Entwurf öffnen<input type="file" accept=".json,application/json" disabled={datevBusy || work.busy || Boolean(activeAction)} onChange={event => {
+        <button type="button" className="secondary" disabled={processing} onClick={() => void openSettings()}>Einstellungen</button>
+        {isTauri() && <label className="legacy-open">Entwurf öffnen<input type="file" accept=".json,application/json" disabled={processing} onChange={event => {
           const file = event.target.files?.[0]; event.target.value = "";
           if (file) void openLegacyFile(file);
         }} /></label>}
       </div>
     </header>
     {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError("")} aria-label="Meldung schließen">×</button></div>}
+    {backupReminder && <div className="datev-notice backup-reminder" role="status">
+      <strong>{backupReminder.lastBackupAtMs ? "Sicherung ist älter als 14 Tage" : "Noch keine Sicherung"}</strong>
+      <p>Bitte Archiv und Entwürfe auf ein anderes Laufwerk oder einen anderen Datenträger sichern. Eine Kopie auf derselben Festplatte schützt nicht vor einem Plattenausfall.</p>
+      <button type="button" className="secondary" disabled={processing} onClick={() => void openSettings("backup")}>Sicherung öffnen</button>
+    </div>}
     {legacyDraft && <section className="legacy-pair" role="region" aria-label="Originaldatei zuordnen">
       <strong>Original-PDF zum Entwurf auswählen</strong>
       <p>Der ältere Entwurf verweist auf „{legacyDraft.source}“, enthält aber keine PDF. Bitte wählen Sie bewusst die zugehörige Originaldatei. Alte Markierungen werden nicht ungeprüft übernommen.</p>
@@ -573,8 +565,9 @@ export function App() {
       <span>Die Datei wird intern vorbereitet und erst nach erfolgreicher Prüfung gespeichert.</span>
       <button type="button" className="secondary" onClick={() => { void cancelInvoiceValidation(); }}>Prüfung abbrechen</button>
     </div>}
-    {view === "datev" ? <DatevView onBack={() => setView("archive")} onBusyChange={setDatevBusy} /> : view === "archive" ? <ArchiveView refreshToken={archiveRevision} onDatev={() => setView("datev")} /> : view === "inbox" ? <InboxView page={work.page} offset={work.offset} legacy={work.legacy}
-      activeId={work.activeId} busy={work.busy || Boolean(activeAction)} onOpen={doc => void work.open(doc)} onLegacy={candidate => void work.importLegacy(candidate)} onPage={work.changePage} /> : <>
+    {view === "datev" ? <DatevView onBack={() => setView("archive")} onBusyChange={setDatevBusy} onSettings={() => void openSettings("datev")} /> : view === "archive" ? <ArchiveView refreshToken={archiveRevision} onDatev={() => setView("datev")} onSettings={() => void openSettings("archive")} /> : view === "inbox" ? <InboxView page={work.page} offset={work.offset} legacy={work.legacy}
+      activeId={work.activeId} busy={processing} onOpen={doc => void work.open(doc)} onLegacy={candidate => void work.importLegacy(candidate)}
+      onDelete={doc => void work.remove(doc)} onDismissLegacy={candidate => void work.dismissLegacy(candidate)} onPage={work.changePage} /> : <>
     {!extraction || !pdfBytes || !draft || !validation || !zugferdValidation ? <section className="drop-zone">
       <strong>{analyzing ? "Rechnung wird gelesen …" : "Rechnung hier ablegen"}</strong>
       <span>Oder klicken Sie oben auf „Rechnung öffnen“. Ihre Daten bleiben auf diesem Computer.</span>
@@ -584,7 +577,7 @@ export function App() {
         <button onClick={() => void invoke("open_print_inbox")}>Ordner mit gedruckten Rechnungen öffnen</button>
         <small>{printStatus}</small>
       </div>}
-    </section> : <fieldset disabled={work.busy || Boolean(activeAction)} className="workspace">
+    </section> : <fieldset disabled={work.busy || analyzing || Boolean(activeAction)} className="workspace">
       <section className="document-panel">
         {sourceTarget && <div ref={sourcePickerRef} tabIndex={-1} className="source-picker" role="region" aria-label="Angabe aus der Rechnung übernehmen"
           onKeyDown={(event) => { if (event.key === "Escape") setSourceTarget(undefined); }}>
@@ -620,14 +613,9 @@ export function App() {
         officialIssues={officialIssues}
         feedback={feedback}
         onDismissFeedback={() => setFeedback(undefined)}
-        learningRuleCount={learningRuleCount}
         learningProfiles={learningProfiles.profiles.map((profile) => ({ id: profile.id, name: profile.name }))}
         activeLearningProfileId={learningProfiles.activeProfileId}
         onSelectLearningProfile={(profileId) => void changeLearningProfile(profileId)}
-        onCreateLearningProfile={() => void addLearningProfile()}
-        onRenameLearningProfile={() => void renameActiveLearningProfile()}
-        onDeleteLearningProfile={() => void removeActiveLearningProfile()}
-        onClearLearningMemory={() => void clearLearningMemory()}
         onDraftChange={next => { setCompleted(false); setHybridConfirmed(false); setOfficialIssues([]); setDraft(next); }}
         onSelectField={selectSource}
         onSelectTokens={selectTokens}
@@ -640,5 +628,6 @@ export function App() {
       />
     </fieldset>}
     </>}
+    {settingsOpen && <SettingsView overlay initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
   </main>;
 }

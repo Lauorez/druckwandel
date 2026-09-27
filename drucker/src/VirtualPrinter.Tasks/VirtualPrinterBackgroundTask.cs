@@ -16,24 +16,50 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
     public void Run(IBackgroundTaskInstance taskInstance)
     {
         taskDeferral = taskInstance.GetDeferral();
-
-        if (taskInstance.TriggerDetails is not PrintWorkflowVirtualPrinterTriggerDetails triggerDetails)
-        {
-            taskDeferral.Complete();
-            return;
-        }
-
-        PrintWorkflowVirtualPrinterSession session = triggerDetails.VirtualPrinterSession;
-        printer = session.Printer;
-        session.VirtualPrinterDataAvailable += OnVirtualPrinterDataAvailable;
         try
         {
+            // NativeAOT returns TriggerDetails as a bare IInspectable. The explicit
+            // projection keeps the WinRT type in the AOT image; the `is` test alone does not.
+            PrintWorkflowVirtualPrinterTriggerDetails? triggerDetails =
+                ProjectVirtualPrinterTrigger(taskInstance.TriggerDetails);
+            if (triggerDetails is null)
+            {
+                taskDeferral.Complete();
+                return;
+            }
+
+            PrintWorkflowVirtualPrinterSession session = triggerDetails.VirtualPrinterSession;
+            printer = session.Printer;
+            session.VirtualPrinterDataAvailable += OnVirtualPrinterDataAvailable;
             session.Start();
         }
         catch
         {
             taskDeferral.Complete();
             throw;
+        }
+    }
+
+    private static PrintWorkflowVirtualPrinterTriggerDetails? ProjectVirtualPrinterTrigger(object? details)
+    {
+        if (details is PrintWorkflowVirtualPrinterTriggerDetails triggerDetails)
+        {
+            return triggerDetails;
+        }
+
+        if (details is null)
+        {
+            return null;
+        }
+
+        IntPtr abi = WinRT.MarshalInspectable<object>.FromManaged(details);
+        try
+        {
+            return WinRT.MarshalInspectable<PrintWorkflowVirtualPrinterTriggerDetails>.FromAbi(abi);
+        }
+        finally
+        {
+            WinRT.MarshalInspectable<object>.DisposeAbi(abi);
         }
     }
 

@@ -60,7 +60,7 @@ const JAVA_OFFLINE_FLAGS = [
   "-Dhttps.proxyHost=127.0.0.1",
   "-Dhttps.proxyPort=9",
   "-Djavax.xml.accessExternalDTD=",
-  "-Djavax.xml.accessExternalSchema=",
+  "-Djavax.xml.accessExternalSchema=file,jar:file",
   "-Djavax.xml.accessExternalStylesheet=",
 ];
 
@@ -131,7 +131,7 @@ export class VeraPdfValidator implements ArtifactValidator {
   constructor(private readonly executable = "verapdf", private readonly java?: string, private readonly jar?: string, private readonly ruleVersion = "pdfa-3b") {}
   async validate(path: string): Promise<ValidationResult> {
     const outcome = this.jar && this.java
-      ? await run(this.java, [...JAVA_OFFLINE_FLAGS, "-jar", this.jar, "--flavour", "3b", "--format", "xml", "--maxfailures", "20", path])
+      ? await run(this.java, [...JAVA_OFFLINE_FLAGS, "-cp", this.jar, "org.verapdf.apps.GreenfieldCliWrapper", "--flavour", "3b", "--format", "xml", "--maxfailures", "20", path])
       : await run(this.executable, ["--flavour", "3b", "--format", "xml", "--maxfailures", "20", path]);
     const reportXml = outcome.output.match(/<\?xml[\s\S]*<\/report>/i)?.[0] ?? outcome.output.match(/<report[\s\S]*<\/report>/i)?.[0];
     if (reportXml) outcome.reportXml = reportXml;

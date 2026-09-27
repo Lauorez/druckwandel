@@ -5,18 +5,20 @@ import { documentPackage } from "../../../src/export/datev/documents.js";
 import { previewDatev, serializeDatev, validateDatevProfile } from "../../../src/export/datev/export.js";
 import type { DatevPreview, DatevProfile, DatevSource, InvoiceAssignment } from "../../../src/export/datev/types.js";
 import { listArchiveEntries, type ArchiveEntrySummary } from "./archiveStore.js";
-import { datevStore, emptyDatevProfile, type DatevExportPage, type DatevExportRequest } from "./datevStore.js";
-import { DatevProfileForm } from "./DatevProfileForm.js";
+import { datevStore, emptyDatevProfile, parseStoredDatevProfile, type DatevExportPage, type DatevExportRequest } from "./datevStore.js";
+import { listenSettingsChanged } from "./settingsWindow.js";
+import { subscription } from "./subscription.js";
 import { toBase64 } from "./workspaceStore.js";
 
 const describe=(e:unknown)=>e instanceof Error?e.message:String(e);
-const amount=(s:string)=>`${formatGermanDecimal(s)} EUR`;
-export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(busy:boolean)=>void}) {
+const amount=(s:string,currency="EUR")=>`${formatGermanDecimal(s)} ${currency}`;
+export function DatevView({onBack,onBusyChange,onSettings}:{onBack:()=>void;onBusyChange:(busy:boolean)=>void;onSettings?:()=>void}) {
   const [profile,setProfile]=useState(emptyDatevProfile);
   const profileJson=useMemo(()=>canonicalJson(profile),[profile]);
   const [savedProfile,setSavedProfile]=useState(profileJson);
   const [ready,setReady]=useState(false);
   const [loadFailed,setLoadFailed]=useState(false);
+  const [saveFailed,setSaveFailed]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [feedback,setFeedback]=useState("");
@@ -42,24 +44,33 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
   const request=useRef<DatevExportRequest | undefined>(undefined);
   const alive=useRef(true);
   const dirty=profileJson!==savedProfile;
+  const profileDirty=useRef(dirty);profileDirty.current=dirty;
+  const editRevision=useRef(0);
   const invoice=useMemo(()=>detail?readInvoiceSnapshot(detail.snapshot,detail.format,detail.xml):undefined,[detail]);
   const visible=entries.filter(e=>includeExported || !e.documentId || !exported.includes(e.documentId));
   const profileProblems=useMemo(()=>validateDatevProfile(profile),[profile]);
   const invalidate=()=>{setPreview(undefined);setRepeated([]);setRepeatConfirmed(false);setRepeatReason("");request.current=undefined;};
-  function updateProfile(next:DatevProfile) {setProfile(next);invalidate();setFeedback("");}
+  function updateProfile(next:DatevProfile) {editRevision.current+=1;profileDirty.current=true;setProfile(next);invalidate();setFeedback("");}
   function saveProfile(contents=profileJson) {
+    setSaveFailed(false);
     const next=writer.current.catch(()=>undefined).then(()=>datevStore.saveProfile(contents));
     writer.current=next;
-    void next.then(()=>{if(alive.current)setSavedProfile(contents);}).catch(e=>{if(alive.current)setError(`Kanzleiangaben nicht gespeichert: ${describe(e)}`);});
+    void next.then(()=>{if(alive.current){setSavedProfile(contents);setSaveFailed(false);setError("");}}).catch(e=>{if(alive.current){setSaveFailed(true);setError(`Kanzleiangaben nicht gespeichert: ${describe(e)}`);}});
     return next;
   }
   useEffect(()=>{alive.current=true;let cancelled=false;
     void datevStore.profile().then(raw=>{
       if(cancelled)return;
-      if(raw){const p=JSON.parse(raw) as DatevProfile;if(p.schemaVersion!==1 || !p.seller?.address || !Array.isArray(p.revenueAccounts) || !Array.isArray(p.debtors))throw new Error("Die gespeicherten Kanzleiangaben sind beschädigt.");setProfile(p);setSavedProfile(canonicalJson(p));}
+      const p=parseStoredDatevProfile(raw);setProfile(p);setSavedProfile(canonicalJson(p));
       setReady(true);
     }).catch(e=>{if(!cancelled){setError(describe(e));setLoadFailed(true);}});
     return()=>{cancelled=true;alive.current=false;};
+  },[]);
+  useEffect(()=>{
+    return subscription(listenSettingsChanged(scope=>{if(scope!=="datev"||!alive.current||profileDirty.current)return;
+      const revision=editRevision.current;
+      void datevStore.profile().then(raw=>{if(!alive.current||profileDirty.current||revision!==editRevision.current)return;const p=parseStoredDatevProfile(raw);setProfile(p);setSavedProfile(canonicalJson(p));setReady(true);setLoadFailed(false);invalidate();}).catch(e=>{if(alive.current)setError(describe(e));});
+    }));
   },[]);
   useEffect(()=>{onBusyChange(busy||dirty||(!ready&&!loadFailed));},[busy,dirty,ready,loadFailed,onBusyChange]);
   useEffect(()=>()=>onBusyChange(false),[onBusyChange]);
@@ -117,9 +128,14 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
     {feedback&&<div className="datev-feedback" role="status">{feedback}</div>}
     <div className="datev-scroll">
       <p className="datev-notice">Testversion: Vor der ersten echten Übergabe bitte einen Testimport durch Ihre Steuerkanzlei prüfen lassen. Der Export bestätigt keine steuerliche Richtigkeit und keine E-Rechnungs-Konformität.</p>
-      <details className="datev-settings" open={!profile.confirmed}><summary>Kanzleiangaben {dirty?"– wird gespeichert …":ready?"– gespeichert":"– werden geladen …"}</summary>
-        <DatevProfileForm profile={profile} onChange={updateProfile} onSave={()=>{void saveProfile().then(()=>setFeedback("Kanzleiangaben gespeichert.")).catch(()=>undefined);}} busy={busy||!ready} dirty={dirty}/>
-      </details>
+      <div className="datev-settings">
+        <div>
+          <strong>Kanzleiangaben {saveFailed?"– nicht gespeichert":loadFailed?"– konnten nicht geladen werden":dirty?"– wird gespeichert …":ready?"– gespeichert":"– werden geladen …"}</strong>
+          <p>Betrieb, Konten und Buchungseinstellungen werden in den Einstellungen gepflegt.</p>
+          {saveFailed && <button type="button" className="secondary" onClick={()=>{void saveProfile().catch(()=>undefined);}}>Erneut speichern</button>}
+        </div>
+        {onSettings && <button type="button" className="secondary" onClick={onSettings}>Einstellungen öffnen</button>}
+      </div>
       {profileProblems.length>0&&<div className="datev-notice"><strong>Vor dem Export noch zu klären:</strong><ul>{profileProblems.map(p=><li key={p}>{p}</li>)}</ul></div>}
       <fieldset disabled={busy||!ready} className="datev-selection">
         <legend>Rechnungen auswählen</legend>
@@ -131,7 +147,7 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
           <div className="datev-invoices">{visible.map(e=><div className="datev-invoice" key={e.id}>
             <input type="checkbox" aria-label={`Rechnung ${e.invoiceNumber} auswählen`} checked={selected.has(e.id)} disabled={!e.documentId||(!selected.has(e.id)&&selected.size>=100)} onChange={v=>toggle(e,v.target.checked)}/>
             <button type="button" className="datev-invoice-title" onClick={()=>void loadDetail(e.id)}><strong>{e.invoiceNumber}</strong><span>{e.buyerName} · {e.issueDate} · {e.format==="xrechnung"?"Behörden-Datei":"PDF-Rechnung"}</span></button>
-            <span>{amount(e.grossAmount)}<small>{!e.documentId?"Ältere Ausgabe – Rechnungsstand fehlt":exported.includes(e.documentId)?"Bereits ausgegeben":"Noch nicht ausgegeben"}</small></span>
+            <span>{amount(e.grossAmount,e.currency)}<small>{!e.documentId?"Ältere Ausgabe – Rechnungsstand fehlt":exported.includes(e.documentId)?"Bereits ausgegeben":"Noch nicht ausgegeben"}</small></span>
           </div>)}</div>
         </>}
         <div className="inbox-pagination"><button type="button" className="secondary" disabled={offset===0||loading} onClick={()=>setOffset(Math.max(0,offset-50))}>Zurück</button><span>Archivseite {Math.floor(offset/50)+1} von {Math.max(1,Math.ceil(total/50))} · bereits ausgegebene ggf. ausgeblendet</span><button type="button" className="secondary" disabled={offset+50>=total||loading} onClick={()=>setOffset(offset+50)}>Weiter</button></div>
@@ -149,7 +165,7 @@ export function DatevView({onBack,onBusyChange}:{onBack:()=>void;onBusyChange:(b
           <p>{preview.invoiceCount} Rechnungen · {preview.batches.length} Buchungsstapel und ein Belegpaket · {amount(preview.gross)}. XML- und PDF-Ausgaben desselben Rechnungsstands werden nur einmal berücksichtigt.</p>
           {preview.batches.map(batch=><div key={batch.dateFrom}><h4>{batch.dateFrom} bis {batch.dateTo}</h4><div className="datev-table-scroll"><table><thead><tr><th>Rechnung</th><th>Kundenkonto (Soll)</th><th>Erlöskonto</th><th>Steuersatz</th><th>Netto</th><th>Steuer</th><th>Brutto</th></tr></thead><tbody>{batch.bookings.map((r,i)=><tr key={i}><td>{r.invoiceNumber}</td><td>{r.debtor}</td><td>{r.revenueAccount}{r.taxKey?` / ${r.taxKey}`:" (automatisch)"}</td><td>{r.taxRate} %</td><td>{amount(r.net)}</td><td>{amount(r.tax)}</td><td>{amount(r.gross)}</td></tr>)}</tbody></table></div></div>)}
           <p>Festschreibung beim Import: {profile.locking==="1"?"Ja":"Nein"}. Steuerperiode: {profile.periodRule==="service-date"?"Leistungsdatum":"Rechnungsdatum"}.</p>
-          {repeated.length>0&&<div className="datev-notice"><strong>Achtung: Bereits ausgegebene Rechnungen oder mögliche Kopien in der Auswahl.</strong><p>Ein erneuter Import kann doppelte Buchungen erzeugen. Für dieselbe Übergabe bitte die bestehenden Dateien aus der Exporthistorie verwenden.</p><label className="datev-check"><input type="checkbox" checked={repeatConfirmed} disabled={busy} onChange={e=>{setRepeatConfirmed(e.target.checked);request.current=undefined;}}/>Ich möchte bewusst eine neue Ausgabe erzeugen.</label><label><span>Begründung (mindestens 10 Zeichen)</span><input value={repeatReason} disabled={busy} onChange={e=>{setRepeatReason(e.target.value);request.current=undefined;}}/></label></div>}
+          {repeated.length>0&&<div className="datev-notice"><strong>Achtung: Bereits ausgegebene Rechnungen oder mögliche Kopien in der Auswahl.</strong><p>Ein erneuter Import kann doppelte Buchungen erzeugen. Für dieselbe Übergabe bitte die bestehenden Dateien aus der Exporthistorie verwenden.</p><label className="datev-check"><input type="checkbox" checked={repeatConfirmed} disabled={busy} onChange={e=>{setRepeatConfirmed(e.target.checked);request.current=undefined;}}/>Ich möchte bewusst eine neue Ausgabe erzeugen.</label><label><span>Begründung (mindestens 10 Zeichen)</span><input aria-label="Begründung für erneute Ausgabe" value={repeatReason} disabled={busy} onChange={e=>{setRepeatReason(e.target.value);request.current=undefined;}}/></label></div>}
           <p>Das Paket enthält die EXTF-Buchungsstapel und <code>Belege.zip</code> mit DATEV-Verwaltungsdatei, PDF und Rechnungs-XML. Die Kanzlei importiert zuerst das ZIP über DATEV Belegtransfer, danach die CSV-Dateien. Ein lokaler Dateipfad wird nicht als Beleglink verwendet.</p>
           <button className="primary" disabled={busy||dirty||(repeated.length>0&&(!repeatConfirmed||repeatReason.trim().length<10))} onClick={()=>void createExport()}>Paket für die Steuerkanzlei erstellen</button>
         </>}

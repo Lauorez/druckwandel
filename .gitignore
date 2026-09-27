@@ -32,6 +32,7 @@ test/fixtures/generated/
 test/corpus/pdf/
 test/corpus/private/
 artifacts/corpus-report.json
+artifacts/quality-report.json
 artifacts/synthetic-fuzz-report.json
 artifacts/fuzz-failures/
 artifacts/windows/
@@ -40,3 +41,4 @@ apps/desktop/src-tauri/resources/validators/kosit/
 apps/desktop/src-tauri/resources/validators/mustang/
 apps/desktop/src-tauri/resources/validators/verapdf/
 apps/desktop/src-tauri/resources/validators/checksums.json
+apps/desktop/src-tauri/installer/windows/payload/

@@ -12,6 +12,10 @@ import {
 const fixture = (name: string) => readFileSync(resolve(import.meta.dirname, "fixtures/validation", name), "utf8");
 
 describe("official XML validation reports", () => {
+  it("extracts field errors from current KoSIT VARL messages", () => {
+    const result = evaluateKositOutcome({ code: 1, output: "", reportXml: '<rep:report xmlns:rep="urn:report" xmlns:val="http://www.xoev.de/de/validator/varl/1" valid="false"><val:message level="error" code="BR-DE-10" xpathLocation="Delivery/Address">Lieferort fehlt.</val:message></rep:report>' }, "local");
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "BR-DE-10", path: "deliveryAddress.city", message: "Lieferort fehlt." }));
+  });
   it("accepts a KoSIT report only when valid, accepted and a report is present", () => {
     const passed = evaluateKositOutcome({ code: 0, output: "ok", reportXml: fixture("kosit-valid.xml") }, "xrechnung-3.0.2");
     expect(passed).toMatchObject({ status: "passed", valid: true, engine: "kosit" });
@@ -66,6 +70,13 @@ describe("official XML validation reports", () => {
     expect(failed.valid).toBe(false);
     const missing = evaluateVeraPdfOutcome({ code: 0, output: "" }, "pdfa-3b");
     expect(missing.status).toBe("missing-report");
+  });
+
+  it("recognizes the profileName emitted by veraPDF 1.28 without accepting another PDF/A profile", () => {
+    const output = fixture("verapdf-profile-name.xml");
+    expect(evaluateVeraPdfOutcome({ code: 0, output }, "pdfa-3b").valid).toBe(true);
+    expect(evaluateVeraPdfOutcome({ code: 0, output: output.replace("PDF/A-3B", "PDF/A-2B") }, "pdfa-3b").valid).toBe(false);
+    expect(evaluateVeraPdfOutcome({ code: 0, output: output.replace('isCompliant="true"', 'isCompliant="false"') }, "pdfa-3b").valid).toBe(false);
   });
 });
 

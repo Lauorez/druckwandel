@@ -1,6 +1,6 @@
 {
   "name": "erechnungs-assistent",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "private": true,
   "type": "module",
   "description": "Local-first desktop assistant for extracting, creating, and archiving German e-invoices",
@@ -10,13 +10,20 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "check": "npm run build && npm test && npm run wp6:check",
+    "check": "npm run build && npm run desktop:typecheck && npm test && npm run wp6:check",
+    "desktop:typecheck": "tsc -p apps/desktop/tsconfig.json && tsc -p tsconfig.tests.json",
+    "check:native": "cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml",
+    "check:xml": "tsx scripts/validate-regressions.ts",
+    "check:pdf": "npm run demo:invoice && tsx scripts/validate-hybrid-regression.ts",
     "desktop": "tauri dev --config apps/desktop/src-tauri/tauri.conf.json",
     "desktop:build": "npm run check && tauri build --config apps/desktop/src-tauri/tauri.conf.json",
     "desktop:web:dev": "vite --config apps/desktop/vite.config.ts --host 127.0.0.1",
-    "desktop:web:build": "tsc -p apps/desktop/tsconfig.json && vite build --config apps/desktop/vite.config.ts",
+    "desktop:web:build": "npm run desktop:typecheck && vite build --config apps/desktop/vite.config.ts",
     "setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-windows.ps1",
     "installer:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1",
+    "release:gate": "node scripts/release-gate.mjs",
+    "release:inventory": "node scripts/inventory-components.mjs",
+    "release:matrix": "node scripts/acceptance-matrix.mjs",
     "installer:macos": "sh scripts/build-macos-installer.sh",
     "wp5:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-build-reference.ps1",
     "wp5:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-clean-install.ps1",
@@ -56,6 +63,6 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.3.6",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   }
 }

@@ -1,8 +1,8 @@
 # Umsetzungsplan bis zur Version 1.0
 
-Stand: 07.09.2026. Ausgangspunkt: Version 0.2.2.
+Stand: 11.09.2026. Ausgangspunkt: Version 0.2.2.
 
-Status: Umsetzung vom Nutzer freigegeben. WP7, WP15, WP8 und WP9 sind implementiert; Abnahme siehe [WP7-Protokoll](wp7-acceptance.md), [WP8-Protokoll](wp8-acceptance.md) und [WP9-Protokoll](wp9-acceptance.md). Die übrigen Pakete bleiben geplant. Keine 1.0- oder fachliche Produktionsfreigabe. Die Nummerierung führt die bisherigen WP1–WP6 fort. Der ursprüngliche MVP-Projektplan bleibt als historische Produktbeschreibung bestehen.
+Status: Umsetzung vom Nutzer freigegeben. WP7 bis WP14 sind implementiert; Abnahme siehe [WP7-Protokoll](wp7-acceptance.md), [WP8-Protokoll](wp8-acceptance.md), [WP9-Protokoll](wp9-acceptance.md), [WP10-Protokoll](wp10-acceptance.md), [WP11-Protokoll](wp11-acceptance.md), [WP12-Protokoll](wp12-acceptance.md), [WP13-Protokoll](wp13-acceptance.md) und [WP14-Protokoll](wp14-acceptance.md). Die Abnahmematrix steht in [acceptance-matrix.md](acceptance-matrix.md). Keine 1.0- oder fachliche Produktionsfreigabe. Die Nummerierung führt die bisherigen WP1–WP6 fort. Der ursprüngliche MVP-Projektplan bleibt als historische Produktbeschreibung bestehen.
 
 ## Ziel und Grenzen
 
@@ -143,6 +143,8 @@ Die freigegebene PDF-Testmenge besteht XML-/Profil- und PDF/A-Prüfung. Aus der 
 
 ## WP10 – Messbare Erkennungsqualität und kontrollierbares Lernen
 
+Implementiert; Abnahme siehe [WP10-Protokoll](wp10-acceptance.md). Die folgenden Punkte bleiben als ursprünglicher Umfang erhalten.
+
 1. Bestehendes Korpus erweitern: mehrere unabhängig erzeugte Layoutfamilien, Seitenumbrüche, ähnliche Absender-/Empfängerblöcke, wechselnde Fußzeilen, mehrfach vorkommende Werte und veränderte Vorlagen. Vorhandene echte Belege nur lokal verwenden; zusätzliche Kundenbelege müssen bereitgestellt werden.
 2. Lern- und Prüfrechnungen trennen. Regeln auf Rechnung A bestätigen und auf unbekannten B/C prüfen, einschließlich absichtlich ähnlicher, aber unpassender Vorlagen. Neue Werte dürfen niemals durch alte Rechnungswerte ersetzt werden.
 3. Quellen und Unsicherheiten durch den vollständigen Ablauf erhalten. Bei widersprüchlichen Regeln oder schwacher Übereinstimmung keine stillen Ersetzungen. Layoutanker bei Verschiebungen auswerten; absolute Regionen nur bei ausreichender Übereinstimmung anwenden.
@@ -153,7 +155,7 @@ Betroffene Stellen: `src/extraction/`, `src/learning/correction-memory.ts`, Quel
 
 ## WP11 – Rechnungsumfang gezielt erweitern
 
-Technisch implementierbar, aber in kleine fachlich zusammenhängende Teilpakete teilen. Die Reihenfolge ist ein Vorschlag für einen begrenzten 1.0-Umfang, keine pauschale steuerliche Freigabe.
+**WP11a**, **WP11b** und **WP11c** sind implementiert; Abnahme siehe [WP11-Protokoll](wp11-acceptance.md).
 
 - **WP11a:** Gutschrift-/Rechnungskorrektur-Dokumente mit explizitem Dokumenttyp und Bezug zur Ursprungsrechnung sowie positions-/belegbezogene Zu- und Abschläge. Steuergruppen, Rundung und Betragssummen dabei vollständig modellieren; „Rabatt“ als Wort allein darf keine falsche Blockierung auslösen.
 - **WP11b:** Klar abgegrenzte steuerfreie Fälle und Reverse Charge mit ausdrücklicher Benutzerangabe und den jeweiligen Pflichtinformationen. Kategorien nicht aus „0 %“ erraten. Vor Umsetzung fachliche Fallmatrix anhand der offiziellen Regeln festlegen.
@@ -164,6 +166,8 @@ Je freigegebenem Teilpaket: `src/domain/`, Berechnung, Review-Draft, UBL/CII, Ex
 Ich kann Modellierung, Implementierung und technische Referenztests ausführen. Welche Fälle für die ersten Betriebe unverzichtbar sind und ob die fachliche Behandlung im realen Geschäftsfall passt, benötigt Nutzer-/Fachfeedback. Bis dahin gibt es keine Behauptung einer uneingeschränkten Handwerkstauglichkeit.
 
 ## WP12 – Sicherung, Wiederherstellung und Absturzbehandlung
+
+Implementiert. Die folgenden Punkte bleiben als ursprünglicher Umfang erhalten; Prüfergebnisse stehen im [WP12-Protokoll](wp12-acceptance.md).
 
 1. Eine Anwendungssicherung für Archiv, Arbeitsbestand/Originale, Entwürfe, Vorlagengedächtnis, Einstellungen, DATEV-Profile/-Zuordnungen, Exporthistorie/-dateien und Schlüssel anbieten. Formatversion, Dateiliste und Prüfsummen in ein Manifest aufnehmen. Private Schlüssel niemals ungeschützt in eine portable Sicherung legen; passwortgeschützte, authentifizierte Verschlüsselung mit einer gepflegten Bibliothek verwenden, keine eigene Kryptografie.
 2. Konsistente SQLite-Snapshots über die Backup-API erstellen. Für den gemeinsamen Snapshot beider Datenbanken und veränderlicher Dateien Schreiboperationen kurz koordiniert pausieren; unveränderliche PDF/XML-Dateien anschließend anhand des Snapshots kopieren. Nicht einfach eine laufende WAL-Datenbankdatei kopieren. [SQLite Backup API](https://www.sqlite.org/backup.html)
@@ -176,6 +180,8 @@ Betroffene Stellen: neues natives Sicherungsmodul, `archive.rs`, Workspace-Speic
 
 ## WP13 – Wartbare und sichere Auslieferung
 
+Implementiert. Die folgenden Punkte bleiben als ursprünglicher Umfang erhalten; Prüfergebnisse stehen im [WP13-Protokoll](wp13-acceptance.md).
+
 1. Ein vollständiges Release-Gate für TypeScript, UI, Corpus, Rust, .NET, echte Validatoren, DATEV-Referenz-/Formatprüfungen und Installer zusammenführen. Bestehende Skripte wiederverwenden; Quelltext-Stringtests des Installers durch echte Installations-/Update-Szenarien ergänzen. Nicht verfügbare offizielle DATEV-Prüfungen sichtbar als ausstehend behandeln, nicht als bestanden. CI-Konfiguration vorbereiten; Hosting/Runner nur mit vorhandenem Zugang anbinden.
 2. Herkunft und Version aller gebündelten Komponenten, Lizenzhinweise und eine Komponentenliste dokumentieren. Abhängigkeiten auf bekannte Schwachstellen prüfen; blockierende Befunde beheben oder die betroffene Funktion nicht ausliefern.
 3. Native Eingabegrenzen prüfen: Deep Links, Dateien, JSON, XML, Archiv-/Backup-Pfade, Symlinks/Junctions, Größenbegrenzung und Prozessargumente. Lang laufende Prüfungen abbrechbar halten, kein Konsolenfenster und keine Rechnungsdaten in allgemeinen Fehlerlogs.
@@ -186,6 +192,8 @@ Betroffene Stellen: neues natives Sicherungsmodul, `archive.rs`, Workspace-Speic
 Abnahme: Neuinstallation, Update vom gesicherten 0.2.2-Teststand, Deinstallation ohne Verlust von Nutzerdaten sowie anschließende Neuinstallation. Druckertests auf bereitgestellten unterstützten Windows-Systemen mit normalem Benutzerkonto; Rechtebedarf verständlich behandeln. Isolierte Tests verwenden, nicht wiederholt den echten Nutzerbestand zurücksetzen.
 
 ## WP14 – Release Candidate und dokumentierte Freigabe
+
+Implementiert als lokaler Release Candidate, **ohne 1.0-Kundenfreigabe**. Prüfergebnisse: [WP14-Protokoll](wp14-acceptance.md), [Abnahmematrix](acceptance-matrix.md), [Pilotunterlage](pilot-guide.md).
 
 1. Vollständige Abläufe automatisiert und im echten Tauri-Fenster prüfen: Drucken bei geschlossener App, Warteschlange, Bearbeiten/Markieren/Lernen, Neustart, beide E-Rechnungsexporte, Archivsuche/-prüfung, DATEV-Stapelexport inklusive Dublettenschutz, Sicherung und Wiederherstellung.
 2. Bedienbarkeit prüfen: Tastatur, Fokus, verständliche Fehler, Lade-/Speicherfeedback, kleine Fenster sowie 100/150/200-%-Skalierung. Wiederkehrende Schritte dürfen keine Entwicklerkenntnisse voraussetzen.
@@ -211,4 +219,4 @@ Kundenfreigabe 1.0 zusätzlich: Produktionssignaturen vorhanden, vereinbarter Re
 
 ## Erster ausführbarer Auftrag
 
-Der Einstieg **WP7**, der DATEV-Basisexport **WP15**, die verbindliche lokale XML-Prüfung **WP8** und die Hybrid-PDF/PDF/A-Prüfung **WP9** sind umgesetzt. Nächster Auftrag ist **WP10** (Erkennungsqualität), danach WP11–WP14.
+Der Einstieg **WP7**, der DATEV-Basisexport **WP15**, die verbindliche lokale XML-Prüfung **WP8**, die Hybrid-PDF/PDF/A-Prüfung **WP9**, die Erkennungsqualität **WP10**, **WP11** (Gutschrift/Korrektur, Steuerfälle, Abschlags-/Schlussrechnungen), **WP12** (Sicherung/Wiederherstellung), **WP13** (Auslieferung) und **WP14** (Release Candidate) sind umgesetzt. Die **Kundenfreigabe 1.0** bleibt offen: Produktionssignaturen, DATEV-Testimport, Pilotfeedback.

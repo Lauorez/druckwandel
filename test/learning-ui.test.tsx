@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { analyzeDocumentPages } from "../src/extraction/analyze.js";
 import { App } from "../apps/desktop/src/App.js";
@@ -7,6 +7,7 @@ import { workspaceNative } from "./helpers/workspace-native.js";
 
 const native = vi.hoisted(() => ({ memory: null as string | null, extract: vi.fn(), invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: native.invoke }));
+vi.mock("@tauri-apps/api/event", async () => (await import("./helpers/tauri-events.js")).tauriEvents());
 vi.mock("@tauri-apps/plugin-deep-link", () => ({ getCurrent: async () => [], onOpenUrl: async () => () => undefined }));
 const windowMock = vi.hoisted(() => ({ close: undefined as undefined | ((event: { preventDefault: () => void }) => Promise<void>),destroy: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({
@@ -60,6 +61,8 @@ describe("mark and remember a source in the application", () => {
       if (command === "acknowledge_print_job") return;
       if (command === "write_review_draft") return "test-entwurf.json";
       if (command === "list_print_jobs") return [];
+      if (command === "backup_status") return { sameVolume: false, reminderDue: false, pendingRestore: false, defaultPath: "C:\\Sicherungen\\E-Rechnung.erechnung" };
+      if (command === "diagnostic_report") return { schemaVersion: 1, createdAtMs: 1, appVersion: "0.3.1", os: "windows", arch: "x64", components: [], archiveEntries: 0, signedEntries: 0, signingEnabled: false, workspaceDocuments: 0, datevProfilePresent: false, backupReminderDue: false, pendingRestore: false, notes: ["DATEV_OFFICIAL_CHECK_PENDING"] };
       throw new Error(`Unexpected native call: ${command}`);
     });
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
@@ -91,6 +94,25 @@ describe("mark and remember a source in the application", () => {
     expect(screen.queryByDisplayValue(/Zweite Firma GmbH IBAN/)).toBeNull();
   });
 
+  it("lists remembered assignments, can disable one and undo the last confirmation", async () => {
+    native.extract.mockResolvedValueOnce(invoice("Erste Firma GmbH", "Hauptstraße 12", "DE123456789"));
+    render(<App />);
+    openFile("erste.pdf");
+    fireEvent.click(await screen.findByRole("button", { name: "Absender: Name: Im PDF markieren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Erste Firma GmbH" }));
+    fireEvent.click(screen.getByRole("button", { name: "Übernehmen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entwurf speichern" }));
+    await waitFor(() => expect(storedRules()).toHaveLength(1));
+    expect(screen.queryByText("Wird mit jeder Rechnung besser")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Einstellungen" }));
+    expect(await screen.findByRole("dialog", { name: "Einstellungen" })).toBeTruthy();
+    expect((await screen.findByRole("list", { name: "Gemerkte Zuordnungen" })).textContent).toMatch(/Absender: Name/);
+    fireEvent.click(screen.getByRole("button", { name: "Deaktivieren" }));
+    await waitFor(() => expect(JSON.parse(native.memory!).profiles[0].memory.rules[0].enabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Letzte Bestätigung rückgängig" }));
+    await waitFor(() => expect(JSON.parse(native.memory!).profiles[0].memory.rules[0].enabled).not.toBe(false));
+  });
+
   it("refuses an invalid PDF assignment for a date field", async () => {
     native.extract.mockResolvedValueOnce(invoice("Erste Firma GmbH", "Hauptstraße 12", "DE123456789"));
     render(<App />);
@@ -100,6 +122,38 @@ describe("mark and remember a source in the application", () => {
     fireEvent.click(screen.getByRole("button", { name: "Übernehmen" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/gültiges Datum/);
     expect((screen.getByLabelText("Fälligkeitsdatum") as HTMLInputElement).value).toBe("");
+  });
+
+  it("requires a fresh original confirmation after accepting a PDF source", async () => {
+    native.extract.mockResolvedValue(invoice("Firma A", "Weg 1", "DE123456789"));
+    render(<App />);
+    openFile("a.pdf");
+    const confirmation = await screen.findByRole("checkbox", { name: /Originalrechnung/ });
+    fireEvent.click(confirmation);
+    expect(confirmation).toHaveProperty("checked", true);
+    fireEvent.click(screen.getByRole("button", { name: "Absender: Name: Im PDF markieren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Firma A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Übernehmen" }));
+    expect(confirmation).toHaveProperty("checked", false);
+  });
+
+  it("blocks a second dropped PDF while the first file is still being read", async () => {
+    native.extract.mockResolvedValue(invoice("Firma A", "Weg 1", "DE123456789"));
+    render(<App />);
+    let finishRead!: (bytes: ArrayBuffer) => void;
+    const first = new File(["synthetic"], "erste.pdf", { type: "application/pdf" });
+    Object.defineProperty(first, "arrayBuffer", { value: () => new Promise<ArrayBuffer>(resolve => { finishRead = resolve; }) });
+    fireEvent.change(screen.getByLabelText("Rechnung öffnen"), { target: { files: [first] } });
+    expect(screen.getByLabelText("Rechnung öffnen")).toHaveProperty("disabled", true);
+    const second = new File(["synthetic"], "zweite.pdf", { type: "application/pdf" });
+    const readSecond = vi.fn(async () => new ArrayBuffer(1));
+    Object.defineProperty(second, "arrayBuffer", { value: readSecond });
+    fireEvent.drop(screen.getByRole("main"), { dataTransfer: { files: [second] } });
+    expect(readSecond).not.toHaveBeenCalled();
+    await act(async () => finishRead(new ArrayBuffer(1)));
+    await screen.findByRole("button", { name: "Absender: Name: Im PDF markieren" });
+    expect(native.extract).toHaveBeenCalledTimes(1);
+    expect(storage.docs.size).toBe(1);
   });
 
   it("autosaves without learning, and restores the exact draft without re-extraction", async () => {
@@ -128,10 +182,24 @@ describe("mark and remember a source in the application", () => {
     expect(native.extract).toHaveBeenCalledTimes(1);
     expect(native.invoke.mock.calls.some(([command,args]) => command === "acknowledge_print_job" && args.jobId === "b")).toBe(false);
     fireEvent.click(screen.getByText("Posteingang (2)"));
-    fireEvent.click(screen.getByRole("button",{ name: /b\.pdf/ }));
+    fireEvent.click(screen.getByRole("button",{ name: /^b\.pdf/ }));
     await waitFor(() => expect(native.extract).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(native.invoke.mock.calls.some(([command,args]) => command === "acknowledge_print_job" && args.jobId === "b" && args.status === "opened")).toBe(true));
     expect(JSON.parse(storage.docs.get("doc-1")!.snapshot!).draft.seller.addressLine1).toBe("Bleibt erhalten");
+  });
+
+  it("removes an invoice from the inbox without reopening it", async () => {
+    native.extract.mockResolvedValue(invoice("Firma A","Weg 1","DE123456789"));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />); openFile("a.pdf");
+    await screen.findByRole("button", { name: "Absender: Name: Im PDF markieren" });
+    fireEvent.click(screen.getByText("Posteingang (1)"));
+    fireEvent.click(screen.getByRole("button", { name: "„a.pdf“ aus dem Posteingang entfernen" }));
+    await waitFor(() => expect(storage.docs.size).toBe(0));
+    expect(screen.getByText("Noch keine Rechnungen vorhanden. Öffnen Sie eine PDF oder drucken Sie auf „E-Rechnung“.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Rechnung" }));
+    expect(screen.getByText("Rechnung hier ablegen")).toBeTruthy();
+    expect(screen.queryByDisplayValue("Firma A")).toBeNull();
   });
 
   it("refuses closing or switching when the latest draft cannot be saved", async () => {
@@ -147,6 +215,21 @@ describe("mark and remember a source in the application", () => {
     await screen.findByText("Test: Speicherung nicht möglich");
     expect(storage.docs.size).toBe(1);
     expect(screen.getByDisplayValue("Noch nicht gesichert")).toBeTruthy();
+  });
+
+  it("keeps the active draft editable when deleting it fails", async () => {
+    native.extract.mockResolvedValue(invoice("Firma A", "Weg 1", "DE123456789"));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<App />); openFile("a.pdf");
+    await screen.findByRole("button", { name: "Absender: Name: Im PDF markieren" });
+    storage.failDelete = true;
+    fireEvent.click(screen.getByText("Posteingang (1)"));
+    fireEvent.click(screen.getByRole("button", { name: "„a.pdf“ aus dem Posteingang entfernen" }));
+    await screen.findByText("Test: Löschen nicht möglich");
+    fireEvent.click(screen.getByRole("button", { name: "Rechnung" }));
+    expect(screen.getByRole("button", { name: "Absender: Name: Im PDF markieren" })).toBeTruthy();
+    fireEvent.change(screen.getAllByLabelText("Straße und Hausnummer")[0]!, { target: { value: "Weiter bearbeitet" } });
+    await waitFor(() => expect(JSON.parse(storage.docs.get("doc-1")!.snapshot!).draft.seller.addressLine1).toBe("Weiter bearbeitet"));
   });
 
   it("imports an older JSON draft only after the user supplies its original PDF", async () => {

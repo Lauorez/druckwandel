@@ -4,11 +4,12 @@ import type { WorkDetail, WorkDocument, InboxCandidate } from "../../apps/deskto
 export function workspaceNative() {
   const docs = new Map<string,WorkDetail>();
   let lastOpenedId: string | null = null;
-  const state = { docs,candidates: [] as InboxCandidate[],failSave: false };
+  const dismissed = new Set<string>();
+  const state = { docs,candidates: [] as InboxCandidate[],failSave: false,failDelete: false };
   return { ...state, async invoke(command: string,args: Record<string, unknown> = {}): Promise<unknown> {
     switch (command) {
       case "workspace_list": return { entries: [...docs.values()].map(v => v.document),total: docs.size,lastOpenedId };
-      case "workspace_scan_inbox": return this.candidates.filter(c => ![...docs.values()].some(v => v.document.sourceKey === c.key));
+      case "workspace_scan_inbox": return this.candidates.filter(c => !dismissed.has(c.key) && ![...docs.values()].some(v => v.document.sourceKey === c.key));
       case "workspace_import":
       case "workspace_import_print": {
         const candidate = this.candidates.find(c => c.job.path === args.path);
@@ -30,6 +31,19 @@ export function workspaceNative() {
       }
       case "workspace_activate": lastOpenedId = String(args.id); return;
       case "workspace_error": { const row = docs.get(String(args.id)); if (row) row.document.error = String(args.message); return; }
+      case "workspace_delete": {
+        if (this.failDelete) throw new Error("Test: Löschen nicht möglich");
+        const row = docs.get(String(args.id));
+        if (row?.document.sourceKey) dismissed.add(row.document.sourceKey);
+        docs.delete(String(args.id));
+        if (lastOpenedId === String(args.id)) lastOpenedId = null;
+        return;
+      }
+      case "workspace_dismiss_inbox": {
+        dismissed.add(String(args.key));
+        this.candidates = this.candidates.filter(c => c.key !== args.key);
+        return;
+      }
       default: throw new Error(`Unexpected workspace call: ${command}`);
     }
   } };

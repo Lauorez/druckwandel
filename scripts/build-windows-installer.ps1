@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$SkipChecks,
     [switch]$SkipPrinterBuild,
@@ -12,11 +12,26 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# npm/PowerShell 7 can pass a module search path that does not belong to the
+# Windows PowerShell process running this build. Bind security commands to it.
+Import-Module (Join-Path $PSHOME "Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1") -Force
+Import-Module (Join-Path $PSHOME "Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1") -Force
 $workspace = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $workspace "apps\desktop\src-tauri"
 $payloadRoot = Join-Path $tauriRoot "installer\windows\payload"
-$printerPackagesRoot = Join-Path $workspace "drucker\src\CompanionApp\AppPackages"
+$printerPackageRoots = @(
+    (Join-Path $workspace "drucker\artifacts\packages"),
+    (Join-Path $workspace "drucker\src\CompanionApp\AppPackages")
+)
 $defaultCertificate = Join-Path $workspace "drucker\.cert\ERechnung.Dev.cer"
+
+$validatorRoot = Join-Path $tauriRoot "resources\validators"
+$validatorManifest = Get-Content -LiteralPath (Join-Path $validatorRoot "manifest.json") -Raw | ConvertFrom-Json
+foreach ($resource in @("jre/bin/java.exe", $validatorManifest.kosit.jar, $validatorManifest.kosit.scenarios, $validatorManifest.mustang.jar, $validatorManifest.verapdf.jar)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $validatorRoot $resource) -PathType Leaf)) {
+        throw "Das vollständige Windows-Prüfpaket fehlt ($resource). Zuerst npm run validators:fetch auf Windows ausführen."
+    }
+}
 
 function Invoke-Checked {
     param(
@@ -31,7 +46,9 @@ function Invoke-Checked {
 }
 
 if (-not $SkipChecks) {
-    Invoke-Checked -Command "npm.cmd" -Arguments @("run", "check")
+    Invoke-Checked -Command "npm.cmd" -Arguments @("run", "release:gate")
+} elseif ($SigningMode -eq "Production") {
+    throw "Ein Produktionsbuild darf das Release-Gate nicht überspringen."
 }
 
 if (-not $PrinterPackagePath) {
@@ -43,10 +60,12 @@ if (-not $PrinterPackagePath) {
         )
     }
 
-    $printerPackage = Get-ChildItem -Path $printerPackagesRoot -Recurse -File -Filter "CompanionApp_*.msix" -ErrorAction SilentlyContinue |
-        Where-Object FullName -NotMatch "[\\/]Dependencies[\\/]" |
-        Sort-Object LastWriteTimeUtc -Descending |
-        Select-Object -First 1
+    $printerPackage = $printerPackageRoots | ForEach-Object {
+        if (Test-Path -LiteralPath $_) {
+            Get-ChildItem -Path $_ -Recurse -File -Filter "CompanionApp_*.msix" -ErrorAction SilentlyContinue |
+                Where-Object FullName -NotMatch "[\\/]Dependencies[\\/]"
+        }
+    } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
     if (-not $printerPackage) {
         throw "Kein Druckerpaket gefunden. Führe den Build ohne -SkipPrinterBuild aus."
     }
@@ -100,6 +119,8 @@ $installScriptContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "ins
 $removeScriptContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "installer\windows\RemovePrinter.ps1"), $utf8WithoutBom)
 [System.IO.File]::WriteAllText((Join-Path $payloadRoot "InstallPrinter.ps1"), $installScriptContent, $utf8WithBom)
 [System.IO.File]::WriteAllText((Join-Path $payloadRoot "RemovePrinter.ps1"), $removeScriptContent, $utf8WithBom)
+$updateGuardContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "installer\windows\UpdateGuard.ps1"), $utf8WithoutBom)
+[System.IO.File]::WriteAllText((Join-Path $payloadRoot "UpdateGuard.ps1"), $updateGuardContent, $utf8WithBom)
 
 $validationArguments = @(
     "-NoProfile",
@@ -147,9 +168,17 @@ $artifactDirectory = Join-Path $workspace "artifacts\windows"
 New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
 $artifactPath = Join-Path $artifactDirectory "E-Rechnungs-Assistent-$version-x64-Setup.exe"
 Copy-Item -LiteralPath $builtInstaller.FullName -Destination $artifactPath -Force
+if ($env:ERECHNUNG_SIGNTOOL -and $SigningMode -eq "Production") {
+    Invoke-Checked -Command $env:ERECHNUNG_SIGNTOOL -Arguments @("sign", "/fd", "SHA256", "/td", "SHA256", "/tr", "http://timestamp.digicert.com", $artifactPath)
+}
 $installerSignature = Get-AuthenticodeSignature -LiteralPath $artifactPath
-if ($SigningMode -eq "Production" -and $installerSignature.Status -ne "Valid") {
-    throw "Der Produktionsinstaller ist nicht gültig signiert. Konfiguriere vor dem Produktionsbuild Tauri bundle.windows.signCommand."
+if ($SigningMode -eq "Production") {
+    if ($installerSignature.Status -ne "Valid") {
+        throw "Der Produktionsinstaller ist nicht gültig signiert. Setze ERECHNUNG_SIGNTOOL oder Tauri bundle.windows.signCommand."
+    }
+    if ($installerSignature.SignerCertificate.Subject -eq $installerSignature.SignerCertificate.Issuer) {
+        throw "Ein Test- oder selbstsigniertes Zertifikat darf den Produktionsinstaller nicht signieren."
+    }
 }
 $hash = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $checksumPath = "$artifactPath.sha256"
@@ -160,5 +189,5 @@ Write-Host "Gemeinsamer Windows-Installer:"
 Write-Host $artifactPath
 Write-Host "SHA-256: $hash"
 if ($SigningMode -eq "Development") {
-    Write-Warning "Das Setup enthält das lokale Testzertifikat und ist nur für Entwicklungstests bestimmt."
+    Write-Warning "Vorführbuild: Auf einem fremden Rechner muss das Entwicklungszertifikat bereits von der IT freigegeben sein. Ohne diese Vorbedingung ist für die Installation ohne Admin eine öffentlich vertrauenswürdige Signatur erforderlich."
 }

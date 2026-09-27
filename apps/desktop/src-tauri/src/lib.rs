@@ -1,6 +1,10 @@
 mod archive;
+mod backup;
 mod datev;
+mod diagnose;
+mod guard;
 mod paths;
+mod protect;
 mod validator;
 mod workspace;
 
@@ -63,7 +67,7 @@ fn inbox() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn atomic_write(target_path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn atomic_write(target_path: &Path, bytes: &[u8]) -> Result<(), String> {
     let directory = target_path
         .parent()
         .ok_or_else(|| "Zielordner konnte nicht ermittelt werden.".to_string())?;
@@ -120,6 +124,7 @@ fn write_review_draft_to(
 
 #[tauri::command]
 fn write_review_draft(file_name: String, contents: String) -> Result<String, String> {
+    let _lock = crate::guard::exclusive();
     let documents_directory = paths::documents()?;
     Ok(
         write_review_draft_to(&documents_directory, &file_name, &contents)?
@@ -203,6 +208,7 @@ fn read_learning_memory_from(path: &Path) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn write_learning_memory(app: AppHandle, contents: String) -> Result<(), String> {
+    let _lock = crate::guard::exclusive();
     write_learning_memory_to(&learning_memory_path(&app)?, &contents)
 }
 
@@ -432,6 +438,8 @@ pub fn run() {
             workspace::workspace_activate,
             workspace::workspace_error,
             workspace::workspace_scan_inbox,
+            workspace::workspace_delete,
+            workspace::workspace_dismiss_inbox,
             list_print_jobs,
             get_print_job,
             read_print_job,
@@ -459,7 +467,14 @@ pub fn run() {
             datev::datev_create_export,
             datev::datev_list_exports,
             datev::datev_resume_export,
-            datev::datev_open_export
+            datev::datev_open_export,
+            backup::backup_status,
+            backup::backup_create,
+            backup::backup_preview,
+            backup::backup_confirm,
+            backup::backup_resume,
+            diagnose::diagnostic_report,
+            diagnose::write_diagnostic_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running E-Rechnungs-Assistent");
@@ -468,7 +483,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        read_learning_memory_from, validate_learning_memory, write_learning_memory_to,
+        is_job_id, read_learning_memory_from, validate_learning_memory, write_learning_memory_to,
         write_review_draft_to,
     };
     use std::{
@@ -534,5 +549,13 @@ mod tests {
         );
         assert!(write_learning_memory_to(&target, "not json").is_err());
         fs::remove_dir_all(directory).expect("remove isolated learning directory");
+    }
+
+    #[test]
+    fn print_job_ids_reject_paths_and_deep_link_payloads() {
+        assert!(is_job_id("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
+        assert!(!is_job_id(r"C:\Users\x\secret.pdf"));
+        assert!(!is_job_id("../invoice"));
+        assert!(!is_job_id("print-job/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
     }
 }

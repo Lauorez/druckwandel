@@ -7,11 +7,14 @@ import {
   applyLearnedCorrections,
   emptyCorrectionMemory,
   learnCorrections,
+  listLearnedAssignments,
   parseCorrectionMemory,
+  removeLearnedAssignment,
+  setLearnedAssignmentEnabled,
   sourceAssignmentError,
   upgradeLegacyFieldRules,
 } from "../src/learning/correction-memory.js";
-import { parseLearningProfileStore } from "../src/learning/profiles.js";
+import { parseLearningProfileStore, replaceActiveMemory, undoActiveMemory } from "../src/learning/profiles.js";
 import { reviewDraftFromExtraction } from "../src/review/draft.js";
 
 function template(reference: string, issueDate = "01.09.2026", correctedDate = "02.09.2026"): DocumentPage[] {
@@ -209,7 +212,7 @@ describe("local correction memory", () => {
     const initial = reviewDraftFromExtraction(first);
     const corrected = {
       ...initial,
-      lines: [{ id: "1", description: "Montage", quantity: "2", unitCode: "HUR" as const, netUnitPrice: "80", taxRate: "19", sourceTokenIds: [] }],
+      lines: [{ id: "1", description: "Montage", quantity: "2", unitCode: "HUR" as const, netUnitPrice: "80", taxRate: "19", taxCase: "S19" as const, exemptionReason: "", sourceTokenIds: [], allowances: [] }],
     };
     const learned = learnCorrections(emptyCorrectionMemory(), first, initial, corrected);
     expect(learned.tableLearned).toBe(true);
@@ -279,5 +282,83 @@ describe("local correction memory", () => {
     expect(store.schemaVersion).toBe(2);
     expect(store.profiles).toHaveLength(1);
     expect(store.profiles[0]?.name).toBe("Standard");
+  });
+
+  it("does not apply a learned rule to a similar but different template of the same issuer", () => {
+    const first = analyzeDocumentPages(template("K-4711"));
+    const initial = reviewDraftFromExtraction(first);
+    const learned = learnCorrections(emptyCorrectionMemory(), first, initial, { ...initial, buyerReference: "K-4711" });
+    expect(learned.learnedFields).toEqual(["buyerReference"]);
+    const other: DocumentPage[] = [{
+      page: 1,
+      width: 600,
+      height: 800,
+      tokens: [
+        { id: "title", page: 1, text: "Rechnung", box: { x: 400, y: 40, width: 80, height: 12 }, origin: "text-layer" },
+        { id: "vat-l", page: 1, text: "USt-ID:", box: { x: 400, y: 70, width: 55, height: 12 }, origin: "text-layer" },
+        { id: "vat", page: 1, text: "DE123456789", box: { x: 480, y: 70, width: 80, height: 12 }, origin: "text-layer" },
+        { id: "ref-l", page: 1, text: "Lieferschein:", box: { x: 400, y: 160, width: 90, height: 12 }, origin: "text-layer" },
+        { id: "ref", page: 1, text: "LS-9000", box: { x: 510, y: 160, width: 70, height: 12 }, origin: "text-layer" },
+      ],
+    }];
+    const applied = applyLearnedCorrections(analyzeDocumentPages(other), learned.memory);
+    expect(applied.appliedFields).toEqual([]);
+    expect(applied.extraction.fields.buyerReference).toBeUndefined();
+  });
+
+  it("never copies a previous invoice value into a later invoice", () => {
+    const first = analyzeDocumentPages(template("K-4711"));
+    const initial = reviewDraftFromExtraction(first);
+    const learned = learnCorrections(emptyCorrectionMemory(), first, initial, { ...initial, buyerReference: "K-4711" });
+    expect(JSON.stringify(learned.memory)).not.toContain("K-4711");
+    const second = analyzeDocumentPages(template("K-5000"));
+    const applied = applyLearnedCorrections(second, learned.memory);
+    expect(applied.extraction.fields.buyerReference?.value).toBe("K-5000");
+    expect(applied.extraction.fields.buyerReference?.value).not.toBe("K-4711");
+  });
+
+  it("skips an ambiguous shifted match instead of silently replacing an extracted value", () => {
+    const pages = (dues: Array<{ y: number; value: string }>): DocumentPage[] => [{
+      page: 1,
+      width: 600,
+      height: 800,
+      tokens: [
+        { id: "title", page: 1, text: "Rechnung", box: { x: 50, y: 40, width: 80, height: 12 }, origin: "text-layer" },
+        { id: "vat-l", page: 1, text: "USt-ID:", box: { x: 50, y: 70, width: 55, height: 12 }, origin: "text-layer" },
+        { id: "vat", page: 1, text: "DE123456789", box: { x: 180, y: 70, width: 80, height: 12 }, origin: "text-layer" },
+        { id: "issue-l", page: 1, text: "Rechnungsdatum:", box: { x: 50, y: 100, width: 90, height: 12 }, origin: "text-layer" },
+        { id: "issue", page: 1, text: "08.09.2026", box: { x: 180, y: 100, width: 70, height: 12 }, origin: "text-layer" },
+        ...dues.flatMap((due, index) => [
+          { id: `due-l-${index}`, page: 1, text: "Faellig am:", box: { x: 50, y: due.y, width: 70, height: 12 }, origin: "text-layer" as const },
+          { id: `due-${index}`, page: 1, text: due.value, box: { x: 180, y: due.y, width: 70, height: 12 }, origin: "text-layer" as const },
+        ]),
+      ],
+    }];
+    const first = analyzeDocumentPages(pages([{ y: 220, value: "22.09.2026" }]));
+    const initial = reviewDraftFromExtraction(first);
+    const learned = learnCorrections(emptyCorrectionMemory(), first, initial, { ...initial, dueDate: "2026-09-22" }, undefined, { dueDate: ["due-0"] });
+    expect(learned.learnedFields).toEqual(["dueDate"]);
+    const second = analyzeDocumentPages(pages([{ y: 360, value: "30.09.2026" }, { y: 390, value: "15.10.2026" }]));
+    const before = second.fields.dueDate?.value;
+    const applied = applyLearnedCorrections(second, learned.memory);
+    expect(learned.memory.rules[0]).toMatchObject({ field: "dueDate", region: true });
+    expect(applied.extraction.fields.dueDate?.value).toBe(before);
+    expect(applied.appliedFields).not.toContain("dueDate");
+    expect(applied.extraction.fields.dueDate?.value).not.toBe("2026-09-22");
+  });
+
+  it("can disable, remove and undo individual remembered assignments", () => {
+    const first = analyzeDocumentPages(template("K-4711"));
+    const initial = reviewDraftFromExtraction(first);
+    const learned = learnCorrections(emptyCorrectionMemory(), first, initial, { ...initial, buyerReference: "K-4711" });
+    const listed = listLearnedAssignments(learned.memory);
+    expect(listed).toEqual([expect.objectContaining({ field: "buyerReference", enabled: true, origin: "save" })]);
+    const disabled = setLearnedAssignmentEnabled(learned.memory, listed[0]!.id, false);
+    expect(applyLearnedCorrections(analyzeDocumentPages(template("K-5000")), disabled).appliedFields).toEqual([]);
+    expect(removeLearnedAssignment(disabled, listed[0]!.id).rules).toEqual([]);
+    const store = replaceActiveMemory(parseLearningProfileStore(null), learned.memory);
+    const undone = undoActiveMemory(store);
+    expect(undone?.profiles[0]?.memory.rules).toEqual([]);
+    expect(undone?.profiles[0]?.undoMemory).toBeUndefined();
   });
 });

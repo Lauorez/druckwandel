@@ -1,23 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createHash } from "node:crypto";
-import { calculateInvoice } from "../src/domain/calculate.js";
-import type { InvoiceInput } from "../src/domain/types.js";
-import { generateUbl } from "../src/engine/ubl.js";
-import { generateCii } from "../src/engine/cii.js";
-import { invoiceSnapshot, readInvoiceSnapshot } from "../src/export/invoice-snapshot.js";
+import { readInvoiceSnapshot } from "../src/export/invoice-snapshot.js";
 import { documentPackage } from "../src/export/datev/documents.js";
 import { previewDatev, serializeDatev, validateDatevProfile } from "../src/export/datev/export.js";
 import { encodeWindows1252 } from "../src/export/datev/encoding.js";
-import type { DatevProfile, DatevSource } from "../src/export/datev/types.js";
+import type { DatevProfile } from "../src/export/datev/types.js";
 import { standardInvoice } from "./fixtures/invoice.js";
-
-export function profile(): DatevProfile {
-  return {schemaVersion:1,name:"Testkanzlei",consultant:"1001",client:"12345",fiscalYearStart:"2026-01-01",accountLength:4,chart:"03",seller:structuredClone(standardInvoice.seller),confirmed:true,accountingMethod:"accrual",periodRule:"invoice-date",locking:"0",collectiveDebtor:"10000",collectiveDebtorConfirmed:true,debtors:[],revenueAccounts:[{id:"19",label:"Erlöse 19 %",taxRate:"19",account:"8400",mode:"automatic",taxKey:""},{id:"7",label:"Erlöse 7 %",taxRate:"7",account:"8300",mode:"automatic",taxKey:""}]};
-}
-export function source(input:InvoiceInput=standardInvoice, format:DatevSource["format"]="xrechnung", documentId="document-1"):DatevSource {
-  const invoice=calculateInvoice(input), snapshot=invoiceSnapshot(invoice);
-  return {archiveId:`${documentId}-${format}`,documentId,contentHash:createHash("sha256").update(snapshot).digest("hex"),originalHash:"original",snapshot,format,xml:format==="xrechnung"?generateUbl(invoice):generateCii(invoice)};
-}
+import { profile, source } from "./helpers/datev-source.js";
 // Independent character-by-character reader, not the writer's quoting logic.
 function csv(bytes:Uint8Array):string[][] {
   const text=Buffer.from(bytes).toString("latin1").replace(/\u0080/g,"€"), rows:string[][]=[];
@@ -31,6 +19,17 @@ function csv(bytes:Uint8Array):string[][] {
   expect(quoted).toBe(false);expect(cell).toBe("");return rows;
 }
 describe("DATEV immutable source and EXTF adapter",()=>{
+  it.each([false, true])("allocates a document adjustment proportionally over three revenue accounts (charge=%s)", charge => {
+    const p = profile();
+    p.revenueAccounts = ["8400", "8410", "8420"].map((account, index) => ({ ...p.revenueAccounts[0]!, account, id: String(index) }));
+    const s = source({ ...standardInvoice,
+      lines: ["1", "2", "3"].map(id => ({ ...standardInvoice.lines[0]!, id, quantity: "1", netUnitPrice: "100" })),
+      allowances: [{ charge, amount: "30.00", reason: "Anpassung", tax: { categoryCode: "S", rate: "19" } }],
+    });
+    const result = previewDatev(p, [s], [{ archiveId: s.archiveId, lineAccounts: { "1": "0", "2": "1", "3": "2" } }]);
+    expect(result.issues).toEqual([]);
+    expect(result.batches[0]!.bookings.map(row => row.net)).toEqual(Array(3).fill(charge ? "110.00" : "90.00"));
+  });
   it("round-trips both archived formats and rejects changed snapshots or XML",()=>{
     for(const format of ["xrechnung","zugferd"] as const){const s=source(standardInvoice,format);expect(readInvoiceSnapshot(s.snapshot,s.format,s.xml).totals.payable).toBe("282.08");expect(()=>readInvoiceSnapshot(s.snapshot,s.format,s.xml+" ")).toThrow();expect(()=>readInvoiceSnapshot(s.snapshot.replace('282.08','282.09'))).toThrow();}
   });
@@ -98,6 +97,8 @@ describe("DATEV immutable source and EXTF adapter",()=>{
     const p=profile();p.seller.name="Anderer Betrieb";expect(previewDatev(p,[source()]).issues.join()).toContain("Absender");
     const zero=source({...standardInvoice,invoiceNumber:"ZERO",lines:[{...standardInvoice.lines[0]!,tax:{categoryCode:"Z",rate:"0"}}]});
     const v=previewDatev(profile(),[source(),zero]);expect(v.batches).toEqual([]);expect(v.invoiceCount).toBe(0);
+    const ae=source({...standardInvoice,invoiceNumber:"AE",lines:[{...standardInvoice.lines[0]!,tax:{categoryCode:"AE",rate:"0",exemptionReason:"Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG"}}]});
+    expect(previewDatev(profile(),[ae]).issues.join()).toMatch(/Reverse Charge|Steuerbefreiung/);
   });
   it("splits an off-calendar fiscal year into two unambiguous date batches",()=>{
     const p=profile();p.fiscalYearStart="2026-07-01";
@@ -112,4 +113,24 @@ describe("DATEV immutable source and EXTF adapter",()=>{
     const v=previewDatev(p,[source()]);expect(csv(serializeDatev(p,v.batches[0]!,new Date()))[2]![8]).toBe("0003");
   });
   it("rejects unrepresentable CP1252 characters",()=>{expect(()=>encodeWindows1252("😀")).toThrow();});
+  it("blocks credit notes until a dedicated DATEV mapping exists",()=>{
+    const credit=source({...standardInvoice,invoiceNumber:"GS-1",invoiceType:"381",precedingInvoice:{invoiceNumber:"RE-2026-0001"}});
+    expect(previewDatev(profile(),[credit]).issues.join()).toContain("Gutschriften");
+  });
+  it("blocks advance and final invoices until a dedicated DATEV mapping exists",()=>{
+    const partial=source({...standardInvoice,invoiceNumber:"RE-A-1",invoiceType:"326"});
+    expect(previewDatev(profile(),[partial]).issues.join()).toMatch(/Abschlag/);
+    const finalInvoice=source({...standardInvoice,invoiceNumber:"RE-S-1",finalInvoice:true,prepaidAmount:"100.00",precedingInvoices:[{invoiceNumber:"RE-A-1",paidAmount:"100.00"}]});
+    expect(previewDatev(profile(),[finalInvoice]).issues.join()).toMatch(/Schlussrechnung|bereits gezahlt/);
+    const prepayment=source({...standardInvoice,invoiceNumber:"RE-ANZ-1",prepaymentInvoice:true});
+    expect(previewDatev(profile(),[prepayment]).issues.join()).toMatch(/Anzahlung/);
+  });
+  it("reduces DATEV nets by confirmed document allowances without extra tax rows",()=>{
+    const s=source({...standardInvoice,allowances:[{charge:false,amount:"10.00",reason:"Rabatt",tax:{categoryCode:"S",rate:"19"}}]});
+    const v=previewDatev(profile(),[s]);
+    expect(v.issues).toEqual([]);
+    expect(v.gross).toBe("270.18");
+    expect(v.batches[0]!.bookings).toHaveLength(1);
+    expect(v.batches[0]!.bookings[0]).toMatchObject({net:"227.04",tax:"43.14",gross:"270.18"});
+  });
 });

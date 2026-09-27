@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, cp, writeFile } from "node:fs/promises";
 import { createWriteStream, existsSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative, resolve, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { Readable } from "node:stream";
@@ -11,6 +11,15 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "apps/desktop/src-tauri/resources/validators");
 const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
+
+async function removeGeneratedDirectory(path, parent) {
+  const target = resolve(path);
+  const within = relative(resolve(parent), target);
+  if (!within || within === ".." || within.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(within)) {
+    throw new Error(`Unsicheres Löschziel: ${target}`);
+  }
+  await rm(target, { recursive: true, force: true });
+}
 
 async function download(url, file) {
   await mkdir(dirname(file), { recursive: true });
@@ -71,26 +80,26 @@ function extractArchive(archive, dest) {
 
 const artifacts = [
   {
-    url: "https://github.com/itplr-kosit/validator/releases/download/v1.6.3/validator-1.6.3-standalone.jar",
+    url: `https://github.com/itplr-kosit/validator/releases/download/v${manifest.kosit.engineVersion}/${basename(manifest.kosit.jar)}`,
     file: join(root, manifest.kosit.jar),
   },
   {
-    url: "https://repo1.maven.org/maven2/org/mustangproject/Mustang-CLI/2.16.2/Mustang-CLI-2.16.2.jar",
+    url: `https://repo.maven.apache.org/maven2/org/mustangproject/Mustang-CLI/${manifest.mustang.engineVersion}/${basename(manifest.mustang.jar)}`,
     file: join(root, manifest.mustang.jar),
   },
   {
-    url: "https://repo1.maven.org/maven2/org/verapdf/apps/greenfield-apps/1.28.2/greenfield-apps-1.28.2.jar",
+    url: `https://repo.maven.apache.org/maven2/org/verapdf/apps/greenfield-apps/${manifest.verapdf.engineVersion}/${basename(manifest.verapdf.jar)}`,
     file: join(root, manifest.verapdf.jar),
   },
 ];
 
 const checksums = {};
 for (const artifact of artifacts) {
-  checksums[artifact.file.replace(`${root}/`, "")] = await download(artifact.url, artifact.file);
+  checksums[relative(root, artifact.file).replaceAll("\\", "/")] = await download(artifact.url, artifact.file);
 }
 
 const release = await fetch(
-  "https://api.github.com/repos/itplr-kosit/validator-configuration-xrechnung/releases/tags/v2026-01-31",
+  `https://api.github.com/repos/itplr-kosit/validator-configuration-xrechnung/releases/tags/${manifest.kosit.configurationTag}`,
   { headers: { "User-Agent": "erechnungs-assistent-validators", Accept: "application/vnd.github+json" } },
 );
 if (!release.ok) throw new Error(`XRechnung-Konfiguration: HTTP ${release.status}`);
@@ -106,9 +115,9 @@ const scenarios = await findFile(extractDir, "scenarios.xml");
 if (!scenarios) throw new Error("scenarios.xml fehlt in der XRechnung-Konfiguration.");
 const configRoot = dirname(scenarios);
 const target = join(root, "kosit", "xrechnung");
-await rm(target, { recursive: true, force: true });
+await removeGeneratedDirectory(target, root);
 await cp(configRoot, target, { recursive: true });
-await rm(extractDir, { recursive: true, force: true });
+await removeGeneratedDirectory(extractDir, tmpdir());
 console.log(`XRechnung-Konfiguration nach ${target}`);
 
 const platform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
@@ -122,12 +131,12 @@ extractArchive(jreArchive, jreExtract);
 const javaName = platform === "windows" ? "java.exe" : "java";
 const javaPath = await findFile(jreExtract, javaName);
 if (!javaPath) throw new Error("java fehlt in der geladenen JRE.");
-let home = dirname(dirname(javaPath));
-if (existsSync(join(home, "Home"))) home = join(home, "Home");
+let jreHome = dirname(dirname(javaPath));
+if (existsSync(join(jreHome, "Home"))) jreHome = join(jreHome, "Home");
 const jreTarget = join(root, "jre");
-await rm(jreTarget, { recursive: true, force: true });
-await cp(home, jreTarget, { recursive: true });
-await rm(jreExtract, { recursive: true, force: true });
+await removeGeneratedDirectory(jreTarget, root);
+await cp(jreHome, jreTarget, { recursive: true });
+await removeGeneratedDirectory(jreExtract, tmpdir());
 console.log(`JRE nach ${jreTarget}`);
 
 await writeFile(join(root, "checksums.json"), `${JSON.stringify(checksums, null, 2)}\n`);

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
@@ -15,6 +15,8 @@ $repositoryRoot = Split-Path $PSScriptRoot -Parent
 & (Join-Path $PSScriptRoot "check-version.ps1")
 & (Join-Path $PSScriptRoot "check-environment.ps1")
 & (Join-Path $PSScriptRoot "create-dev-cert.ps1") -Password $CertificatePassword
+& (Join-Path $PSScriptRoot "build-native-task.ps1") -Platform $Platform -Configuration $Configuration
+& (Join-Path $PSScriptRoot "test-native-task.ps1")
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
 $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" |
@@ -79,16 +81,41 @@ try {
     $requiredEntries = @(
         "AppxManifest.xml",
         "Config/PrinterPdc.xml",
-        "ERechnung.VirtualPrinter.Tasks.dll",
+        "CompanionApp.exe",
+        "CompanionApp.runtimeconfig.json",
+        "coreclr.dll",
+        "hostfxr.dll",
+        "System.Private.CoreLib.dll",
+        "ERechnung.VirtualPrinter.Native.dll",
         "ERechnung.VirtualPrinter.Tasks.winmd",
-        "WinRT.Host.dll",
         "resources.pri",
         "AppxSignature.p7x"
+    )
+    $forbiddenEntries = @(
+        "WinRT.Host.dll",
+        "WinRT.Host.runtimeconfig.json",
+        "ERechnung.VirtualPrinter.Tasks.dll"
     )
 
     $missingEntries = $requiredEntries | Where-Object { $_ -notin $packageEntries }
     if ($missingEntries) {
         throw "Dem MSIX-Paket fehlen erforderliche Dateien: $($missingEntries -join ', ')"
+    }
+
+    $unexpectedEntries = $forbiddenEntries | Where-Object { $_ -in $packageEntries }
+    if ($unexpectedEntries) {
+        throw "Das MSIX-Paket enthält einen nicht eigenständigen Task-Host: $($unexpectedEntries -join ', ')"
+    }
+
+    $runtimeEntry = $archive.GetEntry("CompanionApp.runtimeconfig.json")
+    $runtimeReader = [System.IO.StreamReader]::new($runtimeEntry.Open())
+    try {
+        $runtime = $runtimeReader.ReadToEnd() | ConvertFrom-Json
+    } finally {
+        $runtimeReader.Dispose()
+    }
+    if ($runtime.runtimeOptions.framework -or $runtime.runtimeOptions.frameworks) {
+        throw "Die Druckoberfläche benötigt eine externe .NET-Installation und ist nicht vollständig."
     }
 
     $manifestEntry = $archive.GetEntry("AppxManifest.xml")
@@ -101,6 +128,10 @@ try {
 
     if ($manifestContent -notmatch "windows\.printSupportVirtualPrinterWorkflow") {
         throw "Das fertige MSIX-Manifest registriert keinen Print Support Virtual Printer."
+    }
+
+    if ($manifestContent -notmatch "<Path>ERechnung\.VirtualPrinter\.Native\.dll</Path>") {
+        throw "Das fertige MSIX-Manifest aktiviert den Drucker-Task nicht über ERechnung.VirtualPrinter.Native.dll."
     }
 
     if ($manifestContent -match "OutputFileTypes") {

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emitSettingsChanged } from "./settingsWindow.js";
 
 export type ArchiveFormat = "xrechnung" | "zugferd";
 export type ArchiveSignatureFilter = "" | "signed" | "unsigned";
@@ -145,8 +146,10 @@ export function getArchiveStatus(): Promise<ArchiveStatus> {
   return invoke("get_archive_status");
 }
 
-export function setArchiveSigning(enabled: boolean): Promise<ArchiveStatus> {
-  return invoke("set_archive_signing", { enabled });
+export async function setArchiveSigning(enabled: boolean): Promise<ArchiveStatus> {
+  const status = await invoke<ArchiveStatus>("set_archive_signing", { enabled });
+  await emitSettingsChanged("archive");
+  return status;
 }
 
 export function verifyArchive(): Promise<ArchiveVerificationReport> {

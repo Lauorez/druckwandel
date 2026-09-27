@@ -23,15 +23,15 @@ const MAX_XML_BYTES: usize = 20 * 1024 * 1024;
 const EMPTY_HEAD: &str = "";
 
 #[derive(Clone)]
-struct ArchivePaths {
-    root: PathBuf,
-    database: PathBuf,
+pub(crate) struct ArchivePaths {
+    pub(crate) root: PathBuf,
+    pub(crate) database: PathBuf,
     reports: PathBuf,
-    signing_key: PathBuf,
+    pub(crate) signing_key: PathBuf,
 }
 
 impl ArchivePaths {
-    fn new(documents: &Path, app_data: &Path) -> Self {
+    pub(crate) fn new(documents: &Path, app_data: &Path) -> Self {
         let root = documents.join("E-Rechnungsarchiv");
         Self {
             database: root.join("archiv.sqlite3"),
@@ -70,6 +70,44 @@ pub(crate) struct SaveAndArchiveRequest {
     validation_json: Option<String>,
     #[serde(default, skip)]
     report_xml: Option<String>,
+}
+
+#[cfg(test)]
+pub(crate) fn test_archive_request(invoice_number: &str, format: &str) -> SaveAndArchiveRequest {
+    let xml = if format == "xrechnung" {
+        format!("<?xml version=\"1.0\"?><Invoice id=\"{invoice_number}\"></Invoice>")
+    } else {
+        format!(
+            "<?xml version=\"1.0\"?><rsm:CrossIndustryInvoice id=\"{invoice_number}\"></rsm:CrossIndustryInvoice>"
+        )
+    };
+    let pdf = if format == "zugferd" {
+        b"%PDF-1.7\nfactur-x.xml\n/Alternative\n%%EOF".as_slice()
+    } else {
+        b"%PDF-1.7\n%%EOF".as_slice()
+    };
+    SaveAndArchiveRequest {
+        evidence: None,
+        ticket_id: None,
+        validation_json: None,
+        report_xml: None,
+        format: format.to_string(),
+        output_file_name: format!(
+            "{invoice_number}.{}",
+            if format == "xrechnung" { "xml" } else { "pdf" }
+        ),
+        pdf_contents_base64: base64::Engine::encode(&base64::engine::general_purpose::STANDARD, pdf),
+        xml_contents: xml,
+        metadata: ArchiveMetadata {
+            invoice_number: invoice_number.to_string(),
+            issue_date: "2026-09-02".to_string(),
+            seller_name: "Musterbetrieb GmbH".to_string(),
+            buyer_name: "Beispielkunde AG".to_string(),
+            gross_amount: "119.00".to_string(),
+            currency: "EUR".to_string(),
+            source_file_name: "quelle.pdf".to_string(),
+        },
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -186,20 +224,20 @@ pub(crate) struct ArchiveStatus {
 pub(crate) struct ArchiveVerificationIssue {
     sequence: Option<i64>,
     invoice_number: Option<String>,
-    message: String,
+    pub(crate) message: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ArchiveVerificationReport {
-    valid: bool,
+    pub(crate) valid: bool,
     checked_at_ms: i64,
     checked_at_display: String,
-    entry_count: i64,
+    pub(crate) entry_count: i64,
     file_count: i64,
-    signed_count: i64,
+    pub(crate) signed_count: i64,
     unsigned_count: i64,
-    issues: Vec<ArchiveVerificationIssue>,
+    pub(crate) issues: Vec<ArchiveVerificationIssue>,
     report_path: String,
 }
 
@@ -642,31 +680,12 @@ fn available_output_path(documents: &Path, file_name: &str) -> Result<PathBuf, S
 }
 
 fn write_private_key(path: &Path, bytes: &[u8; 32]) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Speicherort des Schutzschlüssels ist ungültig.".to_string())?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    if path.exists() {
-        return Err("Der lokale Schutzschlüssel ist bereits vorhanden.".to_string());
-    }
-    write_new_file(path, bytes)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    crate::protect::store_key(path, bytes)
 }
 
 fn load_or_create_signing_key(path: &Path) -> Result<SigningKey, String> {
     if path.exists() {
-        let bytes = fs::read(path).map_err(|error| {
-            format!("Lokaler Schutzschlüssel konnte nicht gelesen werden: {error}")
-        })?;
-        let secret: [u8; 32] = bytes
-            .try_into()
-            .map_err(|_| "Der lokale Schutzschlüssel ist beschädigt.".to_string())?;
+        let secret = crate::protect::load_key(path)?;
         return Ok(SigningKey::from_bytes(&secret));
     }
     let key = SigningKey::generate(&mut OsRng);
@@ -689,7 +708,7 @@ fn signing_enabled(connection: &Connection) -> Result<bool, String> {
     Ok(value == "1")
 }
 
-fn save_and_archive_to(
+pub(crate) fn save_and_archive_to(
     paths: &ArchivePaths,
     documents: &Path,
     request: SaveAndArchiveRequest,
@@ -1153,7 +1172,7 @@ fn archive_status_to(paths: &ArchivePaths) -> Result<ArchiveStatus, String> {
     })
 }
 
-fn set_signing_to(paths: &ArchivePaths, enabled: bool) -> Result<ArchiveStatus, String> {
+pub(crate) fn set_signing_to(paths: &ArchivePaths, enabled: bool) -> Result<ArchiveStatus, String> {
     let connection = open_database(paths)?;
     if enabled {
         let key = load_or_create_signing_key(&paths.signing_key)?;
@@ -1266,7 +1285,7 @@ fn render_report(report: &ArchiveVerificationReport) -> String {
     text
 }
 
-fn verify_archive_to(paths: &ArchivePaths) -> Result<ArchiveVerificationReport, String> {
+pub(crate) fn verify_archive_to(paths: &ArchivePaths) -> Result<ArchiveVerificationReport, String> {
     let connection = open_database(paths)?;
     let checked_at_ms = now_ms()?;
     let checked_at_display: String = connection
@@ -1522,6 +1541,7 @@ pub(crate) fn save_and_archive_invoice(
     app: AppHandle,
     mut request: SaveAndArchiveRequest,
 ) -> Result<SaveAndArchiveResult, String> {
+    let _lock = crate::guard::exclusive();
     let evidence = request
         .evidence
         .as_mut()
@@ -1569,13 +1589,15 @@ pub(crate) fn save_and_archive_invoice(
     let ticket = super::validator::load_ticket(&app, &ticket_id)?;
     super::validator::ticket_matches(
         &ticket,
-        &evidence.document_id,
-        evidence.source_revision,
-        &request.format,
-        &request.xml_contents,
-        &pdf,
-        &evidence.snapshot,
-        &evidence.original_hash,
+        &super::validator::ExportCandidate {
+            document_id: &evidence.document_id,
+            source_revision: evidence.source_revision,
+            format: &request.format,
+            xml: &request.xml_contents,
+            pdf: &pdf,
+            snapshot: &evidence.snapshot,
+            original_hash: &evidence.original_hash,
+        },
     )?;
     request.report_xml = Some(ticket.report_xml.clone());
     request.validation_json = Some(
@@ -1621,6 +1643,7 @@ pub(crate) fn get_archive_status(app: AppHandle) -> Result<ArchiveStatus, String
 
 #[tauri::command]
 pub(crate) fn set_archive_signing(app: AppHandle, enabled: bool) -> Result<ArchiveStatus, String> {
+    let _lock = crate::guard::exclusive();
     set_signing_to(&archive_paths(&app)?, enabled)
 }
 
@@ -2041,6 +2064,7 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(found.id, first.archive_entry.id);
+        drop(db);
         fs::remove_dir_all(root).unwrap();
     }
 }

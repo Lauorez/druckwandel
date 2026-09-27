@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFArray, PDFDocument, StandardFonts } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { calculateInvoice } from "../src/domain/calculate.js";
 import { generateCii } from "../src/engine/cii.js";
@@ -15,6 +15,18 @@ async function blankPdf(): Promise<Uint8Array> {
 }
 
 describe("hybrid PDF/A preparation", () => {
+  it("creates PDF/A file identifiers and preserves the original identifier when editing", async () => {
+    const converted = await convertToPdfA3(await blankPdf());
+    const original = (await PDFDocument.load(converted)).context.trailerInfo.ID;
+    expect(original).toBeInstanceOf(PDFArray);
+    const updated = (await PDFDocument.load(await embedCiiInPdf(converted, xml))).context.trailerInfo.ID;
+    expect(updated).toBeInstanceOf(PDFArray);
+    if (!(original instanceof PDFArray) || !(updated instanceof PDFArray)) throw new Error("Missing file IDs");
+    expect(updated.size()).toBe(2);
+    expect(updated.get(0).toString()).toBe(original.get(0).toString());
+    expect(updated.get(1).toString()).not.toBe(original.get(1).toString());
+  });
+
   it("embeds the exact CII bytes and keeps the page count", async () => {
     const hybrid = await prepareHybridPdf(await blankPdf(), xml);
     expect(await extractFacturXXmlFromPdf(hybrid)).toBe(xml);

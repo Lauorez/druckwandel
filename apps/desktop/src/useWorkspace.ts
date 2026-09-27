@@ -8,6 +8,7 @@ interface Options {
   snapshot: WorkspaceSnapshot | undefined;
   build: (pdf: Uint8Array) => Promise<WorkspaceSnapshot>;
   load: (pdf: Uint8Array, name: string, snapshot: WorkspaceSnapshot) => void;
+  clear: () => void;
   error: (message: string) => void;
   isActionActive: boolean;
   isImportActive: boolean;
@@ -184,6 +185,28 @@ export function useWorkspace(options: Options) {
     importLegacy: (candidate: InboxCandidate) => enqueue(async () => {
       const doc = await workStore.importPrint(candidate.job.path);
       await activate(doc);
+      setLegacy(current => current.filter(c => c.key !== candidate.key));
+    }).catch(report),
+    remove: (doc: WorkDocument) => enqueue(async () => {
+      await flush();
+      const clearing = writer.current?.document.id === doc.id;
+      await workStore.remove(doc.id);
+      if (clearing) {
+        writer.current?.dispose();
+        writer.current = undefined;
+        setActiveId(undefined);
+        latest.current.clear();
+      }
+      const result = await refresh();
+      if (result.entries.length === 0 && offsetRef.current > 0) {
+        const next = Math.max(0, offsetRef.current - 100);
+        offsetRef.current = next;
+        setOffset(next);
+        await refresh(next);
+      }
+    }).catch(report),
+    dismissLegacy: (candidate: InboxCandidate) => enqueue(async () => {
+      await workStore.dismiss(candidate.key);
       setLegacy(current => current.filter(c => c.key !== candidate.key));
     }).catch(report),
     changePage: (next: number) => { offsetRef.current = next; setOffset(next); void refresh(next).catch(report); },

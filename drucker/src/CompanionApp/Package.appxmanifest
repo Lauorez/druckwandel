@@ -12,7 +12,7 @@
   <Identity
     Name="ERechnung.VirtualPrinter.PoC"
     Publisher="CN=ERechnung Development"
-    Version="0.1.0.4" />
+    Version="0.1.0.12" />
 
   <mp:PhoneIdentity
     PhoneProductId="93d1b886-f22c-4b9f-aa08-086c985cbb94"
@@ -76,7 +76,7 @@
   <Extensions>
     <Extension Category="windows.activatableClass.inProcessServer">
       <InProcessServer>
-        <Path>WinRT.Host.dll</Path>
+        <Path>ERechnung.VirtualPrinter.Native.dll</Path>
         <ActivatableClass
           ActivatableClassId="ERechnung.VirtualPrinter.Tasks.VirtualPrinterBackgroundTask"
           ThreadingModel="both" />

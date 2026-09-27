@@ -7,7 +7,6 @@ import {
   openArchiveEntryFile,
   openArchiveFolder,
   openArchiveReport,
-  setArchiveSigning,
   verifyArchive,
   type ArchiveEntryDetail,
   type ArchiveEntrySummary,
@@ -16,10 +15,13 @@ import {
   type ArchiveStatus,
   type ArchiveVerificationReport,
 } from "./archiveStore.js";
+import { listenSettingsChanged } from "./settingsWindow.js";
+import { subscription } from "./subscription.js";
 
 interface ArchiveViewProps {
   refreshToken: number;
   onDatev?: () => void;
+  onSettings?: () => void;
 }
 
 const PAGE_SIZE = 100;
@@ -45,12 +47,13 @@ function formatLabel(format: ArchiveFormat): string {
   return format === "xrechnung" ? "Behörden-Datei" : "PDF-Rechnung";
 }
 
-export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
+export function ArchiveView({ refreshToken, onDatev, onSettings }: ArchiveViewProps) {
   const [entries, setEntries] = useState<ArchiveEntrySummary[]>([]);
   const [filteredTotal, setFilteredTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string>();
   const [detail, setDetail] = useState<ArchiveEntryDetail>();
+  const [detailLoading, setDetailLoading] = useState(false);
   const [status, setStatus] = useState<ArchiveStatus>();
   const [search, setSearch] = useState("");
   const [format, setFormat] = useState<"" | ArchiveFormat>("");
@@ -61,7 +64,6 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
   const [error, setError] = useState("");
   const [verification, setVerification] = useState<ArchiveVerificationReport>();
   const [verifying, setVerifying] = useState(false);
-  const [changingProtection, setChangingProtection] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,13 +95,22 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
 
   useEffect(() => {
     let cancelled = false;
-    void getArchiveStatus().then((nextStatus) => {
-      if (!cancelled) setStatus(nextStatus);
-    }).catch((reason) => {
-      console.error(reason);
-      if (!cancelled) setError("Der Archivstatus konnte nicht geladen werden.");
-    });
-    return () => { cancelled = true; };
+    const load = () => {
+      void getArchiveStatus().then((nextStatus) => {
+        if (!cancelled) setStatus(nextStatus);
+      }).catch((reason) => {
+        console.error(reason);
+        if (!cancelled) setError("Der Archivstatus konnte nicht geladen werden.");
+      });
+    };
+    load();
+    const stop = subscription(listenSettingsChanged((scope) => {
+      if (scope === "archive") load();
+    }));
+    return () => {
+      cancelled = true;
+      stop();
+    };
   }, [refreshToken]);
 
   useEffect(() => {
@@ -108,8 +119,9 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
 
   useEffect(() => {
     let cancelled = false;
+    setDetail(undefined);
+    setDetailLoading(Boolean(selectedId));
     if (!selectedId) {
-      setDetail(undefined);
       return;
     }
     void getArchiveEntry(selectedId).then((entry) => {
@@ -117,22 +129,11 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
     }).catch((reason) => {
       console.error(reason);
       if (!cancelled) setError("Der Archiveintrag konnte nicht geöffnet werden.");
+    }).finally(() => {
+      if (!cancelled) setDetailLoading(false);
     });
     return () => { cancelled = true; };
   }, [selectedId]);
-
-  async function changeProtection(enabled: boolean) {
-    setChangingProtection(true);
-    setError("");
-    try {
-      setStatus(await setArchiveSigning(enabled));
-    } catch (reason) {
-      console.error(reason);
-      setError("Der zusätzliche Schutz konnte nicht geändert werden.");
-    } finally {
-      setChangingProtection(false);
-    }
-  }
 
   async function checkArchive() {
     setVerifying(true);
@@ -149,7 +150,7 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
   }
 
   async function openEntryFile(kind: "pdf" | "xml" | "report") {
-    if (!detail) return;
+    if (!detail || detail.id !== selectedId) return;
     try {
       await openArchiveEntryFile(detail.id, kind);
     } catch (reason) {
@@ -184,9 +185,9 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
         <p>{status?.entryCount ?? 0} {(status?.entryCount ?? 0) === 1 ? "Rechnung" : "Rechnungen"} lokal abgelegt</p>
       </div>
       <div className="archive-heading-actions">
-        {onDatev && <button className="secondary" onClick={onDatev}>Für die Steuerkanzlei exportieren</button>}
-        <button className="secondary" onClick={() => void openFolder()}>Archivordner öffnen</button>
-        <button className="primary" disabled={verifying} onClick={() => void checkArchive()}>
+        {onDatev && <button type="button" className="secondary" onClick={onDatev}>Für die Steuerkanzlei exportieren</button>}
+        <button type="button" className="secondary" onClick={() => void openFolder()}>Archivordner öffnen</button>
+        <button type="button" className="primary" disabled={verifying} onClick={() => void checkArchive()}>
           {verifying ? "Archiv wird geprüft …" : "Archiv prüfen"}
         </button>
       </div>
@@ -197,17 +198,12 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
     <div className="archive-protection">
       <div>
         <strong>Zusätzlicher Schutz für neue Rechnungen</strong>
-        <span>Neue Einträge können mit einem nur auf diesem Computer gespeicherten Schlüssel bestätigt werden. Bereits archivierte Rechnungen bleiben unverändert.</span>
+        <span>Neue Einträge können mit einem nur auf diesem Computer gespeicherten Schlüssel bestätigt werden. Der Schalter liegt in den Einstellungen. Bereits archivierte Rechnungen bleiben unverändert.</span>
       </div>
-      <label className="switch-label">
-        <input
-          type="checkbox"
-          checked={status?.signingEnabled ?? false}
-          disabled={!status || changingProtection}
-          onChange={(event) => void changeProtection(event.target.checked)}
-        />
-        <span>{status?.signingEnabled ? "Eingeschaltet" : "Ausgeschaltet"}</span>
-      </label>
+      <div className="archive-protection-actions">
+        <span className="switch-label">{status?.signingEnabled ? "Eingeschaltet" : "Ausgeschaltet"}</span>
+        {onSettings && <button type="button" className="secondary" onClick={onSettings}>Einstellungen öffnen</button>}
+      </div>
     </div>
 
     {verification && <section className={`verification-result ${verification.valid ? "valid" : "invalid"}`} aria-live="polite">
@@ -247,7 +243,9 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
           <span>{status?.entryCount ? "Ändern Sie die Suche oder die Filter." : "Sobald Sie eine E-Rechnung speichern, erscheint sie automatisch hier."}</span>
         </div>}
         {entries.map((entry) => <button
+          type="button"
           className={`archive-list-item${entry.id === selectedId ? " selected" : ""}`}
+          aria-current={entry.id === selectedId ? "true" : undefined}
           key={entry.id}
           onClick={() => setSelectedId(entry.id)}
         >
@@ -264,8 +262,8 @@ export function ArchiveView({ refreshToken, onDatev }: ArchiveViewProps) {
         </nav>}
       </div>
 
-      <article className="archive-detail">
-        {!detail ? <div className="archive-empty"><strong>Rechnung auswählen</strong><span>Hier sehen Sie anschließend alle archivierten Angaben und Dateien.</span></div> : <>
+      <article className="archive-detail" aria-busy={detailLoading}>
+        {!detail || detail.id !== selectedId ? <div className="archive-empty" role="status"><strong>{detailLoading ? "Rechnung wird geladen …" : selectedId ? "Rechnung konnte nicht geladen werden" : "Rechnung auswählen"}</strong><span>{selectedId ? "Die Dateien werden erst nach erfolgreichem Laden bereitgestellt." : "Hier sehen Sie anschließend alle archivierten Angaben und Dateien."}</span></div> : <>
           <div className="archive-detail-title">
             <div><small>Archiveintrag #{detail.sequence}</small><h3>{detail.invoiceNumber}</h3><span>{formatLabel(detail.format)}</span></div>
             <span className={`archive-badge ${detail.independentlyChecked ? "signed" : ""}`}>{detail.independentlyChecked ? `Unabhängig geprüft${detail.ruleVersion ? ` (${detail.ruleVersion})` : ""}` : "Ohne unabhängige Prüfung archiviert"}</span>

@@ -1,0 +1,4 @@
+{
+  "extends": "./apps/desktop/tsconfig.json",
+  "include": ["test/**/*.ts", "test/**/*.tsx", "src/vite-url.d.ts"]
+}
