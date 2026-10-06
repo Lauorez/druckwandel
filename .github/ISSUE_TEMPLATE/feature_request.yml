@@ -1,0 +1,30 @@
+name: Funktion vorschlagen
+description: Eine Idee oder Verbesserung vorschlagen.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem soll gelöst werden?
+      description: Beschreibe den Anwendungsfall, z. B. eine Rechnungsart, die noch nicht unterstützt wird.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Vorgeschlagene Lösung
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativen oder Workarounds
+    validations:
+      required: false
+  - type: textarea
+    id: references
+    attributes:
+      label: Normen und Quellen
+      description: Relevante Stellen in EN 16931, XRechnung, ZUGFeRD/Factur-X, DATEV-Spezifikationen oder Gesetzestexten.
+    validations:
+      required: false

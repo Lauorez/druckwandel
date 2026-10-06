@@ -1,8 +1,16 @@
-name: Windows build
+name: Printer Windows build
 
 on:
+  workflow_dispatch:
   push:
+    branches: [main]
+    paths:
+      - "drucker/**"
+      - ".github/workflows/printer-windows-build.yml"
   pull_request:
+    paths:
+      - "drucker/**"
+      - ".github/workflows/printer-windows-build.yml"
 
 permissions:
   contents: read
@@ -10,23 +18,23 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: drucker
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Build signed MSIX package
-        shell: pwsh
         run: ./scripts/build.ps1
       - name: Build interactive print smoke sender
-        shell: pwsh
         run: dotnet build tests/PrintSmokeSender/PrintSmokeSender.csproj --configuration Release
       - name: Smoke-test install, printer registration, and uninstall
-        shell: pwsh
         run: ./scripts/smoke-install.ps1
       - name: Collect Windows diagnostics
         if: always()
-        shell: pwsh
         run: ./scripts/collect-diagnostics.ps1 -EventLookbackMinutes 10
       - name: Upload development package
         if: always()
@@ -34,7 +42,7 @@ jobs:
         with:
           name: erechnung-virtual-printer-x64
           path: |
-            artifacts/packages/**/*.msix
-            artifacts/diagnostics/**
-            .cert/ERechnung.Dev.cer
+            drucker/artifacts/packages/**/*.msix
+            drucker/artifacts/diagnostics/**
+            drucker/.cert/ERechnung.Dev.cer
           if-no-files-found: error

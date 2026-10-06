@@ -1,0 +1,59 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie erwartet.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für die Meldung! **Bitte keine echten Rechnungen, IBANs oder personenbezogenen Daten anhängen.** Sicherheitslücken bitte privat melden, siehe SECURITY.md.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Komponente
+      options:
+        - Erkennung/Extraktion aus PDF
+        - Prüfung und Bearbeitung (Oberfläche)
+        - XRechnung-/ZUGFeRD-Ausgabe
+        - Rechnungsarchiv
+        - DATEV-Export
+        - Virtueller Drucker „E-Rechnung“
+        - Installer/Setup
+        - Sonstiges
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Was ist passiert?
+      description: Beschreibe das beobachtete Verhalten und was du stattdessen erwartet hast.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zur Reproduktion
+      placeholder: |
+        1. Musterrechnung öffnen
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version oder Commit
+      placeholder: z. B. 0.3.0 oder f0cbdf3
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Betriebssystem
+      placeholder: z. B. Windows 11 24H2 (Build 26100), x64
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Fehlermeldungen oder Logs
+      description: Bitte vorher auf vertrauliche Inhalte prüfen. Für Druckerprobleme hilft `drucker/scripts/collect-diagnostics.ps1`.
+      render: text

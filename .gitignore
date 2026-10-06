@@ -42,3 +42,8 @@ apps/desktop/src-tauri/resources/validators/mustang/
 apps/desktop/src-tauri/resources/validators/verapdf/
 apps/desktop/src-tauri/resources/validators/checksums.json
 apps/desktop/src-tauri/installer/windows/payload/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

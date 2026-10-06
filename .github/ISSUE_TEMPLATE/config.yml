@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/Lauorez/erechnung/security/advisories/new
+    about: Schwachstellen bitte privat und nicht als öffentliches Issue melden.
