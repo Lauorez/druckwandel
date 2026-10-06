@@ -7,6 +7,7 @@ use std::{
 use uuid::Uuid;
 
 const MAGIC: &[u8] = b"ERDP1\0";
+#[cfg(windows)]
 const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
 
 pub(crate) fn load_key(path: &Path) -> Result<[u8; 32], String> {
