@@ -7,7 +7,7 @@ $package = Get-ChildItem -Path (Join-Path $workspace 'drucker\src\CompanionApp\A
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
 if (-not $package) {
-    throw 'Kein aktuelles WP5-MSIX gefunden. Führe zuerst npm run wp5:build aus.'
+    throw 'Kein aktuelles Drucker-MSIX gefunden. Führe zuerst npm run printer:build aus.'
 }
 $packagePath = $package.FullName
 $artifactRoot = $package.DirectoryName

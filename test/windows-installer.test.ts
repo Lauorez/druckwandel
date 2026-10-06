@@ -60,7 +60,7 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(trust).toContain("Import-Certificate");
   });
 
-  it("stellt den Windows-Vorführrechner mit einem Setup-Skript auf", () => {
+  it("richtet einen frischen Windows-Rechner mit einem Setup-Skript ein", () => {
     const setup = readFileSync(resolve(root, "scripts/setup-windows.ps1"), "utf8");
     expect(setup).toContain("26100");
     expect(setup).toContain("PROCESSOR_ARCHITEW6432");

@@ -2,7 +2,7 @@
 
 ## Aktueller Stand vom 27.09.2026
 
-Anwendung **0.3.4** ergänzt die Administratorabfrage für das Entwicklungszertifikat. Der Drucker **0.1.0.12** bleibt unverändert. Der [Installationsbericht 0.3.4](installation-0.3.4-2026-09-27.md) beschreibt den neuen Ablauf. Die reale Druckprüfung aus [0.3.3](installation-0.3.3-2026-09-27.md) bleibt die Referenz für den NativeAOT-Drucker.
+Anwendung **0.3.4** ergänzt die Administratorabfrage für das Entwicklungszertifikat. Der Drucker **0.1.0.12** bleibt unverändert. Der [Installationsbericht 0.3.4](releases/installation-0.3.4-2026-09-27.md) beschreibt den neuen Ablauf. Die reale Druckprüfung aus [0.3.3](releases/installation-0.3.3-2026-09-27.md) bleibt die Referenz für den NativeAOT-Drucker.
 
 ## Prüfergebnis vom 11.09.2026
 
@@ -48,7 +48,7 @@ Ergebnis dieses Stands: `artifacts/windows/E-Rechnungs-Assistent-0.3.4-x64-Setup
 
 Das Setup normal starten, nicht „Als Administrator“. Bei einem Update legt das Setup zuerst einen Snapshot unter `%LOCALAPPDATA%\de.erechnung.converter\update-backup\<Version>` an (`WIEDERHERSTELLUNG.txt` im selben Ordner). Arbeitsentwürfe und `Dokumente\E-Rechnungsarchiv` bleiben unangetastet. Eine kleinere Versionsnummer als die bereits installierte wird abgewiesen. Das Setup aktualisiert den Drucker nur, wenn die Paketversion neuer ist. Die Deinstallation entfernt den Drucker, nicht das Archiv.
 
-`drucker/scripts/test-native-task.ps1` aktiviert den nativen Background-Task in einem Windows-PowerShell-Prozess und prüft, dass kein CoreCLR geladen wird. Der Test ist Teil von `wp5:build`. `drucker/scripts/test.ps1` prüft weiterhin die persistierten Job- und Übergabeformate.
+`drucker/scripts/test-native-task.ps1` aktiviert den nativen Background-Task in einem Windows-PowerShell-Prozess und prüft, dass kein CoreCLR geladen wird. Der Test ist Teil von `npm run printer:build`. `drucker/scripts/test.ps1` prüft weiterhin die persistierten Job- und Übergabeformate.
 
 ## Vorführung
 

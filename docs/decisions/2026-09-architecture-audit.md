@@ -50,7 +50,7 @@ cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- 
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 powershell -NoProfile -ExecutionPolicy Bypass -File drucker/scripts/test.ps1
 npm run desktop:build
-npm run wp5:build
+npm run printer:build
 ```
 
 Für Formatänderungen kommen KoSIT für XRechnung und Mustang für ZUGFeRD/Factur-X hinzu. Ein Prüfergebnis darf nur dem Profil zugerechnet werden, dessen Szenario tatsächlich gewählt wurde.

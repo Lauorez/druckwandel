@@ -40,9 +40,9 @@ Das Projekt verwendet die aktuelle Virtual-Printer-API, die erst mit Build 26100
 Im Wurzelverzeichnis des Gesamtprojekts wird der bestätigte Build- und Installationsweg verwendet:
 
 ```powershell
-npm run wp5:build
+npm run printer:build
 # anschließend in einer PowerShell als Administrator:
-npm run wp5:install
+npm run printer:install
 ```
 
 Das Zertifikat ist ausschließlich für lokale Entwicklungstests bestimmt. Für verteilbare Pakete ist ein vertrauenswürdiges Codesigning-Zertifikat oder Store-Signing erforderlich.
@@ -51,7 +51,7 @@ Das Zertifikat ist ausschließlich für lokale Entwicklungstests bestimmt. Für 
 
 ```powershell
 git clone https://github.com/Lauorez/erechnung.git
-cd erechnung
+cd erechnung\drucker
 # PowerShell zuvor als Administrator öffnen
 Set-ExecutionPolicy -Scope Process Bypass
 ./scripts/build.ps1
@@ -182,9 +182,6 @@ Anwendung → Windows Print Pipeline → OXPS/PDF
 Das Manifest enthält absichtlich kein `OutputFileTypes`. Dadurch wird die Queue nicht als klassischer File Printer registriert und Windows sollte keinen Speichern-unter-Dialog anzeigen.
 
 Details: [docs/architecture.md](docs/architecture.md) und [docs/windows-print-api-notes.md](docs/windows-print-api-notes.md).
-
-Der vollständige aktuelle Arbeitsstand für die Fortsetzung auf einem anderen Gerät steht in [docs/PROGRESS.md](docs/PROGRESS.md).
-
 ## Bekannte Einschränkungen
 
 - Der OXPS-Druckpfad, Mehrseitigkeit, A4-Querformat, Grafik/Farbe/Tabelle und zwei parallele Jobs sind auf einem interaktiven Windows-11-x64-System bestätigt; Browser, Word, Excel und ARM64 stehen noch aus.

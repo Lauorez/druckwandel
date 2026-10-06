@@ -40,7 +40,7 @@ Geprüfter Arbeitsstand: E-Rechnungs-Assistent 0.3.1 unter Windows, einschließl
 | `npm audit` | 0 bekannte Schwachstellen, einschließlich Entwicklungsabhängigkeiten |
 | `git diff --check` | Keine Whitespace-Fehler |
 
-Die XML-/PDF-Prüfungen verwenden die tatsächlich heruntergeladenen KoSIT-1.6.3-, Mustang-2.26.0- und veraPDF-1.28.2-Artefakte mit Temurin 21 und XRechnung-Konfiguration 2026-01-31. Versionen und Quellen stehen im [Validator-Manifest](../apps/desktop/src-tauri/resources/validators/manifest.json). KoSIT-Release und Konfiguration wurden zusätzlich direkt über die GitHub-Release-API verifiziert; ältere Suchmaschinenstände wurden nicht als Versionsnachweis verwendet.
+Die XML-/PDF-Prüfungen verwenden die tatsächlich heruntergeladenen KoSIT-1.6.3-, Mustang-2.26.0- und veraPDF-1.28.2-Artefakte mit Temurin 21 und XRechnung-Konfiguration 2026-01-31. Versionen und Quellen stehen im [Validator-Manifest](../../apps/desktop/src-tauri/resources/validators/manifest.json). KoSIT-Release und Konfiguration wurden zusätzlich direkt über die GitHub-Release-API verifiziert; ältere Suchmaschinenstände wurden nicht als Versionsnachweis verwendet.
 
 Lokale maschinenlesbare Ergebnisse liegen in `artifacts/corpus-report.json`, `artifacts/synthetic-fuzz-report.json`, `artifacts/dependency-audit.json`, `artifacts/xml-regressions/report.json` und `artifacts/hybrid-regression/report.json`. Generierte Binärdateien und Prüfartefakte bleiben außerhalb von Git.
 

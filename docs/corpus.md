@@ -1,10 +1,10 @@
-# WP6: Ground-Truth-Korpus
+# Ground-Truth-Korpus und Qualitätsgate
 
 Der Korpus ist das verpflichtende Quality Gate für Änderungen an PDF-Extraktion, Review-Mapping und Unsupported-Case-Erkennung.
 
 ## Standardlauf
 
-    npm run wp6:check
+    npm run corpus:check
 
 Der Befehl erzeugt zwölf deterministische, anonymisierte Referenz-PDFs, vergleicht ihre Extraktion mit test/corpus/manifest.json und führt anschließend 250 generierte Rechnungen durch die komplette PDF-Pipeline. Geprüft werden:
 
@@ -69,7 +69,7 @@ Vor einer Weitergabe oder Aufnahme in ein gemeinsames Korpus muss ein Beleg tats
 
 1. PDF-Erzeugung in scripts/generate-corpus.ts ergänzen.
 2. Erwartete Werte in test/corpus/manifest.json eintragen.
-3. npm run wp6:check ausführen.
+3. npm run corpus:check ausführen.
 4. Bei einer absichtlich nicht unterstützten Rechnung den stabilen Policy-Code in src/policy/unsupported-cases.ts ergänzen.
 5. Einen Unit-Test für die neue Regel hinzufügen.
 

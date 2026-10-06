@@ -9,7 +9,7 @@ Stand: 07.09.2026. Lokale Entwicklungsabnahme, keine 1.0-Freigabe.
 - Summen und belegbare Angaben werden mit der Quellrechnung verglichen. Unaufgelöste Abweichungen verhindern die Fertigstellung. Ergänzte Werte brauchen eine ausdrückliche Bestätigung.
 - Native Fertigstellung einer PDF-Rechnung prüft XML (Mustang), den bytegleichen XML-Extrakt aus der PDF und PDF/A-3b (veraPDF). Ohne maschinenlesbaren Bericht gilt die Datei als nicht geprüft.
 
-Die Konverterentscheidung steht in [pdfa-converter-decision.md](pdfa-converter-decision.md).
+Die Konverterentscheidung steht in [pdfa-converter-decision.md](../decisions/pdfa-converter.md).
 
 ## Prüfungen
 

@@ -4,11 +4,11 @@ Stand: 16.09.2026. Lokale Entwicklungsabnahme, **keine 1.0-Freigabe** und keine 
 
 ## Umsetzung
 
-- Die Abnahmematrix in [acceptance-matrix.md](acceptance-matrix.md) nennt Datum, App-/Standardversion, Betriebssystem, Testdaten und Ergebnis. Ungeprüfte Kombinationen bleiben ungeprüft; lokale Unit-Tests ersetzen keinen Druck-, Update-, DATEV- oder Pilotnachweis.
+- Die Abnahmematrix in [acceptance-matrix.md](../acceptance-matrix.md) nennt Datum, App-/Standardversion, Betriebssystem, Testdaten und Ergebnis. Ungeprüfte Kombinationen bleiben ungeprüft; lokale Unit-Tests ersetzen keinen Druck-, Update-, DATEV- oder Pilotnachweis.
 - Native Abläufe im echten Tauri-Fenster: `scripts/smoke-workspace.mjs` (Import, Warteschlange, Neustart, Schließen) und `scripts/smoke-release.mjs` (Archiv, DATEV-Ansicht, Diagnose/Sicherung, Escape, 100/150/200 %). Nur isolierte `erechnung-wp*`-Profile. Nachweis: `artifacts/wp14-native-smoke.json`, sonst im Release-Gate **pending**.
 - Drucken bei geschlossener App bleibt `scripts/smoke-print-workspace.ps1` auf dem installierten Drucker; ohne `artifacts/wp7-print-smoke.json` ungeprüft.
 - Bedienbarkeit: sichtbarer Tastaturfokus, `aria-current` in der Navigation, Escape schließt Einstellungen (Fenster und Overlay), Speicherstatus, Ladehinweise, Export erst nach Bestätigung der Originalangaben, DATEV-Wiederholung nur mit Bestätigung und Begründung.
-- Pilotunterlage: [pilot-guide.md](pilot-guide.md).
+- Pilotunterlage: [pilot-guide.md](../pilot-guide.md).
 
 ## Prüfungen
 

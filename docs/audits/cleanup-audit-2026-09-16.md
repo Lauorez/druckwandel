@@ -33,11 +33,11 @@ Geprüfter Arbeitsstand: E-Rechnungs-Assistent 0.3.1 unter Windows, einschließl
 | Debug-Build | `npx tauri build --debug --no-bundle`; EXE unter `apps/desktop/src-tauri/target/debug/erechnung-desktop.exe` |
 | `npm run release:gate` | Ohne Blocker. 9 bestanden, 3 ausstehend (DATEV-Prüfprogramm, cargo-audit, Produktionssignaturen). Nachweis `artifacts/release-gate.json` (2026-09-16T15:57:43.873Z) |
 
-Die XML-/PDF-Prüfungen verwenden KoSIT 1.6.3, Mustang 2.26.0, veraPDF 1.28.2 und Temurin 21 mit XRechnung-Konfiguration 2026-01-31 laut [Validator-Manifest](../apps/desktop/src-tauri/resources/validators/manifest.json).
+Die XML-/PDF-Prüfungen verwenden KoSIT 1.6.3, Mustang 2.26.0, veraPDF 1.28.2 und Temurin 21 mit XRechnung-Konfiguration 2026-01-31 laut [Validator-Manifest](../../apps/desktop/src-tauri/resources/validators/manifest.json).
 
 ## Abnahmematrix
 
-[acceptance-matrix.md](acceptance-matrix.md) wurde durch `npm run release:matrix` im Gate aktualisiert. Die native Fensterzeile ist mit dem WP14-Smoke **bestanden**. Ungeprüft bleiben:
+[acceptance-matrix.md](../acceptance-matrix.md) wurde durch `npm run release:matrix` im Gate aktualisiert. Die native Fensterzeile ist mit dem WP14-Smoke **bestanden**. Ungeprüft bleiben:
 
 - Update vom echten 0.2.2-Teststand
 - DATEV-Testimport / unbeaufsichtigtes offizielles Prüfprogramm
