@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn omits_paths_and_invoice_payloads() {
-        let root = std::env::temp_dir().join(format!("erechnung-diagnose-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("erechnung-diagnostics-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let report = report_from(&root.join("documents"), &root.join("local"), &root.join("roaming"), Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/validators").as_path()).unwrap();
         let json = serde_json::to_string(&report).unwrap();

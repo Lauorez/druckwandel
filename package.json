@@ -48,7 +48,7 @@
     "printer:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/printer-build.ps1",
     "printer:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/printer-reinstall.ps1",
     "printer:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/printer-repair-spooler.ps1",
-    "printer:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File drucker/scripts/uninstall.ps1",
+    "printer:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File printer/scripts/uninstall.ps1",
     "extract:pdf": "tsx scripts/extract-pdf.ts",
     "corpus:generate": "tsx scripts/generate-corpus.ts",
     "corpus:evaluate": "tsx scripts/evaluate-corpus.ts",

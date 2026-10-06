@@ -12,7 +12,7 @@ Das Buildskript prüft die einzubettenden Pakete erneut und erzeugt eine SHA-256
 
 ## 1. Druckannahme und Windows-Druckbrücke
 
-Unter Windows registriert das MSIX-Projekt in `drucker/` einen Print-Support-Virtual-Printer namens **E-Rechnung**. Windows übergibt den Druckjob als OXPS an den Background Task. Dieser erzeugt lokal ein PDF. Die als WinUI-App paketierte Druckbrücke kopiert anschließend PDF und Metadaten atomar nach `Dokumente\E-Rechnung Druckeingang`:
+Unter Windows registriert das MSIX-Projekt in `printer/` einen Print-Support-Virtual-Printer namens **E-Rechnung**. Windows übergibt den Druckjob als OXPS an den Background Task. Dieser erzeugt lokal ein PDF. Die als WinUI-App paketierte Druckbrücke kopiert anschließend PDF und Metadaten atomar nach `Dokumente\E-Rechnung Druckeingang`:
 
     <UUID>.pdf
     <UUID>.printjob.json

@@ -10,7 +10,7 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
-      # Tauri-Minor-Versionen brauchen ein neueres Rust als rust-toolchain.toml.
+      # Tauri minor releases require a newer Rust than rust-toolchain.toml.
       - dependency-name: "@tauri-apps/api"
         update-types:
           - version-update:semver-minor
@@ -18,7 +18,7 @@ updates:
         update-types:
           - version-update:semver-minor
     groups:
-      # Muss zusammen mit der Cargo-Gruppe "tauri" aktualisiert werden.
+      # Must be updated together with the Cargo group "tauri".
       tauri:
         patterns:
           - "@tauri-apps/*"
@@ -35,7 +35,7 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
-      # Tauri-Minor-Versionen brauchen ein neueres Rust als rust-toolchain.toml.
+      # Tauri minor releases require a newer Rust than rust-toolchain.toml.
       - dependency-name: "tauri"
         update-types:
           - version-update:semver-minor
@@ -43,7 +43,7 @@ updates:
         update-types:
           - version-update:semver-minor
     groups:
-      # Muss zusammen mit der npm-Gruppe "tauri" aktualisiert werden.
+      # Must be updated together with the npm group "tauri".
       tauri:
         patterns:
           - "tauri"
@@ -52,7 +52,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: nuget
-    directory: /drucker
+    directory: /printer
     schedule:
       interval: weekly
       day: monday

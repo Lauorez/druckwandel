@@ -48,7 +48,7 @@ Ergebnis: `artifacts/windows/Druckwandel-<Version>-x64-Setup.exe` (bis 0.3.4 `E-
 
 Das Setup normal starten, nicht „Als Administrator“. Bei einem Update legt das Setup zuerst einen Snapshot unter `%LOCALAPPDATA%\de.erechnung.converter\update-backup\<Version>` an (`WIEDERHERSTELLUNG.txt` im selben Ordner). Arbeitsentwürfe und `Dokumente\E-Rechnungsarchiv` bleiben unangetastet. Eine kleinere Versionsnummer als die bereits installierte wird abgewiesen. Das Setup aktualisiert den Drucker nur, wenn die Paketversion neuer ist. Die Deinstallation entfernt den Drucker, nicht das Archiv.
 
-`drucker/scripts/test-native-task.ps1` aktiviert den nativen Background-Task in einem Windows-PowerShell-Prozess und prüft, dass kein CoreCLR geladen wird. Der Test ist Teil von `npm run printer:build`. `drucker/scripts/test.ps1` prüft weiterhin die persistierten Job- und Übergabeformate.
+`printer/scripts/test-native-task.ps1` aktiviert den nativen Background-Task in einem Windows-PowerShell-Prozess und prüft, dass kein CoreCLR geladen wird. Der Test ist Teil von `npm run printer:build`. `printer/scripts/test.ps1` prüft weiterhin die persistierten Job- und Übergabeformate.
 
 ## Vorführung
 

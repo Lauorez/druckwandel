@@ -16,7 +16,7 @@ SHA-256 der heruntergeladenen Prüfer: `apps/desktop/src-tauri/resources/validat
 | XRechnung-Konfiguration | xrechnung-3.0.2-2026-01-31 | XRechnung-Regeln | Apache-2.0 | https://github.com/itplr-kosit/validator-configuration-xrechnung |
 | Mustang-CLI | 2.26.0 | ZUGFeRD-XML | Apache-2.0 | https://repo.maven.apache.org/maven2/org/mustangproject/Mustang-CLI/2.26.0/ |
 | veraPDF Greenfield | 1.28.2 | PDF/A-3b | GPL-3.0-or-later OR MPL-2.0 | https://repo1.maven.org/maven2/org/verapdf/apps/greenfield-apps/1.28.2/ |
-| E-Rechnungsdrucker | 0.1.0.12 | Druckannahme | MIT | drucker/ |
+| E-Rechnungsdrucker | 0.1.0.12 | Druckannahme | MIT | printer/ |
 
 npm-Laufzeitabhängigkeiten: @napi-rs/canvas, @tauri-apps/api, @tauri-apps/plugin-deep-link, decimal.js, pdf-lib, pdfjs-dist, react, react-dom.
 

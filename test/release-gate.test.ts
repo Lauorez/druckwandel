@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const root = resolve(import.meta.dirname, "..");
 const read = (relative: string) => readFileSync(resolve(root, relative), "utf8");
 
-describe("WP13 Auslieferung", () => {
+describe("release delivery", () => {
   it("treats the official DATEV checker as pending unless it actually ran", () => {
     const gate = read("scripts/release-gate.mjs").replaceAll("\r\n", "\n");
     expect(gate).toContain('"datev-official"');

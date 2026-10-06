@@ -13,7 +13,7 @@
 - [Korpus und Qualitätsgate](corpus.md): Referenzkorpus, synthetische Rechnungen, sicheres Anonymisieren eigener Belege
 - [Gebündelte Komponenten](components.md): Versionen, Herkunft und Lizenzen (erzeugt von `npm run release:inventory`)
 - [Gebündelte Prüfwerkzeuge](../apps/desktop/src-tauri/resources/validators/README.md)
-- [Virtueller Drucker](../drucker/README.md) mit [Architektur](../drucker/docs/architecture.md), [Testplan](../drucker/docs/testing.md) und [Notizen zur Windows-Print-API](../drucker/docs/windows-print-api-notes.md)
+- [Virtueller Drucker](../printer/README.md) mit [Architektur](../printer/docs/architecture.md), [Testplan](../printer/docs/testing.md) und [Notizen zur Windows-Print-API](../printer/docs/windows-print-api-notes.md)
 
 ## Abnahme und Qualität
 

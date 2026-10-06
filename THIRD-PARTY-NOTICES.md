@@ -17,8 +17,8 @@ Wer einen eigenen Installer mit diesen Werkzeugen verteilt, muss die jeweiligen 
 
 ## Assets
 
-Die Platzhalter-Assets unter `drucker/src/CompanionApp/Assets` stammen aus [microsoft/print-oem-samples](https://github.com/microsoft/print-oem-samples) (MIT, Copyright (c) Microsoft Corporation). Der vollständige Lizenztext steht in [drucker/THIRD-PARTY-NOTICES.md](drucker/THIRD-PARTY-NOTICES.md).
+Die Platzhalter-Assets unter `printer/src/CompanionApp/Assets` stammen aus [microsoft/print-oem-samples](https://github.com/microsoft/print-oem-samples) (MIT, Copyright (c) Microsoft Corporation). Der vollständige Lizenztext steht in [printer/THIRD-PARTY-NOTICES.md](printer/THIRD-PARTY-NOTICES.md).
 
 ## Bibliotheken
 
-npm-, Cargo- und NuGet-Abhängigkeiten werden über die Paketmanager bezogen. Ihre Lizenzen stehen in den jeweiligen Paketen (`package-lock.json`, `apps/desktop/src-tauri/Cargo.lock`, `drucker/**/*.csproj`).
+npm-, Cargo- und NuGet-Abhängigkeiten werden über die Paketmanager bezogen. Ihre Lizenzen stehen in den jeweiligen Paketen (`package-lock.json`, `apps/desktop/src-tauri/Cargo.lock`, `printer/**/*.csproj`).

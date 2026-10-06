@@ -74,7 +74,7 @@ npm run printer:uninstall
 npm run printer:repair                             # Spooler-Reparatur (Administratorrechte)
 ```
 
-`printer:install` setzt voraus, dass Windows der Paketsignatur bereits vertraut. Beim Entwicklungszertifikat ist dafür ein vorheriger Import nach `LocalMachine\TrustedPeople` nötig; der Benutzer-Zertifikatspeicher genügt nicht. Mehr zum Drucker: [drucker/README.md](drucker/README.md).
+`printer:install` setzt voraus, dass Windows der Paketsignatur bereits vertraut. Beim Entwicklungszertifikat ist dafür ein vorheriger Import nach `LocalMachine\TrustedPeople` nötig; der Benutzer-Zertifikatspeicher genügt nicht. Mehr zum Drucker: [printer/README.md](printer/README.md).
 
 ## Entwicklung
 
@@ -104,7 +104,7 @@ src/                     TypeScript-Fachkern (plattformunabhängig)
 apps/desktop/            Tauri-Desktop-App
   src/                   React-Oberfläche
   src-tauri/             Rust-Backend: Dateien, SQLite, Archiv, Sicherung, Prüferstart, Deep Links
-drucker/                 Virtueller Windows-Drucker (.NET, WinUI 3, MSIX)
+printer/                 Virtueller Windows-Drucker (.NET, WinUI 3, MSIX)
 scripts/                 Build-, Installer-, Release-Gate-, Korpus- und Smoke-Test-Skripte
 test/                    Vitest-Suite, Fixtures und Referenzkorpus
 docs/                    Dokumentation

@@ -56,7 +56,7 @@ if (portable) {
 } else {
   const cargo = existsSync(resolve(root, "apps/desktop/src-tauri/Cargo.toml"));
   optional("rust", "Rust-Clippy und -Tests", cargo, npmCmd, ["run", "check:native"], "Cargo-Projekt fehlt.");
-  const csproj = resolve(root, "drucker/tests/PrintCore.Tests/PrintCore.Tests.csproj");
+  const csproj = resolve(root, "printer/tests/PrintCore.Tests/PrintCore.Tests.csproj");
   optional("dotnet", ".NET-Druckkern", existsSync(csproj), "dotnet", ["test", csproj, "--configuration", "Release"], "dotnet test nicht ausführbar.");
   const java = resolve(root, "apps/desktop/src-tauri/resources/validators/jre/bin", process.platform === "win32" ? "java.exe" : "java");
   optional("xml", "KoSIT/Mustang-Regressionen", existsSync(java), npmCmd, ["run", "check:xml"], "Gebündelte JRE fehlt. npm run validators:fetch auf Windows.");

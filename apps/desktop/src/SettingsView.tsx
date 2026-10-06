@@ -30,7 +30,7 @@ import {
   type BackupStatus,
   type RestorePreview,
 } from "./backupStore.js";
-import { diagnosticPreview, loadDiagnosticReport, saveDiagnosticReport, type DiagnosticReport } from "./diagnoseStore.js";
+import { diagnosticPreview, loadDiagnosticReport, saveDiagnosticReport, type DiagnosticReport } from "./diagnosticsStore.js";
 import { datevStore, emptyDatevProfile, parseStoredDatevProfile } from "./datevStore.js";
 import { DatevProfileForm } from "./DatevProfileForm.js";
 import { LearningProfilesSettings } from "./LearningProfilesSettings.js";
@@ -403,7 +403,7 @@ function DiagnosticSettings({ onMessage, onError }: { onMessage: (value: string)
   return <section className="settings-section">
     <h2>Diagnosebericht</h2>
     <p>Der Bericht enthält Versionen, Prüferstatus und Zähler. Keine PDF-, XML-, Bank- oder Rechnungsinhalte und keine persönlichen Dateipfade. Er wird nicht automatisch versendet.</p>
-    <pre className="diagnose-preview" tabIndex={0} aria-label="Vorschau des Diagnoseberichts">{preview || "Bericht wird gelesen …"}</pre>
+    <pre className="diagnostics-preview" tabIndex={0} aria-label="Vorschau des Diagnoseberichts">{preview || "Bericht wird gelesen …"}</pre>
     <label className="switch-label">
       <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
       <span>Ich habe die Vorschau geprüft und möchte den Bericht bewusst speichern.</span>

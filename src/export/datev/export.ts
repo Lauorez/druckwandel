@@ -4,7 +4,7 @@ import { money } from "../../domain/money.js";
 import { isIsoDate } from "../../domain/validate.js";
 import { partyIdentity, readInvoiceSnapshot } from "../invoice-snapshot.js";
 import { DATEV_COLUMNS, DATEV_GENERATING_SYSTEM, DATEV_TEXT_COLUMNS } from "./contract.js";
-import { belegGuid, belegLink } from "./documents.js";
+import { documentGuid, documentLink } from "./documents.js";
 import { checkedText, encodeWindows1252, quote } from "./encoding.js";
 import type { Booking, DatevBatch, DatevPreview, DatevProfile, DatevSource, InvoiceAssignment } from "./types.js";
 
@@ -102,7 +102,7 @@ export function previewDatev(profile: DatevProfile, sources: DatevSource[], assi
         const tax=money(group.net.mul(a.taxRate).div(100));
         const gross=money(group.net.add(tax));
         if (new Decimal(gross).gt("9999999999.99") || money(new Decimal(gross).mul(a.taxRate).div(new Decimal(100).add(a.taxRate)))!==tax) throw new Error("Dieser Betrag lässt sich mit DATEV-Steuerautomatik nicht centgenau abbilden.");
-        invoiceRows.push({archiveId:source.archiveId,documentId:source.documentId,contentHash:source.contentHash,duplicateKey,invoiceNumber:invoice.invoiceNumber,issueDate:invoice.issueDate,dueDate:invoice.dueDate??"",serviceDate,taxPeriodDate:profile.periodRule==="service-date"?serviceDate:invoice.issueDate,debtor,revenueAccount:a.account,taxKey:a.taxKey,taxRate:a.taxRate,net:money(group.net),tax,gross,text,belegGuid:belegGuid(source.contentHash)});
+        invoiceRows.push({archiveId:source.archiveId,documentId:source.documentId,contentHash:source.contentHash,duplicateKey,invoiceNumber:invoice.invoiceNumber,issueDate:invoice.issueDate,dueDate:invoice.dueDate??"",serviceDate,taxPeriodDate:profile.periodRule==="service-date"?serviceDate:invoice.issueDate,debtor,revenueAccount:a.account,taxKey:a.taxKey,taxRate:a.taxRate,net:money(group.net),tax,gross,text,documentGuid:documentGuid(source.contentHash)});
       }
       for (const tax of invoice.taxes) {
         const sum = invoiceRows.filter(r=>new Decimal(r.taxRate).eq(tax.rate)).reduce((s,r)=>s.add(r.tax),new Decimal(0));
@@ -137,7 +137,7 @@ export function serializeDatev(profile: DatevProfile,batch: DatevBatch,createdAt
     cells[0]=b.gross.replace(".",","); cells[1]="S"; cells[2]="EUR";
     cells[6]=b.debtor; cells[7]=b.revenueAccount; cells[8]=b.taxKey;
     cells[9]=dm(b.issueDate); cells[10]=b.invoiceNumber; cells[13]=b.text;
-    cells[19]=belegLink(b.belegGuid);
+    cells[19]=documentLink(b.documentGuid);
     cells[113]=profile.locking; cells[114]=dmy(b.serviceDate); cells[115]=b.serviceDate?dmy(b.taxPeriodDate):""; cells[116]=dmy(b.dueDate);
     lines.push(cells.map((c,i)=>DATEV_TEXT_COLUMNS.has(i)?quote(c):c).join(";"));
   }

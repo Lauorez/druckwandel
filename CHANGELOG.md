@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an Druckwandel (bis 0.3.4 „E-Rechnungs-Assistent“) werden in dieser Datei dokumentiert. Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
-Änderungen am virtuellen Drucker stehen zusätzlich in [drucker/CHANGELOG.md](drucker/CHANGELOG.md). Ausführliche Prüfberichte je Version liegen unter [docs/releases/](docs/releases/).
+Änderungen am virtuellen Drucker stehen zusätzlich in [printer/CHANGELOG.md](printer/CHANGELOG.md). Ausführliche Prüfberichte je Version liegen unter [docs/releases/](docs/releases/).
 
 ## [Unveröffentlicht]
 
@@ -17,12 +17,13 @@ Alle nennenswerten Änderungen an Druckwandel (bis 0.3.4 „E-Rechnungs-Assisten
 - Die Anwendung heißt jetzt **Druckwandel**, das Repository `Lauorez/druckwandel`. Das Setup installiert nach `%LOCALAPPDATA%\Druckwandel` und ersetzt eine vorhandene Installation des E-Rechnungs-Assistenten wie ein Update; Daten, Archiv, Vorlagengedächtnis und Drucker bleiben erhalten. Interne Kennungen (`de.erechnung.converter`, `erechnung-review://`, Drucker „E-Rechnung“, Ordner unter „Dokumente“, DATEV-Herkunftskennung) sind unverändert.
 - npm-Skripte umbenannt: `wp5:*` → `printer:*`, `wp6:check` → `corpus:check`. Die zugehörigen Skripte heißen jetzt `scripts/printer-build.ps1`, `printer-reinstall.ps1`, `printer-repair-spooler.ps1` und `smoke-native-window.ps1`; der Workflow „Windows-Vorführinstaller“ heißt „Windows-Setup“ und ist nicht mehr auf eine Version festgelegt.
 - Neues Logo: ein Drucker, aus dem das geprüfte Dokument kommt. Auch die Druckerbegleit-App nutzt es jetzt statt der Vorlagen-Platzhalter.
+- Code durchgehend auf Englisch: Der Druckerordner heißt `printer/` statt `drucker/`, das Diagnosemodul `diagnostics` statt `diagnose`, der DATEV-Export verwendet `documentGuid`/`documentLink` statt `belegGuid`/`belegLink`. Kommentare und Testtitel sind englisch. Oberfläche, Meldungen und Dokumentation bleiben deutsch, gespeicherte Formate und Kennungen unverändert.
 - Dokumentation unter `docs/` neu gegliedert (Abnahmeprotokolle, Entscheidungen, Prüfberichte, Installationsberichte, Planung).
 
 ### Behoben
 
 - Lizenzangabe von KoSIT-Validator und XRechnung-Konfiguration im Validatorenmanifest und in `docs/components.md` korrigiert (Apache-2.0 statt EUPL-1.2).
-- `npm run printer:install` suchte das Drucker-MSIX nur im veralteten Ordner `drucker\src\CompanionApp\AppPackages`, der Installer-Build zusätzlich dort. Beide konnten so ein altes Paket verwenden oder keines finden. Sie nehmen jetzt nur noch die Ausgabe von `drucker/scripts/build.ps1` unter `drucker\artifacts\packages`.
+- `npm run printer:install` suchte das Drucker-MSIX nur im veralteten Ordner `printer\src\CompanionApp\AppPackages`, der Installer-Build zusätzlich dort. Beide konnten so ein altes Paket verwenden oder keines finden. Sie nehmen jetzt nur noch die Ausgabe von `printer/scripts/build.ps1` unter `printer\artifacts\packages`.
 
 ## [0.3.4] – 2026-09-27
 

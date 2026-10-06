@@ -1,7 +1,7 @@
 mod archive;
 mod backup;
 mod datev;
-mod diagnose;
+mod diagnostics;
 mod guard;
 mod paths;
 mod protect;
@@ -473,8 +473,8 @@ pub fn run() {
             backup::backup_preview,
             backup::backup_confirm,
             backup::backup_resume,
-            diagnose::diagnostic_report,
-            diagnose::write_diagnostic_report
+            diagnostics::diagnostic_report,
+            diagnostics::write_diagnostic_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running Druckwandel");

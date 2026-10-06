@@ -26,7 +26,7 @@ const components = [
   { name: "XRechnung-Konfiguration", version: validators.kosit.ruleVersion, license: validators.kosit.license, source: validators.kosit.configurationSource, role: "XRechnung-Regeln" },
   { name: "Mustang-CLI", version: validators.mustang.engineVersion, license: validators.mustang.license, source: validators.mustang.source, role: "ZUGFeRD-XML" },
   { name: "veraPDF Greenfield", version: validators.verapdf.engineVersion, license: validators.verapdf.license, source: validators.verapdf.source, role: "PDF/A-3b" },
-  { name: "E-Rechnungsdrucker", version: "MSIX CompanionApp", license: "MIT", source: "drucker/", role: "Druckannahme" },
+  { name: "E-Rechnungsdrucker", version: "MSIX CompanionApp", license: "MIT", source: "printer/", role: "Druckannahme" },
 ];
 
 const npm = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).map(([name, version]) => ({

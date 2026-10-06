@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const root = resolve(import.meta.dirname, "..");
 const read = (relative: string) => readFileSync(resolve(root, relative), "utf8");
 
-describe("Release-Candidate-Nachweise", () => {
+describe("release-candidate evidence", () => {
   it("does not treat missing hardware evidence as passed", () => {
     const matrix = read("docs/acceptance-matrix.md");
     expect(matrix).toContain("ungeprüft");

@@ -5,11 +5,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "drucker/**"
+      - "printer/**"
       - ".github/workflows/printer-windows-build.yml"
   pull_request:
     paths:
-      - "drucker/**"
+      - "printer/**"
       - ".github/workflows/printer-windows-build.yml"
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
-        working-directory: drucker
+        working-directory: printer
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -42,7 +42,7 @@ jobs:
         with:
           name: erechnung-virtual-printer-x64
           path: |
-            drucker/artifacts/packages/**/*.msix
-            drucker/artifacts/diagnostics/**
-            drucker/.cert/ERechnung.Dev.cer
+            printer/artifacts/packages/**/*.msix
+            printer/artifacts/diagnostics/**
+            printer/.cert/ERechnung.Dev.cer
           if-no-files-found: error

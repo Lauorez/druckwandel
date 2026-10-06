@@ -9,13 +9,13 @@ import type { Booking, DatevDocumentFile, DatevDocumentPackage } from "./types.j
 
 const GUID = /^[0-9A-F]{8}-[0-9A-F]{4}-5[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/;
 
-export function belegGuid(contentHash: string): string {
+export function documentGuid(contentHash: string): string {
   const hex = contentHash.toLowerCase().replace(/[^0-9a-f]/g, "");
   if (hex.length < 32) throw new Error("Für den Beleglink fehlt der Rechnungsstand.");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-A${hex.slice(17, 20)}-${hex.slice(20, 32)}`.toUpperCase();
 }
 
-export function belegLink(guid: string): string {
+export function documentLink(guid: string): string {
   if (!GUID.test(guid)) throw new Error("Ungültige Belegkennung.");
   return `BEDI "${guid}"`;
 }
@@ -30,8 +30,8 @@ export function documentFiles(bookings: Booking[]): DatevDocumentFile[] {
   for (const booking of bookings) {
     if (seen.has(booking.archiveId)) continue;
     seen.add(booking.archiveId);
-    const guid = booking.belegGuid || belegGuid(booking.contentHash);
-    if (guid !== belegGuid(booking.contentHash)) throw new Error("Die Belegkennung passt nicht zum Rechnungsstand.");
+    const guid = booking.documentGuid || documentGuid(booking.contentHash);
+    if (guid !== documentGuid(booking.contentHash)) throw new Error("Die Belegkennung passt nicht zum Rechnungsstand.");
     files.push({ archiveId: booking.archiveId, guid, pdfName: `${guid}.pdf`, xmlName: `${guid}.xml` });
   }
   return files;
@@ -41,7 +41,7 @@ export function serializeDocumentXml(files: DatevDocumentFile[], createdAt: Date
   if (!files.length || !Number.isFinite(createdAt.getTime())) throw new Error("Leeres oder ungültiges Belegpaket.");
   const stamp = createdAt.toISOString().slice(0, 19);
   const documents = files.map((file) => {
-    belegLink(file.guid);
+    documentLink(file.guid);
     if (file.pdfName !== `${file.guid}.pdf` || file.xmlName !== `${file.guid}.xml`) {
       throw new Error("Die Belegdateinamen müssen der Belegkennung entsprechen.");
     }

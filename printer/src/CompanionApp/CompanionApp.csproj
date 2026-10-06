@@ -51,6 +51,6 @@
   </ItemGroup>
 
   <Target Name="IncludeTasksWinmd" AfterTargets="Build">
-    <Error Condition="!Exists('$(NativePrinterTaskPath)')" Text="Der native Drucker-Task fehlt. Zuerst drucker/scripts/build-native-task.ps1 ausführen." />
+    <Error Condition="!Exists('$(NativePrinterTaskPath)')" Text="Der native Drucker-Task fehlt. Zuerst printer/scripts/build-native-task.ps1 ausführen." />
   </Target>
 </Project>

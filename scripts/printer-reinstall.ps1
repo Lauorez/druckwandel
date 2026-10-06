@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $workspace = Split-Path -Parent $PSScriptRoot
-$package = Get-ChildItem -Path (Join-Path $workspace 'drucker\artifacts\packages') `
+$package = Get-ChildItem -Path (Join-Path $workspace 'printer\artifacts\packages') `
     -Recurse -File -Filter 'CompanionApp_*.msix' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' } |
     Sort-Object LastWriteTimeUtc -Descending |

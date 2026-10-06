@@ -17,9 +17,9 @@ export interface TaxCase {
 }
 
 /**
- * Freigegebene Steuerfälle für WP11b. 0 % allein ist kein Fall:
- * Reverse Charge, Steuerbefreiung und innergemeinschaftliche Lieferung
- * müssen ausdrücklich gewählt werden.
+ * Supported tax cases. 0 % on its own is not a case:
+ * reverse charge, tax exemption and intra-community supply
+ * must be chosen explicitly.
  */
 export const TAX_CASES: readonly TaxCase[] = [
   { id: "S19", categoryCode: "S", rate: "19", label: "19 % Umsatzsteuer", shortLabel: "19 %", exemptionReasonRequired: false, requireSellerVatId: false, requireBuyerVatId: false },
@@ -84,7 +84,7 @@ export function isZeroRate(value: string): boolean {
   return /^0+(?:\.0+)?$/.test(value.trim());
 }
 
-/** Alte Entwürfe: 19/7 bleiben Standardsteuer. 0 % wird nicht geraten. */
+/** Legacy drafts: 19/7 stay standard rate. 0 % is never guessed. */
 export function taxCaseFromLegacy(taxRate: string, taxCase?: string, categoryCode?: string): ReviewTaxCaseId | "" {
   if (taxCase && TAX_CASES.some((item) => item.id === taxCase)) return taxCase as ReviewTaxCaseId;
   if (categoryCode === "AE") return "AE";

@@ -18,7 +18,7 @@ Stand: 16.09.2026. Lokale Entwicklungsabnahme, keine 1.0-Freigabe.
 | --- | --- |
 | Release-Gate-Skripte, DATEV nicht automatisch bestanden, Produktion ohne Gate/Testzertifikat | `test/release-gate.test.ts`, `test/windows-installer.test.ts` |
 | Isolierte Update-/Datenprüfung (keine Abwärtsinstallation, Snapshot, Archiv bleibt) | `scripts/test-installer-lifecycle.ps1` |
-| Diagnosebericht ohne Pfade/Rechnungsinhalte | `diagnose::tests::omits_paths_and_invoice_payloads` |
+| Diagnosebericht ohne Pfade/Rechnungsinhalte | `diagnostics::tests::omits_paths_and_invoice_payloads` |
 | Diagnose-UI: Vorschau, Bestätigung, Speichern | `test/settings-ui.test.tsx` |
 | Deep Links ohne Dateipfade | `test/print-inbox.test.ts`, `print_job_ids_reject_paths_and_deep_link_payloads` |
 | Komponentenliste | `docs/components.md` |
