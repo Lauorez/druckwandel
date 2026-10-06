@@ -44,7 +44,7 @@ npm run installer:windows
 
 Das Build-Skript prüft die Vollständigkeit der Validatoren und des Druckerpakets. Der native Drucker-Task wird vor dem MSIX-Paket mit .NET NativeAOT gebaut. Die JSON-Verarbeitung verwendet generierte Typinformationen; der Hintergrundprozess benötigt kein global installiertes .NET und keinen `WinRT.Host.dll`-Bootstrapper. Die Hauptanwendung bleibt ein Tauri-Release-Build.
 
-Ergebnis dieses Stands: `artifacts/windows/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe`. Die öffentliche `.cer` liegt nur für den beschriebenen Administratorschritt im Paket. Die private `.pfx` darf nicht in das Vorführpaket. Eine öffentlich vertrauenswürdige Signatur ist damit nicht vorhanden.
+Ergebnis: `artifacts/windows/Druckwandel-<Version>-x64-Setup.exe` (bis 0.3.4 `E-Rechnungs-Assistent-<Version>-x64-Setup.exe`). Die öffentliche `.cer` liegt nur für den beschriebenen Administratorschritt im Paket. Die private `.pfx` darf nicht in das Vorführpaket. Eine öffentlich vertrauenswürdige Signatur ist damit nicht vorhanden.
 
 Das Setup normal starten, nicht „Als Administrator“. Bei einem Update legt das Setup zuerst einen Snapshot unter `%LOCALAPPDATA%\de.erechnung.converter\update-backup\<Version>` an (`WIEDERHERSTELLUNG.txt` im selben Ordner). Arbeitsentwürfe und `Dokumente\E-Rechnungsarchiv` bleiben unangetastet. Eine kleinere Versionsnummer als die bereits installierte wird abgewiesen. Das Setup aktualisiert den Drucker nur, wenn die Paketversion neuer ist. Die Deinstallation entfernt den Drucker, nicht das Archiv.
 
@@ -52,7 +52,7 @@ Das Setup normal starten, nicht „Als Administrator“. Bei einem Update legt d
 
 ## Vorführung
 
-1. E-Rechnungs-Assistent über das Startmenü öffnen.
+1. Druckwandel über das Startmenü öffnen.
 2. Die mitgelieferte `muster-rechnung.pdf` über „PDF öffnen“ laden und Angaben prüfen.
 3. Die Rechnung zusätzlich aus einem PDF-Programm auf **E-Rechnung** drucken. Der Beleg soll automatisch im Rechnungseingang erscheinen; kein Speichern-unter-Dialog.
 4. Angaben und Übereinstimmung bestätigen, XRechnung bzw. PDF-Rechnung erzeugen. Die unabhängigen Prüfer laufen lokal.
@@ -60,4 +60,4 @@ Das Setup normal starten, nicht „Als Administrator“. Bei einem Update legt d
 
 Ein DATEV-Export braucht ein fachlich passendes Profil. Die Vorführung ersetzt keinen echten DATEV-Testimport.
 
-Installationsdiagnose: `%TEMP%\E-Rechnungs-Assistent-Installation.log`. Druckübergaben: `Dokumente\E-Rechnung Druckeingang` mit PDF, `.printjob.json` und Bestätigung `.review.json`.
+Installationsdiagnose: `%TEMP%\Druckwandel-Installation.log` (bis 0.3.4 `%TEMP%\E-Rechnungs-Assistent-Installation.log`). Druckübergaben: `Dokumente\E-Rechnung Druckeingang` mit PDF, `.printjob.json` und Bestätigung `.review.json`.

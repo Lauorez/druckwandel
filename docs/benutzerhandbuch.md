@@ -21,7 +21,7 @@ Technisch übergibt die Druckbrücke drei Dateien in `Dokumente\E-Rechnung Druck
 ```text
 <UUID>.pdf             vollständiges Druck-PDF
 <UUID>.printjob.json   schemaVersion 1 und Druckjob-Metadaten
-<UUID>.review.json     Bestätigung des Assistenten: opened oder failed
+<UUID>.review.json     Bestätigung von Druckwandel: opened oder failed
 ```
 
 ### Ohne virtuellen Drucker
@@ -54,7 +54,7 @@ Der Arbeitsbestand liegt unter `%LOCALAPPDATA%\de.erechnung.converter\workspace`
 
 **Entwurf speichern** sichert sofort und bestätigt zusätzlich die Ergänzungen für das Vorlagengedächtnis. Das automatische Speichern lernt ausdrücklich nichts.
 
-Manuell ergänzte oder markierte Angaben werden mit ihrer Position und Beschriftung verknüpft. Bei einer gleich aufgebauten Folgerechnung liest der Assistent den Wert an dieser Stelle automatisch aus. Eine Regel greift nur bei passendem Layout- oder Vorlagenanker; widersprüchliche Treffer ersetzen keinen bereits erkannten Wert, und unsichere Übernahmen sind als prüfbedürftig gekennzeichnet.
+Manuell ergänzte oder markierte Angaben werden mit ihrer Position und Beschriftung verknüpft. Bei einer gleich aufgebauten Folgerechnung liest Druckwandel den Wert an dieser Stelle automatisch aus. Eine Regel greift nur bei passendem Layout- oder Vorlagenanker; widersprüchliche Treffer ersetzen keinen bereits erkannten Wert, und unsichere Übernahmen sind als prüfbedürftig gekennzeichnet.
 
 Das Vorlagengedächtnis speichert keine konkreten Rechnungswerte, sondern Positionsdaten, Beschriftungen und nicht umkehrbare Absenderkennungen. Unter **Einstellungen → Erkennungsprofile** lassen sich Profile anlegen und umbenennen sowie einzelne gemerkte Zuordnungen anzeigen, deaktivieren und entfernen. Die letzte Bestätigung kann rückgängig gemacht werden. **Gemerkte Ergänzungen löschen** setzt das Profil zurück.
 

@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$logPath = Join-Path $env:TEMP "E-Rechnungs-Assistent-Installation.log"
+$logPath = Join-Path $env:TEMP "Druckwandel-Installation.log"
 $packageName = "ERechnung.VirtualPrinter.PoC"
 $printerName = "E-Rechnung"
 $installedDuringThisRun = $false
@@ -151,7 +151,7 @@ function Wait-ForPrinter {
 }
 
 try {
-    Set-Content -LiteralPath $logPath -Value "E-Rechnungs-Assistent – Einrichtung" -Encoding UTF8
+    Set-Content -LiteralPath $logPath -Value "Druckwandel – Einrichtung" -Encoding UTF8
     # NSIS can be started with a reduced PSModulePath. Use the modules belonging
     # to this exact process instead of relying on automatic module discovery.
     Import-Module (Join-Path $PSHOME "Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1") -Force

@@ -26,7 +26,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path old-release,old-extracted | Out-Null
-          gh release download v0.3.3 --repo Lauorez/erechnung --pattern 'E-Rechnungs-Assistent-0.3.3-x64-Setup.exe' --dir old-release
+          gh release download v0.3.3 --repo Lauorez/druckwandel --pattern 'E-Rechnungs-Assistent-0.3.3-x64-Setup.exe' --dir old-release
           $oldSetup = Resolve-Path 'old-release/E-Rechnungs-Assistent-0.3.3-x64-Setup.exe'
           $hash = (Get-FileHash -LiteralPath $oldSetup -Algorithm SHA256).Hash
           if ($hash -ne 'C82D547E919D02768F7C636FB9F117C8F36CBA10E1CBB088B931B18A15FCB89B') {
@@ -57,7 +57,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Der Installer-Build ist fehlgeschlagen.' }
       - uses: actions/upload-artifact@v7
         with:
-          name: E-Rechnungs-Assistent-0.3.4-Windows
+          name: Druckwandel-0.3.4-Windows
           path: |
-            artifacts/windows/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe
-            artifacts/windows/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe.sha256
+            artifacts/windows/Druckwandel-0.3.4-x64-Setup.exe
+            artifacts/windows/Druckwandel-0.3.4-x64-Setup.exe.sha256

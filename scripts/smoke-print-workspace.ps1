@@ -5,7 +5,7 @@ param([ValidateRange(10,180)][int]$TimeoutSeconds = 90)
 # Creates one clearly named synthetic draft; does not export, learn, or delete.
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$installedApp = Join-Path $env:LOCALAPPDATA 'E-Rechnungs-Assistent\erechnung-desktop.exe'
+$installedApp = Join-Path $env:LOCALAPPDATA 'Druckwandel\erechnung-desktop.exe'
 if (-not (Test-Path -LiteralPath $installedApp)) { throw 'Install the application first.' }
 if (Get-Process erechnung-desktop -ErrorAction SilentlyContinue) { throw 'Close the application normally before this cold-start test.' }
 $printer = Get-Printer -Name 'E-Rechnung'

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "E-Rechnungs-Assistent",
+  "productName": "Druckwandel",
   "version": "0.3.4",
   "identifier": "de.erechnung.converter",
   "build": {
@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [{
-      "title": "E-Rechnungs-Assistent",
+      "title": "Druckwandel",
       "width": 1380,
       "height": 900,
       "minWidth": 900,

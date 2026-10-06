@@ -76,7 +76,7 @@ function Save-RemoteFile {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
     Write-Host "Lade $Url ..."
     $client = New-Object System.Net.WebClient
-    $client.Headers.Add("User-Agent", "erechnungs-assistent-windows-setup")
+    $client.Headers.Add("User-Agent", "druckwandel-windows-setup")
     $client.DownloadFile($Url, $Path)
 }
 
@@ -292,7 +292,7 @@ if ($SkipChecks) {
 }
 Invoke-Checked -Command "powershell.exe" -Arguments $installerArguments
 
-$setup = Get-ChildItem -LiteralPath (Join-Path $workspace "artifacts\windows") -File -Filter "E-Rechnungs-Assistent-*-x64-Setup.exe" |
+$setup = Get-ChildItem -LiteralPath (Join-Path $workspace "artifacts\windows") -File -Filter "Druckwandel-*-x64-Setup.exe" |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
 $demo = Join-Path $workspace "artifacts\demo\muster-rechnung.pdf"

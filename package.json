@@ -1,18 +1,18 @@
 {
-  "name": "erechnungs-assistent",
+  "name": "druckwandel",
   "version": "0.3.4",
   "private": true,
   "type": "module",
   "description": "Local-first desktop assistant for extracting, creating, and archiving German e-invoices",
   "license": "MIT",
   "author": "Laurenz Grove",
-  "homepage": "https://github.com/Lauorez/erechnung#readme",
+  "homepage": "https://github.com/Lauorez/druckwandel#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Lauorez/erechnung.git"
+    "url": "git+https://github.com/Lauorez/druckwandel.git"
   },
   "bugs": {
-    "url": "https://github.com/Lauorez/erechnung/issues"
+    "url": "https://github.com/Lauorez/druckwandel/issues"
   },
   "keywords": [
     "e-rechnung",

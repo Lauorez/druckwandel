@@ -207,10 +207,10 @@ public sealed partial class CompanionPage : Page
             if (!launched)
             {
                 throw new InvalidOperationException(
-                    "Der E-Rechnungs-Assistent ist nicht installiert. Bitte installieren Sie die Anwendung und versuchen Sie es erneut.");
+                    "Druckwandel ist nicht installiert. Bitte installieren Sie die Anwendung und versuchen Sie es erneut.");
             }
 
-            StatusText.Text = "Im E-Rechnungs-Assistenten geöffnet";
+            StatusText.Text = "In Druckwandel geöffnet";
 
             if (closeOnSuccess)
             {
@@ -223,7 +223,7 @@ public sealed partial class CompanionPage : Page
             _ = exception;
             reviewHandoffStarted = false;
             OpenReviewButton.IsEnabled = job is not null && File.Exists(job.PdfPath);
-            StatusText.Text = "Die Rechnung konnte nicht im Assistenten geöffnet werden. Bitte prüfen Sie, ob der E-Rechnungs-Assistent installiert ist.";
+            StatusText.Text = "Die Rechnung konnte nicht in Druckwandel geöffnet werden. Bitte prüfen Sie, ob Druckwandel installiert ist.";
         }
     }
 

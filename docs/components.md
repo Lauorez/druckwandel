@@ -6,7 +6,7 @@ SHA-256 der heruntergeladenen Prüfer: `apps/desktop/src-tauri/resources/validat
 
 | Komponente | Version | Rolle | Lizenz | Herkunft |
 | --- | --- | --- | --- | --- |
-| E-Rechnungs-Assistent | 0.3.3 | Anwendung | MIT | dieses Repository |
+| Druckwandel | 0.3.3 | Anwendung | MIT | dieses Repository |
 | Tauri | 2 | Desktop-Laufzeit | MIT OR Apache-2.0 | https://github.com/tauri-apps/tauri |
 | rusqlite | 0.37 | Archiv/Entwürfe | MIT | https://github.com/rusqlite/rusqlite |
 | age | 0.11 | Sicherung | MIT OR Apache-2.0 | https://github.com/str4d/rage |

@@ -1,6 +1,6 @@
 # Changelog
 
-Alle nennenswerten Änderungen am E-Rechnungs-Assistenten werden in dieser Datei dokumentiert. Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
+Alle nennenswerten Änderungen an Druckwandel (bis 0.3.4 „E-Rechnungs-Assistent“) werden in dieser Datei dokumentiert. Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 Änderungen am virtuellen Drucker stehen zusätzlich in [drucker/CHANGELOG.md](drucker/CHANGELOG.md). Ausführliche Prüfberichte je Version liegen unter [docs/releases/](docs/releases/).
 
@@ -14,6 +14,7 @@ Alle nennenswerten Änderungen am E-Rechnungs-Assistenten werden in dieser Datei
 
 ### Geändert
 
+- Die Anwendung heißt jetzt **Druckwandel**, das Repository `Lauorez/druckwandel`. Das Setup installiert nach `%LOCALAPPDATA%\Druckwandel` und ersetzt eine vorhandene Installation des E-Rechnungs-Assistenten wie ein Update; Daten, Archiv, Vorlagengedächtnis und Drucker bleiben erhalten. Interne Kennungen (`de.erechnung.converter`, `erechnung-review://`, Drucker „E-Rechnung“, Ordner unter „Dokumente“, DATEV-Herkunftskennung) sind unverändert.
 - npm-Skripte umbenannt: `wp5:*` → `printer:*`, `wp6:check` → `corpus:check`.
 - Dokumentation unter `docs/` neu gegliedert (Abnahmeprotokolle, Entscheidungen, Prüfberichte, Installationsberichte, Planung).
 
@@ -72,8 +73,8 @@ Enthält auch den nicht separat veröffentlichten Stand 0.3.2.
 
 Erste Beta des virtuellen Windows-PDF-Druckers, siehe [drucker/CHANGELOG.md](drucker/CHANGELOG.md).
 
-[Unveröffentlicht]: https://github.com/Lauorez/erechnung/compare/v0.3.4...HEAD
-[0.3.4]: https://github.com/Lauorez/erechnung/releases/tag/v0.3.4
-[0.3.3]: https://github.com/Lauorez/erechnung/releases/tag/v0.3.3
-[0.3.1]: https://github.com/Lauorez/erechnung/releases/tag/v0.3.1
-[0.1.0-beta.1]: https://github.com/Lauorez/erechnung/releases/tag/v0.1.0-beta.1
+[Unveröffentlicht]: https://github.com/Lauorez/druckwandel/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.4
+[0.3.3]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.3
+[0.3.1]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.1
+[0.1.0-beta.1]: https://github.com/Lauorez/druckwandel/releases/tag/v0.1.0-beta.1
