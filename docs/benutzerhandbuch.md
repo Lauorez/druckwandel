@@ -4,7 +4,7 @@ Dieses Handbuch beschreibt die Bedienung der installierten Windows-Anwendung. In
 
 ## Erster Durchlauf mit der Musterrechnung
 
-1. Setup normal starten, nicht über „Als Administrator ausführen“. Falls Windows dem Entwicklungszertifikat noch nicht vertraut, fragt das Setup einmalig nach Administratorrechten (siehe [Windows-Vorführpaket](windows-demo-installation.md)).
+1. Setup mit dem Konto starten, das Druckwandel nutzen soll, und die Windows-Abfrage nach Administratorrechten bestätigen (siehe [Windows-Vorführpaket](windows-demo-installation.md)).
 2. In den **Einstellungen** unter **Sicherung** eine erste Sicherung auf ein anderes Laufwerk anlegen.
 3. Die Musterrechnung (`npm run demo:invoice` erzeugt `artifacts\demo\muster-rechnung.pdf`) über **Rechnung öffnen** laden.
 4. Angaben prüfen, die Übereinstimmung mit dem Original bestätigen und eine Ausgabe speichern.

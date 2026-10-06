@@ -2,7 +2,7 @@
 
 ## Aktueller Stand vom 27.09.2026
 
-Anwendung **0.3.4** ergänzt die Administratorabfrage für das Entwicklungszertifikat. Der Drucker **0.1.0.12** bleibt unverändert. Der [Installationsbericht 0.3.4](releases/installation-0.3.4-2026-09-27.md) beschreibt den neuen Ablauf. Die reale Druckprüfung aus [0.3.3](releases/installation-0.3.3-2026-09-27.md) bleibt die Referenz für den NativeAOT-Drucker.
+Anwendung **0.3.4** ergänzt die Administratorabfrage für das Entwicklungszertifikat. Ab der nächsten Version läuft das ganze Setup mit Administratorrechten (siehe unten). Der Drucker **0.1.0.12** bleibt unverändert. Der [Installationsbericht 0.3.4](releases/installation-0.3.4-2026-09-27.md) beschreibt den neuen Ablauf. Die reale Druckprüfung aus [0.3.3](releases/installation-0.3.3-2026-09-27.md) bleibt die Referenz für den NativeAOT-Drucker.
 
 ## Prüfergebnis vom 11.09.2026
 
@@ -10,9 +10,9 @@ Anwendung **0.3.4** ergänzt die Administratorabfrage für das Entwicklungszerti
 
 10 .NET-Core-Tests, 4 Installer-Konfigurationstests sowie die native COM-Aktivierung einschließlich `IBackgroundTask` ohne CoreCLR bestehen. **Der reale Drucktest besteht nicht:** WPF/XPS meldet `PrintingCanceledException`, GDI und direkte Spooler-Ansteuerung scheitern bei `StartDocPrinter`, bevor neue Druckjob-Artefakte entstehen. Microsoft Print to PDF funktioniert als Kontrolltest. Ein Neustart des eigenen PrintWorkflow-Benutzerdienstes und erneute Paketregistrierung behoben den Fehler nicht. Die alte Version 0.1.0.4 wurde kurz zum Vergleich installiert, registrierte dabei keine Warteschlange innerhalb von 40 Sekunden; anschließend wurde 0.1.0.5 wiederhergestellt. Aus diesem Vergleich lässt sich keine gesicherte Fehlerursache ableiten.
 
-Der systemweite Spooler, Windows-Sicherheitsrichtlinien und Zertifikatsspeicher wurden nicht verändert. Ein Windows-Neustart mit anschließendem Wiederholungstest ist noch offen; es wurde kein automatischer Neustart ausgelöst. Unabhängig davon bleibt die fehlende öffentliche Paketsignatur die Grenze für eine erstmalige vollständige Installation auf einem fremden Rechner ohne Admin.
+Der systemweite Spooler, Windows-Sicherheitsrichtlinien und Zertifikatsspeicher wurden nicht verändert. Ein Windows-Neustart mit anschließendem Wiederholungstest ist noch offen; es wurde kein automatischer Neustart ausgelöst.
 
-Voraussetzung: Windows 11 24H2 oder neuer, x64. Die Setup-Datei installiert Anwendung und Drucker für den aktuellen Benutzer und enthält:
+Voraussetzung: Windows 11 24H2 oder neuer, x64, ein Konto mit Administratorrechten. Die Setup-Datei installiert die Anwendung nach `C:\Program Files\Druckwandel`, richtet den Drucker für das ausführende Konto ein und enthält:
 
 - E-Rechnungs-Assistent 0.3.1 mit lokalem Archiv und Posteingang
 - E-Rechnungsdrucker 0.1.0.5 inklusive nativ kompiliertem Background-Task
@@ -22,18 +22,15 @@ Voraussetzung: Windows 11 24H2 oder neuer, x64. Die Setup-Datei installiert Anwe
 
 Node, Rust, .NET SDK und eine gesonderte Java-Installation sind auf dem Zielrechner nicht nötig. Die Installation lädt diese Komponenten nicht aus dem Internet nach. Die Windows-Registrierung eines virtuellen Druckers benötigt die genannte Windows-Version.
 
-## Wichtige Grenze des aktuellen Vorführbuilds
+## Administratorrechte und Signatur
 
-Es ist kein öffentlich vertrauenswürdiges Code-Signing-Zertifikat vorhanden. Das Drucker-MSIX ist deshalb mit dem Entwicklungszertifikat signiert. Ab Setup 0.3.4 prüft der Installer bei der ersten Installation, ob Windows diesem Zertifikat vertraut. Falls nicht, erscheint eine Windows-Abfrage für Administratorrechte. Der erhöhte Hilfsschritt prüft Paketidentität, Signatur und Zertifikat erneut und hinterlegt nur das passende öffentliche Zertifikat in `LocalMachine\TrustedPeople`. Danach installiert das normale Benutzerkonto Anwendung und Drucker.
+Das Setup braucht Administratorrechte und fragt beim Start danach. Es installiert die Anwendung nach `C:\Program Files\Druckwandel`.
 
-Auf einem anderen Rechner gibt es zwei reguläre Wege:
+Es ist kein öffentlich vertrauenswürdiges Code-Signing-Zertifikat vorhanden. Das Drucker-MSIX ist deshalb mit dem Entwicklungszertifikat signiert. Das Setup prüft Paketidentität, Signatur und Zertifikat und hinterlegt nur das passende öffentliche Zertifikat in `LocalMachine\TrustedPeople`. Siehe [Microsoft: MSIX-Signierung](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide) und [MSIX-Zertifikatfehler](https://learn.microsoft.com/en-us/windows/msix/msix-troubleshooting-guide).
 
-1. Für die spätere Verteilung: Druckerpaket und Setup öffentlich vertrauenswürdig signieren. Danach kann ein Standardbenutzer installieren, soweit lokale Unternehmensrichtlinien die App erlauben.
-2. Für einen beaufsichtigten Vorführtest: Eine Person mit Administratorrechten bestätigt die Abfrage des Setups. Alternativ kann die IT das öffentliche Entwicklungszertifikat vorab im lokalen Computerspeicher `TrustedPeople` hinterlegen. Dieser einmalige Vertrauensschritt braucht Administratorrechte.
+Drucker, Update-Snapshot und Anwendungsdaten gehören zu dem Konto, das die Einrichtung ausführt. Das Setup muss deshalb mit dem Konto laufen, das Druckwandel nutzen soll. Bestätigt ein anderes Administratorkonto die Windows-Abfrage, etwa per Kennworteingabe an einem Standardkonto, bricht das Setup vor jeder Änderung mit einem Hinweis ab. Für die Deinstallation gilt dasselbe.
 
-Das Setup aktiviert keinen Entwicklermodus und startet keine Systemdienste neu. Wird die Administratorabfrage abgelehnt oder durch eine Unternehmensrichtlinie verhindert, bricht die vollständige Installation mit einer Fehlermeldung ab. Es gibt keinen als vollständig ausgegebenen App-only-Fallback.
-
-Die Anforderung „auf einem beliebigen fremden Rechner erstmalig vollständig ohne Admin“ bleibt ohne vertrauenswürdige Signatur unerfüllt. Windows-Zertifikatvertrauen lässt sich nicht durch eine anders verpackte EXE ersetzen. Siehe [Microsoft: MSIX-Signierung](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide) und [MSIX-Zertifikatfehler](https://learn.microsoft.com/en-us/windows/msix/msix-troubleshooting-guide).
+Das Setup aktiviert keinen Entwicklermodus und startet keine Systemdienste neu. Wird die Administratorabfrage abgelehnt, startet die Einrichtung nicht.
 
 ## Bauen und installieren
 
@@ -44,9 +41,9 @@ npm run installer:windows
 
 Das Build-Skript prüft die Vollständigkeit der Validatoren und des Druckerpakets. Der native Drucker-Task wird vor dem MSIX-Paket mit .NET NativeAOT gebaut. Die JSON-Verarbeitung verwendet generierte Typinformationen; der Hintergrundprozess benötigt kein global installiertes .NET und keinen `WinRT.Host.dll`-Bootstrapper. Die Hauptanwendung bleibt ein Tauri-Release-Build.
 
-Ergebnis: `artifacts/windows/Druckwandel-<Version>-x64-Setup.exe` (bis 0.3.4 `E-Rechnungs-Assistent-<Version>-x64-Setup.exe`). Die öffentliche `.cer` liegt nur für den beschriebenen Administratorschritt im Paket. Die private `.pfx` darf nicht in das Vorführpaket. Eine öffentlich vertrauenswürdige Signatur ist damit nicht vorhanden.
+Ergebnis: `artifacts/windows/Druckwandel-<Version>-x64-Setup.exe` (bis 0.3.4 `E-Rechnungs-Assistent-<Version>-x64-Setup.exe`). Die öffentliche `.cer` liegt nur für den beschriebenen Zertifikatsschritt im Paket. Die private `.pfx` darf nicht in das Vorführpaket. Eine öffentlich vertrauenswürdige Signatur ist damit nicht vorhanden.
 
-Das Setup normal starten, nicht „Als Administrator“. Bei einem Update legt das Setup zuerst einen Snapshot unter `%LOCALAPPDATA%\de.erechnung.converter\update-backup\<Version>` an (`WIEDERHERSTELLUNG.txt` im selben Ordner). Arbeitsentwürfe und `Dokumente\E-Rechnungsarchiv` bleiben unangetastet. Eine kleinere Versionsnummer als die bereits installierte wird abgewiesen. Das Setup aktualisiert den Drucker nur, wenn die Paketversion neuer ist. Die Deinstallation entfernt den Drucker, nicht das Archiv.
+Das Setup starten und die Administratorabfrage bestätigen. Bei einem Update legt das Setup zuerst einen Snapshot unter `%LOCALAPPDATA%\de.erechnung.converter\update-backup\<Version>` an (`WIEDERHERSTELLUNG.txt` im selben Ordner). Arbeitsentwürfe und `Dokumente\E-Rechnungsarchiv` bleiben unangetastet. Eine kleinere Versionsnummer als die bereits installierte wird abgewiesen. Das Setup aktualisiert den Drucker nur, wenn die Paketversion neuer ist. Die Deinstallation entfernt den Drucker, nicht das Archiv.
 
 `printer/scripts/test-native-task.ps1` aktiviert den nativen Background-Task in einem Windows-PowerShell-Prozess und prüft, dass kein CoreCLR geladen wird. Der Test ist Teil von `npm run printer:build`. `printer/scripts/test.ps1` prüft weiterhin die persistierten Job- und Übergabeformate.
 

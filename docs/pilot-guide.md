@@ -6,7 +6,7 @@ Die Anwendung arbeitet nur auf diesem Computer. Rechnungsinhalte werden nicht in
 
 ## Erste Schritte
 
-1. Setup normal starten, nicht „Als Administrator“.
+1. Setup mit dem Konto starten, das die Anwendung nutzt, und die Administratorabfrage bestätigen.
 2. In den Einstellungen unter **Sicherung** Archiv und Entwürfe auf ein **anderes Laufwerk** sichern. Eine Kopie auf derselben Platte schützt nicht vor einem Plattenausfall.
 3. In Ihrem Rechnungsprogramm den Drucker **E-Rechnung** wählen. Die Anwendung darf geschlossen sein; sie öffnet sich mit dem neuen Beleg.
 4. Angaben prüfen, fehlende Felder ergänzen oder im PDF markieren. Erst nach der Bestätigung „Angaben geben die Originalrechnung korrekt wieder“ speichern Sie die fertige E-Rechnung.
