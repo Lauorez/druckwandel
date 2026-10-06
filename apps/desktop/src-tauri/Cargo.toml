@@ -2,8 +2,11 @@
 name = "erechnung-desktop"
 version = "0.3.4"
 description = "Native assistant for local e-invoice conversion"
-authors = ["E-Rechnungs-Assistent"]
+authors = ["Laurenz Grove"]
+license = "MIT"
+repository = "https://github.com/Lauorez/erechnung"
 edition = "2024"
+publish = false
 
 [lib]
 name = "erechnung_desktop_lib"

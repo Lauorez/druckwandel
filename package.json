@@ -4,13 +4,33 @@
   "private": true,
   "type": "module",
   "description": "Local-first desktop assistant for extracting, creating, and archiving German e-invoices",
+  "license": "MIT",
+  "author": "Laurenz Grove",
+  "homepage": "https://github.com/Lauorez/erechnung#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lauorez/erechnung.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Lauorez/erechnung/issues"
+  },
+  "keywords": [
+    "e-rechnung",
+    "xrechnung",
+    "zugferd",
+    "factur-x",
+    "en16931",
+    "datev",
+    "tauri",
+    "pdf"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "check": "npm run build && npm run desktop:typecheck && npm test && npm run wp6:check",
+    "check": "npm run build && npm run desktop:typecheck && npm test && npm run corpus:check",
     "desktop:typecheck": "tsc -p apps/desktop/tsconfig.json && tsc -p tsconfig.tests.json",
     "check:native": "cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml",
     "check:xml": "tsx scripts/validate-regressions.ts",
@@ -25,15 +45,15 @@
     "release:inventory": "node scripts/inventory-components.mjs",
     "release:matrix": "node scripts/acceptance-matrix.mjs",
     "installer:macos": "sh scripts/build-macos-installer.sh",
-    "wp5:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-build-reference.ps1",
-    "wp5:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-clean-install.ps1",
-    "wp5:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-repair-spooler.ps1",
-    "wp5:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File drucker/scripts/uninstall.ps1",
+    "printer:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-build-reference.ps1",
+    "printer:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-clean-install.ps1",
+    "printer:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/wp5-repair-spooler.ps1",
+    "printer:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File drucker/scripts/uninstall.ps1",
     "extract:pdf": "tsx scripts/extract-pdf.ts",
     "corpus:generate": "tsx scripts/generate-corpus.ts",
     "corpus:evaluate": "tsx scripts/evaluate-corpus.ts",
     "corpus:fuzz": "tsx scripts/fuzz-invoices.ts",
-    "wp6:check": "npm run corpus:generate && npm run corpus:evaluate && npm run corpus:fuzz",
+    "corpus:check": "npm run corpus:generate && npm run corpus:evaluate && npm run corpus:fuzz",
     "generate:fixtures": "tsx scripts/generate-fixtures.ts",
     "demo:invoice": "tsx scripts/generate-demo-invoice.ts",
     "validate:external": "tsx scripts/validate-external.ts",

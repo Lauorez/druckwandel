@@ -16,7 +16,7 @@ function cargoVersion(name) {
 }
 
 const components = [
-  { name: "E-Rechnungs-Assistent", version: tauri.version, license: "proprietär / Projekt", source: "dieses Repository", role: "Anwendung" },
+  { name: "E-Rechnungs-Assistent", version: tauri.version, license: "MIT", source: "dieses Repository", role: "Anwendung" },
   { name: "Tauri", version: cargoVersion("tauri"), license: "MIT OR Apache-2.0", source: "https://github.com/tauri-apps/tauri", role: "Desktop-Laufzeit" },
   { name: "rusqlite", version: cargoVersion("rusqlite"), license: "MIT", source: "https://github.com/rusqlite/rusqlite", role: "Archiv/Entwürfe" },
   { name: "age", version: cargoVersion("age"), license: "MIT OR Apache-2.0", source: "https://github.com/str4d/rage", role: "Sicherung" },
@@ -26,7 +26,7 @@ const components = [
   { name: "XRechnung-Konfiguration", version: validators.kosit.ruleVersion, license: validators.kosit.license, source: validators.kosit.configurationSource, role: "XRechnung-Regeln" },
   { name: "Mustang-CLI", version: validators.mustang.engineVersion, license: validators.mustang.license, source: validators.mustang.source, role: "ZUGFeRD-XML" },
   { name: "veraPDF Greenfield", version: validators.verapdf.engineVersion, license: validators.verapdf.license, source: validators.verapdf.source, role: "PDF/A-3b" },
-  { name: "E-Rechnungsdrucker", version: "MSIX CompanionApp", license: "Projekt", source: "drucker/", role: "Druckannahme" },
+  { name: "E-Rechnungsdrucker", version: "MSIX CompanionApp", license: "MIT", source: "drucker/", role: "Druckannahme" },
 ];
 
 const npm = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).map(([name, version]) => ({

@@ -14,7 +14,7 @@
     "jar": "kosit/validator-1.6.3-standalone.jar",
     "scenarios": "kosit/xrechnung/scenarios.xml",
     "repository": "kosit/xrechnung",
-    "license": "EUPL-1.2",
+    "license": "Apache-2.0",
     "source": "https://github.com/itplr-kosit/validator/releases/tag/v1.6.3",
     "configurationSource": "https://github.com/itplr-kosit/validator-configuration-xrechnung",
     "configurationTag": "v2026-01-31"
