@@ -477,7 +477,7 @@ pub fn run() {
             diagnose::write_diagnostic_report
         ])
         .run(tauri::generate_context!())
-        .expect("error while running E-Rechnungs-Assistent");
+        .expect("error while running Druckwandel");
 }
 
 #[cfg(test)]

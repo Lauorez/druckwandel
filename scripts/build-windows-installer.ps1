@@ -168,7 +168,7 @@ if (-not $builtInstaller) {
 
 $artifactDirectory = Join-Path $workspace "artifacts\windows"
 New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
-$artifactPath = Join-Path $artifactDirectory "E-Rechnungs-Assistent-$version-x64-Setup.exe"
+$artifactPath = Join-Path $artifactDirectory "Druckwandel-$version-x64-Setup.exe"
 Copy-Item -LiteralPath $builtInstaller.FullName -Destination $artifactPath -Force
 if ($env:ERECHNUNG_SIGNTOOL -and $SigningMode -eq "Production") {
     Invoke-Checked -Command $env:ERECHNUNG_SIGNTOOL -Arguments @("sign", "/fd", "SHA256", "/td", "SHA256", "/tr", "http://timestamp.digicert.com", $artifactPath)

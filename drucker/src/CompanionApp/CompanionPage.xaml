@@ -17,7 +17,7 @@
         <StackPanel Spacing="6">
             <TextBlock FontSize="28" FontWeight="SemiBold" Text="Rechnung wurde gedruckt" />
             <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Text="Die Rechnung wird jetzt im E-Rechnungs-Assistenten geöffnet." />
+                       Text="Die Rechnung wird jetzt in Druckwandel geöffnet." />
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,28,0,28" ColumnSpacing="18" RowSpacing="14">

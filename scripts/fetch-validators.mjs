@@ -23,7 +23,7 @@ async function removeGeneratedDirectory(path, parent) {
 
 async function download(url, file) {
   await mkdir(dirname(file), { recursive: true });
-  const response = await fetch(url, { headers: { "User-Agent": "erechnungs-assistent-validators" } });
+  const response = await fetch(url, { headers: { "User-Agent": "druckwandel-validators" } });
   if (!response.ok || !response.body) throw new Error(`${url}: HTTP ${response.status}`);
   await pipeline(Readable.fromWeb(response.body), createWriteStream(file));
   const digest = createHash("sha256").update(await readFile(file)).digest("hex");
@@ -100,7 +100,7 @@ for (const artifact of artifacts) {
 
 const release = await fetch(
   `https://api.github.com/repos/itplr-kosit/validator-configuration-xrechnung/releases/tags/${manifest.kosit.configurationTag}`,
-  { headers: { "User-Agent": "erechnungs-assistent-validators", Accept: "application/vnd.github+json" } },
+  { headers: { "User-Agent": "druckwandel-validators", Accept: "application/vnd.github+json" } },
 );
 if (!release.ok) throw new Error(`XRechnung-Konfiguration: HTTP ${release.status}`);
 const assets = await release.json();

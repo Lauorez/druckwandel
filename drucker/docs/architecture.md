@@ -18,7 +18,7 @@ Windows-Anwendung
   -> WinUI-Druckbrücke (windows.printSupportJobUI)
   -> Dokumente/E-Rechnung Druckeingang/<UUID>.pdf + <UUID>.printjob.json
   -> erechnung-review://print-job/<UUID>
-  -> Tauri E-Rechnungs-Assistent
+  -> Tauri-App Druckwandel
   -> <UUID>.review.json
 ```
 
@@ -38,7 +38,7 @@ Jeder Job erhält eine zufällige UUID. Die Windows-`SessionId` wird ausschließ
 
 Metadaten werden über temporäre Dateien und einen abschließenden Rename geschrieben. PDFs werden zuerst als `<UUID>.pdf.tmp` erzeugt und nach erfolgreicher Konvertierung umbenannt.
 
-Die Druckbrücke kopiert ausschließlich ein validiertes PDF mit `%PDF-`-Header in den Übergabeordner. Der Deep Link enthält nur die UUID, niemals einen frei wählbaren Dateipfad. Der E-Rechnungs-Assistent löst diese UUID gegen die lokalen Metadaten auf, beschränkt Dateizugriffe auf den kanonischen Eingangspfad und bestätigt Öffnen oder Fehler in `<UUID>.review.json`.
+Die Druckbrücke kopiert ausschließlich ein validiertes PDF mit `%PDF-`-Header in den Übergabeordner. Der Deep Link enthält nur die UUID, niemals einen frei wählbaren Dateipfad. Druckwandel löst diese UUID gegen die lokalen Metadaten auf, beschränkt Dateizugriffe auf den kanonischen Eingangspfad und bestätigt Öffnen oder Fehler in `<UUID>.review.json`.
 
 ## Lokaler Speicher
 

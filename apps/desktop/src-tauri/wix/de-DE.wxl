@@ -2,8 +2,8 @@
 <WixLocalization Culture="de-de" xmlns="http://schemas.microsoft.com/wix/2006/localization">
   <String Id="TauriLanguage">1031</String>
   <String Id="TauriCodepage">1252</String>
-  <String Id="LaunchApp">E-Rechnungs-Assistent starten</String>
-  <String Id="DowngradeErrorMessage">Eine neuere Version des E-Rechnungs-Assistenten ist bereits installiert.</String>
+  <String Id="LaunchApp">Druckwandel starten</String>
+  <String Id="DowngradeErrorMessage">Eine neuere Version von Druckwandel ist bereits installiert.</String>
   <String Id="PathEnvVarFeature">Zusätzliche Startmöglichkeit einrichten</String>
-  <String Id="InstallAppFeature">Installiert den E-Rechnungs-Assistenten.</String>
+  <String Id="InstallAppFeature">Installiert Druckwandel.</String>
 </WixLocalization>

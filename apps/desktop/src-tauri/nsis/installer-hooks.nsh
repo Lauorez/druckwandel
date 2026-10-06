@@ -30,7 +30,13 @@
   File /oname=Printer.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\Printer.msix"
   File /oname=WindowsAppRuntime.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\WindowsAppRuntime.msix"
 
+  ; Bis 0.3.4 hieß die Anwendung "E-Rechnungs-Assistent". Tauri leitet Installationsordner
+  ; und Deinstallationsschlüssel aus dem Produktnamen ab, deshalb wird die alte
+  ; Installation hier wie bei einem Update ersetzt. Daten, Archiv und Drucker bleiben.
+  ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\E-Rechnungs-Assistent" "UninstallString"
+
   ${If} $UpdateMode = 1
+  ${OrIf} $R7 != ""
     DetailPrint "Sicherungsstand vor der Aktualisierung ..."
     nsExec::ExecToStack /TIMEOUT=120000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\UpdateGuard.ps1" -Action PrepareUpdate -IncomingVersion "${VERSION}"'
     Pop $0
@@ -41,6 +47,29 @@
       SetErrorLevel 1
       Abort
     ${EndIf}
+  ${EndIf}
+
+  ${If} $R7 != ""
+    ReadRegStr $R6 HKCU "Software\${MANUFACTURER}\E-Rechnungs-Assistent" ""
+    ${If} $R6 == ""
+      StrCpy $R6 "$LOCALAPPDATA\E-Rechnungs-Assistent"
+    ${EndIf}
+    DetailPrint "Die bisherige Installation E-Rechnungs-Assistent wird ersetzt ..."
+    ClearErrors
+    ; /UPDATE lässt den Drucker stehen, _?= hält den Deinstaller im alten Ordner,
+    ; damit ExecWait auf ihn warten kann.
+    ExecWait '$R7 /S /UPDATE _?=$R6' $0
+    ${If} ${Errors}
+    ${OrIf} $0 <> 0
+      MessageBox MB_ICONSTOP|MB_OK "Die bisherige Installation E-Rechnungs-Assistent konnte nicht ersetzt werden. Bitte schließen Sie die Anwendung und starten Sie die Einrichtung erneut. Ihre Daten bleiben unverändert." /SD IDOK
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
+    Delete "$R6\uninstall.exe"
+    RMDir "$R6"
+    Delete "$SMPROGRAMS\E-Rechnungs-Assistent.lnk"
+    Delete "$DESKTOP\E-Rechnungs-Assistent.lnk"
+    DeleteRegKey HKCU "Software\${MANUFACTURER}\E-Rechnungs-Assistent"
   ${EndIf}
 
   !if /FileExists "${ERECHNUNG_INSTALLER_PAYLOAD}\PrinterCertificate.cer"
@@ -56,7 +85,7 @@
   Pop $1
   ${If} $0 != 0
     DetailPrint "$1"
-    MessageBox MB_ICONSTOP|MB_OK "Der E-Rechnungsdrucker konnte nicht eingerichtet werden. Die vollständige Installation wird abgebrochen.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\E-Rechnungs-Assistent-Installation.log" /SD IDOK
+    MessageBox MB_ICONSTOP|MB_OK "Der E-Rechnungsdrucker konnte nicht eingerichtet werden. Die vollständige Installation wird abgebrochen.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\Druckwandel-Installation.log" /SD IDOK
     SetErrorLevel 1
     Abort
   ${Else}
@@ -106,7 +135,7 @@
     Pop $1
     ${If} $0 != 0
       DetailPrint "$1"
-      MessageBox MB_ICONEXCLAMATION|MB_OK "Der E-Rechnungsdrucker konnte nicht vollständig entfernt werden. Die übrige Anwendung wird trotzdem deinstalliert.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\E-Rechnungs-Assistent-Deinstallation.log"
+      MessageBox MB_ICONEXCLAMATION|MB_OK "Der E-Rechnungsdrucker konnte nicht vollständig entfernt werden. Die übrige Anwendung wird trotzdem deinstalliert.$\r$\n$\r$\nWeitere Informationen stehen in:$\r$\n$TEMP\Druckwandel-Deinstallation.log"
     ${EndIf}
     SetOutPath $INSTDIR
   ${EndIf}

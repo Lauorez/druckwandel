@@ -4,7 +4,7 @@ version = "0.3.4"
 description = "Native assistant for local e-invoice conversion"
 authors = ["Laurenz Grove"]
 license = "MIT"
-repository = "https://github.com/Lauorez/erechnung"
+repository = "https://github.com/Lauorez/druckwandel"
 edition = "2024"
 publish = false
 

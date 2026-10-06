@@ -228,7 +228,7 @@ export function App() {
     setSourceSelections({}); setPendingSourceFields([]);
     setCompleted(false); setHybridConfirmed(false); setSelectedTokenIds([]); setSourceTarget(undefined);
     setSourceValue(""); setSourceError(""); setPageNumber(1); setFeedback(undefined); setOfficialIssues([]);
-    document.title = "E-Rechnungs-Assistent";
+    document.title = "Druckwandel";
   }
 
   function restoreDocument(data: Uint8Array, name: string, next: WorkspaceSnapshot) {
@@ -239,7 +239,7 @@ export function App() {
     setCompleted(next.completed); setHybridConfirmed(next.hybridConfirmed); setSelectedTokenIds([]); setSourceTarget(undefined);
     setSourceValue(""); setSourceError(""); setPageNumber(1); setError(""); setFeedback(undefined); setOfficialIssues([]);
     setView("editor");
-    document.title = `${name} – E-Rechnungs-Assistent`;
+    document.title = `${name} – Druckwandel`;
   }
 
   async function openPdfFile(file: File, importedDraft?: LegacyDraft) {
@@ -519,7 +519,7 @@ export function App() {
     }}
   >
     <header>
-      <div><h1>E‑Rechnungs-Assistent</h1><p>{view === "datev" ? "Rechnungen für die Steuerkanzlei vorbereiten" : view === "archive" ? "Gespeicherte Rechnungen finden und prüfen" : view === "inbox" ? "Rechnungen und angefangene Entwürfe" : fileName || "Rechnung öffnen, Angaben prüfen und speichern"}</p></div>
+      <div><h1>Druckwandel</h1><p>{view === "datev" ? "Rechnungen für die Steuerkanzlei vorbereiten" : view === "archive" ? "Gespeicherte Rechnungen finden und prüfen" : view === "inbox" ? "Rechnungen und angefangene Entwürfe" : fileName || "Rechnung öffnen, Angaben prüfen und speichern"}</p></div>
       <div className="header-actions">
         {isTauri() && <nav className="app-navigation" aria-label="Bereich wählen">
           <button type="button" disabled={processing} aria-current={view === "inbox" ? "page" : undefined} className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}>Posteingang ({work.page.total})</button>

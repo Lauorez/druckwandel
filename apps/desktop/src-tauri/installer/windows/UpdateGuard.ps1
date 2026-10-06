@@ -51,7 +51,7 @@ function Get-PreviousVersion {
     foreach ($key in $uninstall) {
         $name = (Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue).DisplayName
         $version = (Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue).DisplayVersion
-        if ($name -like "*E-Rechnungs-Assistent*" -and $version) {
+        if (($name -eq "Druckwandel" -or $name -like "*E-Rechnungs-Assistent*") -and $version) {
             return [string]$version
         }
     }

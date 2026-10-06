@@ -1,4 +1,4 @@
-# Mitwirken am E-Rechnungs-Assistenten
+# Mitwirken an Druckwandel
 
 Danke, dass du zum Projekt beitragen möchtest! Fehlerberichte, Testergebnisse von echten Windows-Systemen, Dokumentationsverbesserungen und Code sind gleichermaßen willkommen. Issues und Pull Requests dürfen auf Deutsch oder Englisch verfasst werden.
 

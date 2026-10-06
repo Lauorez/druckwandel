@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$logPath = Join-Path $env:TEMP "E-Rechnungs-Assistent-Deinstallation.log"
+$logPath = Join-Path $env:TEMP "Druckwandel-Deinstallation.log"
 $packageName = "ERechnung.VirtualPrinter.PoC"
 $printerName = "E-Rechnung"
 
@@ -18,7 +18,7 @@ function Write-SetupLog {
 }
 
 try {
-    Set-Content -LiteralPath $logPath -Value "E-Rechnungs-Assistent – Deinstallation" -Encoding UTF8
+    Set-Content -LiteralPath $logPath -Value "Druckwandel – Deinstallation" -Encoding UTF8
     Import-Module (Join-Path $PSHOME "Modules\Appx\Appx.psd1") -Force
     Import-Module (Join-Path $PSHOME "Modules\PrintManagement\PrintManagement.psd1") -Force
     $packages = @(Get-AppxPackage -Name $packageName)

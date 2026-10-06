@@ -35,6 +35,31 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(hooks).not.toContain("Die Anwendung wird trotzdem installiert");
   });
 
+  it("ersetzt eine Installation unter dem früheren Namen E-Rechnungs-Assistent", () => {
+    const config = JSON.parse(
+      readFileSync(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
+    );
+    expect(config.productName).toBe("Druckwandel");
+    expect(config.identifier).toBe("de.erechnung.converter");
+    expect(config.plugins["deep-link"].desktop.schemes).toEqual(["erechnung-review"]);
+
+    const hooks = readFileSync(
+      resolve(root, "apps/desktop/src-tauri/nsis/installer-hooks.nsh"),
+      "utf8",
+    );
+    expect(hooks).toContain("CurrentVersion\\Uninstall\\E-Rechnungs-Assistent");
+    expect(hooks).toContain("${OrIf} $R7 != \"\"");
+    expect(hooks).toContain("/S /UPDATE _?=$R6");
+    expect(hooks).toContain("$SMPROGRAMS\\E-Rechnungs-Assistent.lnk");
+
+    const guard = readFileSync(
+      resolve(root, "apps/desktop/src-tauri/installer/windows/UpdateGuard.ps1"),
+      "utf8",
+    );
+    expect(guard).toContain('$name -eq "Druckwandel"');
+    expect(guard).toContain("*E-Rechnungs-Assistent*");
+  });
+
   it("installiert ausschließlich das erwartete, signierte Druckerpaket", () => {
     const installer = readFileSync(
       resolve(root, "apps/desktop/src-tauri/installer/windows/InstallPrinter.ps1"),

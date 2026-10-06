@@ -1,13 +1,15 @@
-# E-Rechnungs-Assistent
+# Druckwandel
 
-[![Release-Gate](https://github.com/Lauorez/erechnung/actions/workflows/release-gate.yml/badge.svg)](https://github.com/Lauorez/erechnung/actions/workflows/release-gate.yml)
-[![Release](https://img.shields.io/github/v/release/Lauorez/erechnung)](https://github.com/Lauorez/erechnung/releases/latest)
+**E-Rechnungen aus dem Druckdialog.**
+
+[![Release-Gate](https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml/badge.svg)](https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml)
+[![Release](https://img.shields.io/github/v/release/Lauorez/druckwandel)](https://github.com/Lauorez/druckwandel/releases/latest)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 ![Status: Beta](https://img.shields.io/badge/Status-Beta-orange.svg)
 
-**Behalte deinen bisherigen Rechnungsworkflow – der Assistent macht daraus eine gültige E-Rechnung.**
+**Behalte deinen bisherigen Rechnungsworkflow – Druckwandel macht daraus eine gültige E-Rechnung.**
 
-Der E-Rechnungs-Assistent ist eine lokale Desktop-Anwendung für Windows 11. Sie übernimmt Rechnungen aus Word, Excel, Branchen- und Altsoftware über einen virtuellen Drucker „E-Rechnung“, erkennt die Rechnungsdaten, lässt sie prüfen und ergänzen und erzeugt daraus **XRechnung** (UBL) oder **ZUGFeRD/Factur-X** (PDF/A-3 mit CII). Die Verarbeitung läuft vollständig lokal. Es werden keine Rechnungsdaten an externe Dienste gesendet.
+Druckwandel (bis Version 0.3.4 „E-Rechnungs-Assistent“) ist eine lokale Desktop-Anwendung für Windows 11. Sie übernimmt Rechnungen aus Word, Excel, Branchen- und Altsoftware über einen virtuellen Drucker „E-Rechnung“, erkennt die Rechnungsdaten, lässt sie prüfen und ergänzen und erzeugt daraus **XRechnung** (UBL) oder **ZUGFeRD/Factur-X** (PDF/A-3 mit CII). Die Verarbeitung läuft vollständig lokal. Es werden keine Rechnungsdaten an externe Dienste gesendet.
 
 > **English summary:** A local-first Windows desktop app that turns ordinary printed or PDF invoices into German/EU-compliant e-invoices (XRechnung, ZUGFeRD/Factur-X, EN 16931). It ships a driverless virtual printer, rule-based PDF extraction with a learning template memory, bundled offline validators (KoSIT, Mustang, veraPDF), a tamper-evident local archive, encrypted backups and a DATEV export. Built with TypeScript, React, Tauri/Rust and .NET. The UI and docs are in German.
 
@@ -33,13 +35,13 @@ Der E-Rechnungs-Assistent ist eine lokale Desktop-Anwendung für Windows 11. Sie
 
 Voraussetzung: Windows 11 Version 24H2 oder neuer (Build 26100), 64-Bit. Die aktuelle Fassung ist **0.3.4** mit Drucker **0.1.0.12**.
 
-Setup und Prüfsumme stehen im [Release v0.3.4](https://github.com/Lauorez/erechnung/releases/tag/v0.3.4):
+Setup und Prüfsumme stehen im [Release v0.3.4](https://github.com/Lauorez/druckwandel/releases/tag/v0.3.4). Diese Fassung ist noch unter dem früheren Namen erschienen:
 
-- [E-Rechnungs-Assistent-0.3.4-x64-Setup.exe](https://github.com/Lauorez/erechnung/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe)
-- [SHA-256](https://github.com/Lauorez/erechnung/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe.sha256) (`723b4e0004899ad20e1eb66c6ebfb75bd16446e76b32ae2b82d75f50442cc661`)
-- [Öffentliches Druckerzertifikat für die IT](https://github.com/Lauorez/erechnung/releases/download/v0.3.4/ERechnung.Dev.cer)
+- [E-Rechnungs-Assistent-0.3.4-x64-Setup.exe](https://github.com/Lauorez/druckwandel/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe)
+- [SHA-256](https://github.com/Lauorez/druckwandel/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe.sha256) (`723b4e0004899ad20e1eb66c6ebfb75bd16446e76b32ae2b82d75f50442cc661`)
+- [Öffentliches Druckerzertifikat für die IT](https://github.com/Lauorez/druckwandel/releases/download/v0.3.4/ERechnung.Dev.cer)
 
-Die Datei normal starten, nicht über „Als Administrator ausführen“. Das Setup installiert Anwendung und Drucker für das angemeldete Benutzerkonto nach `%LOCALAPPDATA%\E-Rechnungs-Assistent` und legt den Drucker **E-Rechnung** an. Node, Rust, .NET SDK oder Java sind dafür nicht nötig. Ein Update behält Entwürfe, Archiv und Vorlagengedächtnis. Die Deinstallation entfernt den Drucker, nicht `Dokumente\E-Rechnungsarchiv`.
+Die Datei normal starten, nicht über „Als Administrator ausführen“. Das Setup installiert Anwendung und Drucker für das angemeldete Benutzerkonto nach `%LOCALAPPDATA%\E-Rechnungs-Assistent` und legt den Drucker **E-Rechnung** an. Ab der nächsten Version installiert das Setup nach `%LOCALAPPDATA%\Druckwandel` und ersetzt dabei eine vorhandene Installation des E-Rechnungs-Assistenten; Daten, Archiv und Drucker bleiben erhalten. Node, Rust, .NET SDK oder Java sind dafür nicht nötig. Ein Update behält Entwürfe, Archiv und Vorlagengedächtnis. Die Deinstallation entfernt den Drucker, nicht `Dokumente\E-Rechnungsarchiv`.
 
 > [!WARNING]
 > **Signatur:** Das Setup ist unsigniert. Das Druckerpaket ist mit dem selbstsignierten Entwicklungszertifikat `CN=ERechnung Development` signiert. Auf einem fremden Rechner fragt das Setup deshalb einmalig nach Administratorrechten, prüft Zertifikat und Paket erneut und hinterlegt nur das öffentliche Zertifikat in `LocalMachine\TrustedPeople`. Auf verwalteten Rechnern kann die IT diesen Schritt vorab übernehmen. Details: [Windows-Vorführpaket](docs/windows-demo-installation.md), [Installationsbericht 0.3.4](docs/releases/installation-0.3.4-2026-09-27.md).
@@ -51,13 +53,13 @@ Wie es nach der Installation weitergeht, beschreibt das [Benutzerhandbuch](docs/
 Nach dem Klonen reicht ein Skript. Es installiert fehlende Werkzeuge (Node 22, Rust, .NET SDK 10) nur für das aktuelle Benutzerkonto, lädt das Prüfpaket samt Windows-JRE, erzeugt eine Musterrechnung und baut den NSIS-Installer:
 
 ```powershell
-git clone https://github.com/Lauorez/erechnung.git
-cd erechnung
+git clone https://github.com/Lauorez/druckwandel.git
+cd druckwandel
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup-windows.ps1
 ```
 
-Ergebnis: `artifacts\windows\E-Rechnungs-Assistent-<Version>-x64-Setup.exe` mit SHA-256-Prüfsumme und `artifacts\demo\muster-rechnung.pdf`.
+Ergebnis: `artifacts\windows\Druckwandel-<Version>-x64-Setup.exe` mit SHA-256-Prüfsumme und `artifacts\demo\muster-rechnung.pdf`.
 
 Die Setup-Datei enthält Anwendung, Drucker, Windows App Runtime, WebView2-Offline-Installer und die lokalen Prüfer samt Java. `validators:fetch` muss auf Windows laufen, weil die gebündelte JRE plattformabhängig ist; eine auf dem Mac geladene JRE darf nicht in den Windows-Installer.
 

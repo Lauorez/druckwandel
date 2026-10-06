@@ -1,6 +1,6 @@
-# Windows-Druckbrücke für den E-Rechnungs-Assistenten
+# Windows-Druckbrücke für Druckwandel
 
-Lokaler virtueller PDF-Drucker für Windows 11. Der installierte Drucker **E-Rechnung** übernimmt einen normalen Windows-Druckauftrag, erzeugt ohne Speichern-unter-Dialog ein PDF und übergibt ihn über die kleine native Windows-Druckbrücke an den lokalen E-Rechnungs-Assistenten.
+Lokaler virtueller PDF-Drucker für Windows 11. Der installierte Drucker **E-Rechnung** übernimmt einen normalen Windows-Druckauftrag, erzeugt ohne Speichern-unter-Dialog ein PDF und übergibt ihn über die kleine native Windows-Druckbrücke an die lokale Anwendung Druckwandel.
 
 > Paketversion: **0.1.0.4**. Build, MSIX-Inhalt, Installation, Druckerregistrierung sowie OXPS-Druck und PDF-Konvertierung sind auf Windows 11 praktisch bestätigt.
 
@@ -50,8 +50,8 @@ Das Zertifikat ist ausschließlich für lokale Entwicklungstests bestimmt. Für 
 ## Schnellstart auf Windows
 
 ```powershell
-git clone https://github.com/Lauorez/erechnung.git
-cd erechnung\drucker
+git clone https://github.com/Lauorez/druckwandel.git
+cd druckwandel\drucker
 # PowerShell zuvor als Administrator öffnen
 Set-ExecutionPolicy -Scope Process Bypass
 ./scripts/build.ps1
@@ -64,7 +64,7 @@ Danach prüfen:
 Get-Printer -Name "E-Rechnung"
 ```
 
-Anschließend Notepad öffnen und über **Drucken → E-Rechnung** drucken. Windows darf keinen zusätzlichen Speichern-unter-Dialog anzeigen. Nach der Konvertierung übergibt die Druckbrücke den Auftrag an `erechnung-review://print-job/<UUID>` und schließt sich; bei installiertem Protokollhandler öffnet sich der E-Rechnungs-Assistent.
+Anschließend Notepad öffnen und über **Drucken → E-Rechnung** drucken. Windows darf keinen zusätzlichen Speichern-unter-Dialog anzeigen. Nach der Konvertierung übergibt die Druckbrücke den Auftrag an `erechnung-review://print-job/<UUID>` und schließt sich; bei installiertem Protokollhandler öffnet sich Druckwandel.
 
 ## Build
 

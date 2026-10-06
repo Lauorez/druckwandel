@@ -8,7 +8,7 @@ Das Projekt befindet sich in der Beta-Phase. Sicherheitskorrekturen erfolgen aus
 
 Bitte melde Schwachstellen **nicht** über öffentliche Issues, Diskussionen oder Pull Requests.
 
-Nutze stattdessen die private Meldefunktion von GitHub: **Security → Report a vulnerability** im Repository ([direkter Link](https://github.com/Lauorez/erechnung/security/advisories/new)).
+Nutze stattdessen die private Meldefunktion von GitHub: **Security → Report a vulnerability** im Repository ([direkter Link](https://github.com/Lauorez/druckwandel/security/advisories/new)).
 
 Hilfreich sind:
 
