@@ -15,12 +15,14 @@ Alle nennenswerten Änderungen an Druckwandel (bis 0.3.4 „E-Rechnungs-Assisten
 ### Geändert
 
 - Die Anwendung heißt jetzt **Druckwandel**, das Repository `Lauorez/druckwandel`. Das Setup installiert nach `%LOCALAPPDATA%\Druckwandel` und ersetzt eine vorhandene Installation des E-Rechnungs-Assistenten wie ein Update; Daten, Archiv, Vorlagengedächtnis und Drucker bleiben erhalten. Interne Kennungen (`de.erechnung.converter`, `erechnung-review://`, Drucker „E-Rechnung“, Ordner unter „Dokumente“, DATEV-Herkunftskennung) sind unverändert.
-- npm-Skripte umbenannt: `wp5:*` → `printer:*`, `wp6:check` → `corpus:check`.
+- npm-Skripte umbenannt: `wp5:*` → `printer:*`, `wp6:check` → `corpus:check`. Die zugehörigen Skripte heißen jetzt `scripts/printer-build.ps1`, `printer-reinstall.ps1`, `printer-repair-spooler.ps1` und `smoke-native-window.ps1`; der Workflow „Windows-Vorführinstaller“ heißt „Windows-Setup“ und ist nicht mehr auf eine Version festgelegt.
+- Neues Logo: ein Drucker, aus dem das geprüfte Dokument kommt. Auch die Druckerbegleit-App nutzt es jetzt statt der Vorlagen-Platzhalter.
 - Dokumentation unter `docs/` neu gegliedert (Abnahmeprotokolle, Entscheidungen, Prüfberichte, Installationsberichte, Planung).
 
 ### Behoben
 
 - Lizenzangabe von KoSIT-Validator und XRechnung-Konfiguration im Validatorenmanifest und in `docs/components.md` korrigiert (Apache-2.0 statt EUPL-1.2).
+- `npm run printer:install` suchte das Drucker-MSIX nur im veralteten Ordner `drucker\src\CompanionApp\AppPackages`, der Installer-Build zusätzlich dort. Beide konnten so ein altes Paket verwenden oder keines finden. Sie nehmen jetzt nur noch die Ausgabe von `drucker/scripts/build.ps1` unter `drucker\artifacts\packages`.
 
 ## [0.3.4] – 2026-09-27
 

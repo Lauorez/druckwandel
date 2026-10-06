@@ -1,3 +1,5 @@
+<img src="apps/desktop/app-icon.svg" alt="Druckwandel-Logo" width="96" align="right">
+
 # Druckwandel
 
 **E-Rechnungen aus dem Druckdialog.**

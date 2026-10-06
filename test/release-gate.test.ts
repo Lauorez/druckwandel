@@ -34,7 +34,7 @@ describe("WP13 Auslieferung", () => {
     expect(workflow).toContain("ubuntu-latest");
     expect(workflow).toContain("release:gate -- --portable");
     expect(workflow).not.toMatch(/windows-latest|self-hosted/);
-    expect(read("scripts/release-gate.mjs")).toContain("wp14-native-smoke.json");
+    expect(read("scripts/release-gate.mjs")).toContain("native-window-smoke.json");
   });
 
   it("keeps validator processes windowless and cancelable", () => {

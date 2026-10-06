@@ -125,17 +125,17 @@ if (requireSignatures) {
 await import("./acceptance-matrix.mjs");
 record("acceptance-matrix", "Abnahmematrix", "passed", "docs/acceptance-matrix.md");
 
-const nativeSmoke = resolve(root, "artifacts/wp14-native-smoke.json");
+const nativeSmoke = resolve(root, "artifacts/native-window-smoke.json");
 if (existsSync(nativeSmoke)) {
   const report = JSON.parse(readFileSync(nativeSmoke, "utf8"));
   if (report.passed === true) record("native-window", "Echtes Tauri-Fenster", "passed", nativeSmoke);
-  else record("native-window", "Echtes Tauri-Fenster", "failed", "artifacts/wp14-native-smoke.json meldet kein Bestanden.");
+  else record("native-window", "Echtes Tauri-Fenster", "failed", "artifacts/native-window-smoke.json meldet kein Bestanden.");
 } else {
   record(
     "native-window",
     "Echtes Tauri-Fenster",
     "pending",
-    "Kein artifacts/wp14-native-smoke.json. Isoliert: scripts/run-wp14-smoke.ps1. Nicht aus Unit-Tests ableiten.",
+    "Kein artifacts/native-window-smoke.json. Isoliert: scripts/smoke-native-window.ps1. Nicht aus Unit-Tests ableiten.",
   );
 }
 

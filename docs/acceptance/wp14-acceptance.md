@@ -18,7 +18,7 @@ Stand: 16.09.2026. Lokale Entwicklungsabnahme, **keine 1.0-Freigabe** und keine 
 | Beide Exportwege erst nach Originalbestätigung | `test/review-ui.test.tsx` |
 | Tastatur Escape, Sicherungserinnerung | `test/release-ui.test.tsx` |
 | Matrix behauptet kein Bestanden ohne Nachweis | `test/acceptance-matrix.test.ts`, `npm run release:matrix` |
-| Native Fenster-/Skalierungsprüfung | `scripts/smoke-release.mjs` / `scripts/run-wp14-smoke.ps1` (ohne Report: pending) |
+| Native Fenster-/Skalierungsprüfung | `scripts/smoke-release.mjs` / `scripts/smoke-native-window.ps1` (ohne Report: pending) |
 | Warteschlange, Neustart, Schließen | `scripts/smoke-workspace.mjs` (WP7, isoliert) |
 | XML/PDF-Regressionen | `npm run check:xml` / `check:pdf` sofern JRE vorhanden |
 

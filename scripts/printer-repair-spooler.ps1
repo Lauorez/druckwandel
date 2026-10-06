@@ -34,7 +34,7 @@ if ($activeJobs.Count -gt 0) {
     throw "Reparatur abgebrochen: Es existieren noch $($activeJobs.Count) sichtbare Druckjobs."
 }
 
-$logPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\wp5-spooler-repair.log'
+$logPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\printer-spooler-repair.log'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath) | Out-Null
 
 $removedFiles = [Collections.Generic.List[string]]::new()
