@@ -16,7 +16,13 @@ $repositoryRoot = Split-Path $PSScriptRoot -Parent
 & (Join-Path $PSScriptRoot "check-environment.ps1")
 & (Join-Path $PSScriptRoot "create-dev-cert.ps1") -Password $CertificatePassword
 & (Join-Path $PSScriptRoot "build-native-task.ps1") -Platform $Platform -Configuration $Configuration
-& (Join-Path $PSScriptRoot "test-native-task.ps1")
+# The test must run in Windows PowerShell (.NET Framework): it proves that the
+# native task does not load CoreCLR, and pwsh always has CoreCLR loaded already.
+$windowsPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+& $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "test-native-task.ps1")
+if ($LASTEXITCODE -ne 0) {
+    throw "Der Test des nativen Background-Tasks ist fehlgeschlagen."
+}
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
 $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" |
