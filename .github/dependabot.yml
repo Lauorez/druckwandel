@@ -10,6 +10,14 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+    groups:
+      # Muss zusammen mit der Cargo-Gruppe "tauri" aktualisiert werden.
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
+      npm:
+        patterns:
+          - "*"
   - package-ecosystem: cargo
     directory: /apps/desktop/src-tauri
     schedule:
@@ -20,6 +28,15 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+    groups:
+      # Muss zusammen mit der npm-Gruppe "tauri" aktualisiert werden.
+      tauri:
+        patterns:
+          - "tauri"
+          - "tauri-*"
+      cargo:
+        patterns:
+          - "*"
   - package-ecosystem: nuget
     directory: /drucker
     schedule:
@@ -31,9 +48,17 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+    groups:
+      nuget:
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
