@@ -20,8 +20,7 @@ $workspace = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $workspace "apps\desktop\src-tauri"
 $payloadRoot = Join-Path $tauriRoot "installer\windows\payload"
 $printerPackageRoots = @(
-    (Join-Path $workspace "drucker\artifacts\packages"),
-    (Join-Path $workspace "drucker\src\CompanionApp\AppPackages")
+    (Join-Path $workspace "drucker\artifacts\packages")
 )
 $defaultCertificate = Join-Path $workspace "drucker\.cert\ERechnung.Dev.cer"
 
@@ -56,7 +55,7 @@ if (-not $PrinterPackagePath) {
         Invoke-Checked -Command "powershell.exe" -Arguments @(
             "-NoProfile",
             "-ExecutionPolicy", "Bypass",
-            "-File", (Join-Path $workspace "scripts\wp5-build-reference.ps1")
+            "-File", (Join-Path $workspace "scripts\printer-build.ps1")
         )
     }
 

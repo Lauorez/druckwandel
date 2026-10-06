@@ -1,4 +1,4 @@
-name: Windows-Vorführinstaller
+name: Windows-Setup
 
 on:
   workflow_dispatch:
@@ -50,14 +50,15 @@ jobs:
           Copy-Item -LiteralPath (Join-Path $payload 'WindowsAppRuntime.msix') -Destination 'artifacts/old-printer/WindowsAppRuntime.msix'
       - name: Installer-Tests
         run: npx vitest run test/windows-installer.test.ts
-      - name: Setup 0.3.4 bauen
+      - name: Setup bauen
         shell: pwsh
         run: |
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1 -SkipChecks -SkipPrinterBuild -PrinterPackagePath artifacts/old-printer/Printer.msix -PrinterDependencyPath artifacts/old-printer/WindowsAppRuntime.msix -PrinterCertificatePath artifacts/old-printer/PrinterCertificate.cer
           if ($LASTEXITCODE -ne 0) { throw 'Der Installer-Build ist fehlgeschlagen.' }
       - uses: actions/upload-artifact@v7
         with:
-          name: Druckwandel-0.3.4-Windows
+          name: Druckwandel-Windows-Setup
           path: |
-            artifacts/windows/Druckwandel-0.3.4-x64-Setup.exe
-            artifacts/windows/Druckwandel-0.3.4-x64-Setup.exe.sha256
+            artifacts/windows/Druckwandel-*-x64-Setup.exe
+            artifacts/windows/Druckwandel-*-x64-Setup.exe.sha256
+          if-no-files-found: error

@@ -7,4 +7,4 @@ if (-not (Test-Path -LiteralPath $pfx -PathType Leaf)) {
 }
 
 & (Join-Path $workspace 'drucker\scripts\build.ps1') -Platform x64 -Configuration Release
-if ($LASTEXITCODE -ne 0) { throw "WP5-Build fehlgeschlagen ($LASTEXITCODE)." }
+if ($LASTEXITCODE -ne 0) { throw "Der Drucker-Build ist fehlgeschlagen ($LASTEXITCODE)." }

@@ -66,7 +66,7 @@ const rows = [
     os: "Windows 11 Debug-Build",
     app: "0.3.1",
     standard: "—",
-    ...evidenceStatus("artifacts/wp14-native-smoke.json"),
+    ...evidenceStatus("artifacts/native-window-smoke.json"),
   },
   {
     id: "print-cold",

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const root = resolve(import.meta.dirname, "..");
 const read = (relative: string) => readFileSync(resolve(root, relative), "utf8");
 
-describe("WP14 release candidate artefacts", () => {
+describe("Release-Candidate-Nachweise", () => {
   it("does not treat missing hardware evidence as passed", () => {
     const matrix = read("docs/acceptance-matrix.md");
     expect(matrix).toContain("ungeprüft");
@@ -16,7 +16,7 @@ describe("WP14 release candidate artefacts", () => {
     expect(matrix).toContain("Hardwareabnahme");
     const script = read("scripts/acceptance-matrix.mjs");
     expect(script).toContain('result: "ungeprüft"');
-    expect(script).toContain("wp14-native-smoke.json");
+    expect(script).toContain("native-window-smoke.json");
     expect(script).toContain("behauptet Bestanden ohne Nachweis");
   });
 
@@ -28,8 +28,8 @@ describe("WP14 release candidate artefacts", () => {
     expect(smoke).toContain("Escape");
     expect(smoke).not.toContain("?.click() !== undefined");
     expect(smoke).toContain("button.click(); return true");
-    expect(read("scripts/run-wp14-smoke.ps1")).toContain("Keinen echten Nutzerbestand");
-    expect(read("scripts/release-gate.mjs")).toContain("wp14-native-smoke.json");
+    expect(read("scripts/smoke-native-window.ps1")).toContain("Keinen echten Nutzerbestand");
+    expect(read("scripts/release-gate.mjs")).toContain("native-window-smoke.json");
     expect(read("docs/pilot-guide.md")).toContain("Diagnosebericht");
   });
 });

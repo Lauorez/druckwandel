@@ -1,4 +1,4 @@
-// Native WebView2 checks for WP14. Isolated ERECHNUNG_TEST_ROOT only (erechnung-wp*).
+// Native WebView2 checks for the release candidate. Isolated ERECHNUNG_TEST_ROOT only (erechnung-wp*).
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
@@ -171,7 +171,7 @@ try {
     ],
   };
   await mkdir(resolve("artifacts"), { recursive: true });
-  await writeFile(join(resolve("artifacts"), "wp14-native-smoke.json"), `${JSON.stringify(report, null, 2)}\n`);
+  await writeFile(join(resolve("artifacts"), "native-window-smoke.json"), `${JSON.stringify(report, null, 2)}\n`);
   console.log("PASS: native views, keyboard focus, diagnose/backup, 100/150/200 % layout.");
 } finally {
   main.close();

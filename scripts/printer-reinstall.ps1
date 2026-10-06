@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $workspace = Split-Path -Parent $PSScriptRoot
-$package = Get-ChildItem -Path (Join-Path $workspace 'drucker\src\CompanionApp\AppPackages') `
+$package = Get-ChildItem -Path (Join-Path $workspace 'drucker\artifacts\packages') `
     -Recurse -File -Filter 'CompanionApp_*.msix' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' } |
     Sort-Object LastWriteTimeUtc -Descending |
@@ -62,12 +62,12 @@ do {
 } while ((Get-Date) -lt $deadline)
 
 if (-not $package -or -not $printer -or -not $createdEvent) {
-    throw 'WP5 wurde nicht vollständig registriert: Paket, Queue oder PrintService-Create-Ereignis fehlt.'
+    throw 'Der Drucker wurde nicht vollständig registriert: Paket, Queue oder PrintService-Create-Ereignis fehlt.'
 }
 
 $workflowServices = @(Get-Service -Name 'PrintWorkflowUserSvc*' -ErrorAction SilentlyContinue)
 if ($workflowServices.Count -eq 0) {
-    throw 'WP5 wurde installiert, aber Windows PrintWorkflowUserSvc wurde nicht gefunden.'
+    throw 'Der Drucker wurde installiert, aber Windows PrintWorkflowUserSvc wurde nicht gefunden.'
 }
 foreach ($workflowService in $workflowServices) {
     if ($workflowService.Status -eq 'Running') {
