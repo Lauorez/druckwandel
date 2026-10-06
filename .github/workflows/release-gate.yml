@@ -1,8 +1,8 @@
 name: Release-Gate
 
-# Portabler Lauf auf GitHub-hosted Ubuntu. Windows-Cargo, .NET, Installer und
-# echte Validatoren bleiben lokal (`npm run release:gate`). Kein Windows-Runner
-# und kein DATEV-Prüfprogramm werden hier als bestanden gewertet.
+# Portable run on GitHub-hosted Ubuntu. Windows Cargo, .NET, the installer and
+# the real validators stay local (`npm run release:gate`). Neither a Windows runner
+# nor the DATEV checker counts as passed here.
 on:
   workflow_dispatch:
   pull_request:

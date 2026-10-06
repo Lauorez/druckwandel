@@ -4,11 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "drucker/**"
+      - "printer/**"
       - ".github/workflows/printer-core-tests.yml"
   pull_request:
     paths:
-      - "drucker/**"
+      - "printer/**"
       - ".github/workflows/printer-core-tests.yml"
 
 permissions:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: drucker
+        working-directory: printer
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6

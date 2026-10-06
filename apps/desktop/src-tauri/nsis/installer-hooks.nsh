@@ -30,9 +30,9 @@
   File /oname=Printer.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\Printer.msix"
   File /oname=WindowsAppRuntime.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\WindowsAppRuntime.msix"
 
-  ; Bis 0.3.4 hieß die Anwendung "E-Rechnungs-Assistent". Tauri leitet Installationsordner
-  ; und Deinstallationsschlüssel aus dem Produktnamen ab, deshalb wird die alte
-  ; Installation hier wie bei einem Update ersetzt. Daten, Archiv und Drucker bleiben.
+  ; Up to 0.3.4 the application was called "E-Rechnungs-Assistent". Tauri derives the
+  ; install directory and uninstall key from the product name, so the old install is
+  ; replaced here like an update. Data, archive and printer are kept.
   ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\E-Rechnungs-Assistent" "UninstallString"
 
   ${If} $UpdateMode = 1
@@ -56,8 +56,8 @@
     ${EndIf}
     DetailPrint "Die bisherige Installation E-Rechnungs-Assistent wird ersetzt ..."
     ClearErrors
-    ; /UPDATE lässt den Drucker stehen, _?= hält den Deinstaller im alten Ordner,
-    ; damit ExecWait auf ihn warten kann.
+    ; /UPDATE keeps the printer installed, _?= keeps the uninstaller in the old directory
+    ; so that ExecWait can wait for it.
     ExecWait '$R7 /S /UPDATE _?=$R6' $0
     ${If} ${Errors}
     ${OrIf} $0 <> 0

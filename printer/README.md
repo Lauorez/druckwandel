@@ -51,7 +51,7 @@ Das Zertifikat ist ausschließlich für lokale Entwicklungstests bestimmt. Für 
 
 ```powershell
 git clone https://github.com/Lauorez/druckwandel.git
-cd druckwandel\drucker
+cd druckwandel\printer
 # PowerShell zuvor als Administrator öffnen
 Set-ExecutionPolicy -Scope Process Bypass
 ./scripts/build.ps1

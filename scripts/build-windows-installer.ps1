@@ -20,9 +20,9 @@ $workspace = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $workspace "apps\desktop\src-tauri"
 $payloadRoot = Join-Path $tauriRoot "installer\windows\payload"
 $printerPackageRoots = @(
-    (Join-Path $workspace "drucker\artifacts\packages")
+    (Join-Path $workspace "printer\artifacts\packages")
 )
-$defaultCertificate = Join-Path $workspace "drucker\.cert\ERechnung.Dev.cer"
+$defaultCertificate = Join-Path $workspace "printer\.cert\ERechnung.Dev.cer"
 
 $validatorRoot = Join-Path $tauriRoot "resources\validators"
 $validatorManifest = Get-Content -LiteralPath (Join-Path $validatorRoot "manifest.json") -Raw | ConvertFrom-Json

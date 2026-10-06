@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
 
-describe("gemeinsamer Windows-Installer", () => {
-  it("bindet den Drucker in den Tauri-NSIS-Installer ein", () => {
+describe("combined Windows installer", () => {
+  it("bundles the printer into the Tauri NSIS installer", () => {
     const config = JSON.parse(
       readFileSync(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
     );
@@ -35,7 +35,7 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(hooks).not.toContain("Die Anwendung wird trotzdem installiert");
   });
 
-  it("ersetzt eine Installation unter dem früheren Namen E-Rechnungs-Assistent", () => {
+  it("replaces an install under the former name E-Rechnungs-Assistent", () => {
     const config = JSON.parse(
       readFileSync(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
     );
@@ -60,7 +60,7 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(guard).toContain("*E-Rechnungs-Assistent*");
   });
 
-  it("installiert ausschließlich das erwartete, signierte Druckerpaket", () => {
+  it("installs only the expected signed printer package", () => {
     const installer = readFileSync(
       resolve(root, "apps/desktop/src-tauri/installer/windows/InstallPrinter.ps1"),
       "utf8",
@@ -85,7 +85,7 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(trust).toContain("Import-Certificate");
   });
 
-  it("richtet einen frischen Windows-Rechner mit einem Setup-Skript ein", () => {
+  it("sets up a fresh Windows machine with one setup script", () => {
     const setup = readFileSync(resolve(root, "scripts/setup-windows.ps1"), "utf8");
     expect(setup).toContain("26100");
     expect(setup).toContain("PROCESSOR_ARCHITEW6432");
@@ -104,7 +104,7 @@ describe("gemeinsamer Windows-Installer", () => {
     expect(setup).toContain("java.exe");
   });
 
-  it("verhindert einen unsignierten Produktionsbuild", () => {
+  it("prevents an unsigned production build", () => {
     const buildScript = readFileSync(
       resolve(root, "scripts/build-windows-installer.ps1"),
       "utf8",

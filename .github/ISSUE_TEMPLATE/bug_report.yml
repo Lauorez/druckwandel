@@ -55,5 +55,5 @@ body:
     id: logs
     attributes:
       label: Fehlermeldungen oder Logs
-      description: Bitte vorher auf vertrauliche Inhalte prüfen. Für Druckerprobleme hilft `drucker/scripts/collect-diagnostics.ps1`.
+      description: Bitte vorher auf vertrauliche Inhalte prüfen. Für Druckerprobleme hilft `printer/scripts/collect-diagnostics.ps1`.
       render: text

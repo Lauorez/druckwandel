@@ -165,14 +165,14 @@ try {
       "inbox-aria-current",
       "archive-search-focus",
       "datev-view",
-      "settings-diagnose-backup",
+      "settings-diagnostics-backup",
       "escape-settings",
       "window-sizes-and-scale",
     ],
   };
   await mkdir(resolve("artifacts"), { recursive: true });
   await writeFile(join(resolve("artifacts"), "native-window-smoke.json"), `${JSON.stringify(report, null, 2)}\n`);
-  console.log("PASS: native views, keyboard focus, diagnose/backup, 100/150/200 % layout.");
+  console.log("PASS: native views, keyboard focus, diagnostics/backup, 100/150/200 % layout.");
 } finally {
   main.close();
 }

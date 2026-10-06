@@ -59,7 +59,7 @@ export interface Booking {
   tax: string;
   gross: string;
   text: string;
-  belegGuid: string;
+  documentGuid: string;
 }
 export interface DatevDocumentFile {
   archiveId: string;

@@ -253,7 +253,7 @@ if (-not $msvcLinker -and -not (Get-Command link.exe -ErrorAction SilentlyContin
     Write-Warning "Kein MSVC-Linker gefunden. Der Tauri-Build braucht vorhandene C++-Build-Tools; ohne Administrator können sie nicht nachinstalliert werden."
 }
 
-$certificateScript = Join-Path $workspace "drucker\scripts\create-dev-cert.ps1"
+$certificateScript = Join-Path $workspace "printer\scripts\create-dev-cert.ps1"
 Invoke-Checked -Command "powershell.exe" -Arguments @(
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",

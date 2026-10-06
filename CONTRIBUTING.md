@@ -14,7 +14,7 @@ Danke, dass du zum Projekt beitragen möchtest! Fehlerberichte, Testergebnisse v
 | --- | --- |
 | TypeScript-Kern und Oberfläche | Node.js 22 (siehe `.nvmrc`) |
 | Tauri-Backend | Rust gemäß `rust-toolchain.toml`, plus die [Tauri-Voraussetzungen](https://v2.tauri.app/start/prerequisites/) deines Betriebssystems |
-| Virtueller Drucker (`drucker/`) | Windows 11 24H2 (Build 26100+), .NET SDK 10, Visual Studio mit WinUI- und MSIX-Werkzeugen |
+| Virtueller Drucker (`printer/`) | Windows 11 24H2 (Build 26100+), .NET SDK 10, Visual Studio mit WinUI- und MSIX-Werkzeugen |
 
 Fachkern, Tests und die Weboberfläche lassen sich auf Windows, macOS und Linux entwickeln. Nur der virtuelle Drucker und der Windows-Installer benötigen Windows.
 
@@ -44,7 +44,7 @@ npm run check:pdf      # Hybrid-PDF mit veraPDF und Mustang
 Für Änderungen am Drucker oder Installer zusätzlich auf Windows:
 
 ```powershell
-.\drucker\scripts\test.ps1
+.\printer\scripts\test.ps1
 npm run printer:build
 npm run release:gate   # vollständiges Gate inkl. .NET, Prüfern und Installer-Szenarien
 ```
@@ -54,7 +54,7 @@ Die CI führt `npm run release:gate -- --portable` auf Ubuntu aus. Schritte, die
 ## Leitlinien für Code
 
 - **Geldbeträge sind Dezimal-Strings.** JavaScript-`number` ist für Beträge und Mengen im Domänenmodell tabu; gerechnet wird mit `decimal.js`.
-- **Eine Rechnungslogik.** Fachliche Regeln, Berechnung und XML-Erzeugung leben ausschließlich im TypeScript-Kern unter `src/`. Rust (`apps/desktop/src-tauri`) ist die schmale Vertrauensgrenze für Dateien, SQLite und Prozessstarts; .NET (`drucker/`) nimmt nur Druckaufträge an.
+- **Eine Rechnungslogik.** Fachliche Regeln, Berechnung und XML-Erzeugung leben ausschließlich im TypeScript-Kern unter `src/`. Rust (`apps/desktop/src-tauri`) ist die schmale Vertrauensgrenze für Dateien, SQLite und Prozessstarts; .NET (`printer/`) nimmt nur Druckaufträge an.
 - **Lokal bleibt lokal.** Produktcode sendet keine Rechnungsdaten an Netzwerkdienste und enthält keine Telemetrie.
 - **Tests zu jedem Verhalten.** Neue Funktionen und Fehlerbehebungen brauchen passende Tests. Änderungen an der Extraktion müssen das Korpus-Gate (`npm run corpus:check`) bestehen.
 - **Ehrliche Nachweise.** Ein Unit-Test ersetzt keinen Druck-, Installations- oder DATEV-Importtest. Ungeprüftes bleibt in der [Abnahmematrix](docs/acceptance-matrix.md) als ungeprüft stehen.

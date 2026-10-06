@@ -178,7 +178,7 @@ body:has(.settings-main:not(.settings-overlay)) { min-width: 560px; }
 .backup-fields label { display: grid; gap: 4px; font-size: 13px; color: #3b4c41; }
 .backup-fields input { min-height: 34px; padding: 4px 8px; }
 .backup-fields button { justify-self: start; }
-.diagnose-preview { margin: 0 0 12px; max-height: 280px; overflow: auto; padding: 10px 12px; border: 1px solid #d5ddd7; border-radius: 8px; background: #f7f9f7; font-size: 12px; white-space: pre-wrap; }
+.diagnostics-preview { margin: 0 0 12px; max-height: 280px; overflow: auto; padding: 10px 12px; border: 1px solid #d5ddd7; border-radius: 8px; background: #f7f9f7; font-size: 12px; white-space: pre-wrap; }
 .learning-settings-controls { min-width: 0; border: 0; padding: 0; margin: 0; }
 
 /* Keep file pickers in the keyboard tab order while styling their labels. */
