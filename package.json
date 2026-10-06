@@ -63,7 +63,7 @@
   "dependencies": {
     "@napi-rs/canvas": "^1.0.8",
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-deep-link": "2.4.10",
+    "@tauri-apps/plugin-deep-link": "2.6.1",
     "decimal.js": "^10.6.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",
