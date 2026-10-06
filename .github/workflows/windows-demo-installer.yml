@@ -55,7 +55,7 @@ jobs:
         run: |
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1 -SkipChecks -SkipPrinterBuild -PrinterPackagePath artifacts/old-printer/Printer.msix -PrinterDependencyPath artifacts/old-printer/WindowsAppRuntime.msix -PrinterCertificatePath artifacts/old-printer/PrinterCertificate.cer
           if ($LASTEXITCODE -ne 0) { throw 'Der Installer-Build ist fehlgeschlagen.' }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: E-Rechnungs-Assistent-0.3.4-Windows
           path: |
