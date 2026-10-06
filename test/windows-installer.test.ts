@@ -9,7 +9,7 @@ describe("combined Windows installer", () => {
     const config = JSON.parse(
       readFileSync(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
     );
-    expect(config.bundle.windows.nsis.installMode).toBe("currentUser");
+    expect(config.bundle.windows.nsis.installMode).toBe("perMachine");
     expect(config.bundle.windows.webviewInstallMode.type).toBe("offlineInstaller");
     expect(config.bundle.windows.nsis.installerHooks).toBe("nsis/installer-hooks.nsh");
 
@@ -23,8 +23,10 @@ describe("combined Windows installer", () => {
     expect(hooks).toContain("CurrentBuildNumber");
     expect(hooks).toContain("$WINDIR\\Sysnative\\WindowsPowerShell");
     expect(hooks).toContain("Printer.msix");
-    expect(hooks).toContain("TrustPrinterCertificate.ps1");
-    expect(hooks).toContain("-CertificateTrustScriptPath");
+    expect(hooks).not.toContain("TrustPrinterCertificate.ps1");
+    expect(hooks.match(/AssertSessionAccount\.ps1"'/g)).toHaveLength(2);
+    expect(hooks.indexOf("AssertSessionAccount.ps1\"'")).toBeLessThan(hooks.indexOf("PrepareUpdate"));
+    expect(hooks.lastIndexOf("AssertSessionAccount.ps1\"'")).toBeLessThan(hooks.indexOf("RemovePrinter.ps1\"'"));
     expect(hooks).toContain("UpdateGuard.ps1");
     expect(hooks).toContain("PrepareUpdate");
     expect(hooks).toContain("RecordInstalledVersion");
@@ -68,21 +70,28 @@ describe("combined Windows installer", () => {
     expect(installer).toContain('$packageName = "ERechnung.VirtualPrinter.PoC"');
     expect(installer).toContain("Get-AuthenticodeSignature");
     expect(installer).toContain("Test-CertificateTrusted");
-    expect(installer).toContain("Ensure-DevelopmentCertificateTrusted");
-    expect(installer).toContain("Cert:\\LocalMachine\\TrustedPeople");
-    expect(installer).not.toContain("Import-Certificate");
-    expect(installer).toContain("-Verb RunAs");
+    expect(installer).toContain("Add-DevelopmentCertificateTrust");
+    expect(installer).toContain('X509Store]::new("TrustedPeople", "LocalMachine")');
+    expect(installer).toContain('$certificate.Subject -ne "CN=ERechnung Development"');
+    expect(installer).toContain("$certificate.HasPrivateKey");
+    expect(installer).not.toContain("-Verb RunAs");
     expect(installer).toContain("Add-AppxPackage");
     expect(installer).toContain("Wait-ForPrinter");
+  });
 
-    const trust = readFileSync(
-      resolve(root, "apps/desktop/src-tauri/installer/windows/TrustPrinterCertificate.ps1"),
+  it("refuses to run under a different administrator account than the signed-in one", () => {
+    const check = readFileSync(
+      resolve(root, "apps/desktop/src-tauri/installer/windows/AssertSessionAccount.ps1"),
       "utf8",
     );
-    expect(trust).toContain('"ERechnung.VirtualPrinter.PoC"');
-    expect(trust).toContain("$signature.SignerCertificate.Thumbprint");
-    expect(trust).toContain("Cert:\\LocalMachine\\TrustedPeople");
-    expect(trust).toContain("Import-Certificate");
+    expect(check).toContain("WindowsBuiltInRole]::Administrator");
+    expect(check).toContain("Name = 'explorer.exe' AND SessionId = $sessionId");
+    expect(check).toContain("GetOwnerSid");
+    expect(check).toContain("$owner.Sid -ne $identity.User.Value");
+
+    const buildScript = readFileSync(resolve(root, "scripts/build-windows-installer.ps1"), "utf8");
+    expect(buildScript).toContain('"AssertSessionAccount.ps1"');
+    expect(buildScript).not.toContain("TrustPrinterCertificate");
   });
 
   it("sets up a fresh Windows machine with one setup script", () => {

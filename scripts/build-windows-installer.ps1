@@ -117,8 +117,8 @@ $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
 $installScriptContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "installer\windows\InstallPrinter.ps1"), $utf8WithoutBom)
 $removeScriptContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "installer\windows\RemovePrinter.ps1"), $utf8WithoutBom)
 [System.IO.File]::WriteAllText((Join-Path $payloadRoot "InstallPrinter.ps1"), $installScriptContent, $utf8WithBom)
-$trustScriptContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "installer\windows\TrustPrinterCertificate.ps1"), $utf8WithoutBom)
-[System.IO.File]::WriteAllText((Join-Path $payloadRoot "TrustPrinterCertificate.ps1"), $trustScriptContent, $utf8WithBom)
+$accountCheckContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "installer\windows\AssertSessionAccount.ps1"), $utf8WithoutBom)
+[System.IO.File]::WriteAllText((Join-Path $payloadRoot "AssertSessionAccount.ps1"), $accountCheckContent, $utf8WithBom)
 [System.IO.File]::WriteAllText((Join-Path $payloadRoot "RemovePrinter.ps1"), $removeScriptContent, $utf8WithBom)
 $updateGuardContent = [System.IO.File]::ReadAllText((Join-Path $tauriRoot "installer\windows\UpdateGuard.ps1"), $utf8WithoutBom)
 [System.IO.File]::WriteAllText((Join-Path $payloadRoot "UpdateGuard.ps1"), $updateGuardContent, $utf8WithBom)
@@ -190,5 +190,5 @@ Write-Host "Gemeinsamer Windows-Installer:"
 Write-Host $artifactPath
 Write-Host "SHA-256: $hash"
 if ($SigningMode -eq "Development") {
-    Write-Warning "Vorführbuild: Auf einem fremden Rechner muss das Entwicklungszertifikat bereits von der IT freigegeben sein. Ohne diese Vorbedingung ist für die Installation ohne Admin eine öffentlich vertrauenswürdige Signatur erforderlich."
+    Write-Warning "Vorführbuild: Das Setup hinterlegt das selbstsignierte Entwicklungszertifikat in LocalMachine\TrustedPeople. Für eine Verteilung ist eine öffentlich vertrauenswürdige Signatur erforderlich."
 }

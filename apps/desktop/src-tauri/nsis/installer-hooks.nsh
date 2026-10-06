@@ -24,11 +24,20 @@
   InitPluginsDir
   CreateDirectory "$PLUGINSDIR\ERechnungsAssistent"
   SetOutPath "$PLUGINSDIR\ERechnungsAssistent"
+  File /oname=AssertSessionAccount.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\AssertSessionAccount.ps1"
   File /oname=InstallPrinter.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\InstallPrinter.ps1"
-  File /oname=TrustPrinterCertificate.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\TrustPrinterCertificate.ps1"
   File /oname=UpdateGuard.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\UpdateGuard.ps1"
   File /oname=Printer.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\Printer.msix"
   File /oname=WindowsAppRuntime.msix "${ERECHNUNG_INSTALLER_PAYLOAD}\WindowsAppRuntime.msix"
+
+  nsExec::ExecToStack /TIMEOUT=60000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\AssertSessionAccount.ps1"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP|MB_OK "$1" /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
 
   ; Up to 0.3.4 the application was called "E-Rechnungs-Assistent". Tauri derives the
   ; install directory and uninstall key from the product name, so the old install is
@@ -75,7 +84,7 @@
   !if /FileExists "${ERECHNUNG_INSTALLER_PAYLOAD}\PrinterCertificate.cer"
     File /oname=PrinterCertificate.cer "${ERECHNUNG_INSTALLER_PAYLOAD}\PrinterCertificate.cer"
     DetailPrint "Der E-Rechnungsdrucker wird eingerichtet ..."
-    nsExec::ExecToStack /TIMEOUT=300000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\ERechnungsAssistent\Printer.msix" -DependencyPath "$PLUGINSDIR\ERechnungsAssistent\WindowsAppRuntime.msix" -CertificatePath "$PLUGINSDIR\ERechnungsAssistent\PrinterCertificate.cer" -CertificateTrustScriptPath "$PLUGINSDIR\ERechnungsAssistent\TrustPrinterCertificate.ps1"'
+    nsExec::ExecToStack /TIMEOUT=300000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\ERechnungsAssistent\Printer.msix" -DependencyPath "$PLUGINSDIR\ERechnungsAssistent\WindowsAppRuntime.msix" -CertificatePath "$PLUGINSDIR\ERechnungsAssistent\PrinterCertificate.cer"'
   !else
     DetailPrint "Der E-Rechnungsdrucker wird eingerichtet ..."
     nsExec::ExecToStack /TIMEOUT=300000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\ERechnungsAssistent\Printer.msix" -DependencyPath "$PLUGINSDIR\ERechnungsAssistent\WindowsAppRuntime.msix"'
@@ -128,7 +137,16 @@
     InitPluginsDir
     CreateDirectory "$PLUGINSDIR\ERechnungsAssistent"
     SetOutPath "$PLUGINSDIR\ERechnungsAssistent"
+    File /oname=AssertSessionAccount.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\AssertSessionAccount.ps1"
     File /oname=RemovePrinter.ps1 "${ERECHNUNG_INSTALLER_PAYLOAD}\RemovePrinter.ps1"
+    nsExec::ExecToStack /TIMEOUT=60000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\AssertSessionAccount.ps1"'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+      MessageBox MB_ICONSTOP|MB_OK "$1" /SD IDOK
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
     DetailPrint "Der E-Rechnungsdrucker wird entfernt ..."
     nsExec::ExecToStack /TIMEOUT=120000 '"$R8" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\ERechnungsAssistent\RemovePrinter.ps1"'
     Pop $0

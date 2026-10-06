@@ -47,7 +47,11 @@ function Get-PreviousVersion {
         return (Get-Content -LiteralPath $marker -TotalCount 1 -ErrorAction SilentlyContinue)
     }
     if ($IsolatedRoot) { return $null }
-    $uninstall = Get-ChildItem -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue
+    $uninstall = @(
+        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+    ) | ForEach-Object { Get-ChildItem -Path $_ -ErrorAction SilentlyContinue }
     foreach ($key in $uninstall) {
         $name = (Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue).DisplayName
         $version = (Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue).DisplayVersion

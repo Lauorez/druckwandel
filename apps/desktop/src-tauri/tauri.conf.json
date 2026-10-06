@@ -42,7 +42,7 @@
         "upgradeCode": "150a13ad-5783-5f47-accf-affb87f37405"
       },
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "perMachine",
         "installerHooks": "nsis/installer-hooks.nsh",
         "languages": ["German"],
         "customLanguageFiles": {
