@@ -10,6 +10,13 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      # Tauri-Minor-Versionen brauchen ein neueres Rust als rust-toolchain.toml.
+      - dependency-name: "@tauri-apps/api"
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: "@tauri-apps/plugin-*"
+        update-types:
+          - version-update:semver-minor
     groups:
       # Muss zusammen mit der Cargo-Gruppe "tauri" aktualisiert werden.
       tauri:
@@ -28,6 +35,13 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      # Tauri-Minor-Versionen brauchen ein neueres Rust als rust-toolchain.toml.
+      - dependency-name: "tauri"
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: "tauri-*"
+        update-types:
+          - version-update:semver-minor
     groups:
       # Muss zusammen mit der npm-Gruppe "tauri" aktualisiert werden.
       tauri:
