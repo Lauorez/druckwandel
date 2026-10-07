@@ -1,7 +1,7 @@
 <img src="apps/desktop/app-icon.svg" alt="Druckwandel-Logo" width="96" align="right">
 
 # Druckwandel
-
+<iframe src="https://github.com/sponsors/Lauorez/button" title="Sponsor Lauorez" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
 **E-Rechnungen aus dem Druckdialog.**
 
 [![Release-Gate](https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml/badge.svg)](https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml)
