@@ -1,15 +1,18 @@
-<img src="apps/desktop/app-icon.svg" alt="Druckwandel-Logo" width="96" align="right">
+<p align="center">
+  <img src="apps/desktop/app-icon.svg" alt="Druckwandel-Logo" width="96">
+</p>
 
-# Druckwandel
+<h1 align="center">Druckwandel</h1>
 
-<iframe src="https://github.com/sponsors/Lauorez/button" title="Sponsor Lauorez" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
+<p align="center"><strong>E-Rechnungen aus dem Druckdialog.</strong></p>
 
-**E-Rechnungen aus dem Druckdialog.**
-
-[![Release-Gate](https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml/badge.svg)](https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml)
-[![Release](https://img.shields.io/github/v/release/Lauorez/druckwandel)](https://github.com/Lauorez/druckwandel/releases/latest)
-[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
-![Status: Beta](https://img.shields.io/badge/Status-Beta-orange.svg)
+<p align="center">
+  <a href="https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml"><img src="https://github.com/Lauorez/druckwandel/actions/workflows/release-gate.yml/badge.svg" alt="Release-Gate"></a>
+  <a href="https://github.com/Lauorez/druckwandel/releases/latest"><img src="https://img.shields.io/github/v/release/Lauorez/druckwandel" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-MIT-blue.svg" alt="Lizenz: MIT"></a>
+  <img src="https://img.shields.io/badge/Status-Beta-orange.svg" alt="Status: Beta">
+  <a href="https://github.com/sponsors/Lauorez"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&amp;logoColor=white" alt="Sponsor auf GitHub"></a>
+</p>
 
 **Behalte deinen bisherigen Rechnungsworkflow – Druckwandel macht daraus eine gültige E-Rechnung.**
 
