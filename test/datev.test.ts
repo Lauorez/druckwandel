@@ -41,6 +41,7 @@ describe("DATEV immutable source and EXTF adapter",()=>{
     const [header,columns,row]=csv(bytes);
     expect(header).toHaveLength(31);expect(columns).toHaveLength(125);expect(row).toHaveLength(125);
     expect(header!.slice(0,6)).toEqual(["EXTF","700","21","Buchungsstapel","13","20260907101112345"]);
+    expect(header![8]).toBe("Druckwandel");
     expect(header!.slice(10,16)).toEqual(["1001","12345","20260101","4","20260820","20260820"]);
     expect(row!.slice(0,3)).toEqual(["282,08","S","EUR"]);
     expect(row!.slice(6,11)).toEqual(["10000","8400","","2008","RE-2026-0001"]);
@@ -62,6 +63,7 @@ describe("DATEV immutable source and EXTF adapter",()=>{
     expect(pack.files).toHaveLength(1);
     expect(pack.files[0]).toEqual({archiveId:s.archiveId,guid:v.batches[0]!.bookings[0]!.documentGuid,pdfName:`${v.batches[0]!.bookings[0]!.documentGuid}.pdf`,xmlName:`${v.batches[0]!.bookings[0]!.documentGuid}.xml`});
     expect(pack.xml).toContain('xmlns="http://xml.datev.de/bedi/tps/document/v06.0"');
+    expect(pack.xml).toContain('generatingSystem="Druckwandel"');
     expect(pack.xml).toContain(`guid="${v.batches[0]!.bookings[0]!.documentGuid}"`);
     expect(pack.xml).toContain('type="2"');
     expect(pack.xml).toContain('processID="1"');

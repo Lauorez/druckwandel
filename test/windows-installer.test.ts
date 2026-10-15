@@ -23,6 +23,8 @@ describe("combined Windows installer", () => {
     expect(hooks).toContain("CurrentBuildNumber");
     expect(hooks).toContain("$WINDIR\\Sysnative\\WindowsPowerShell");
     expect(hooks).toContain("Printer.msix");
+    expect(hooks).toContain("$PLUGINSDIR\\Druckwandel");
+    expect(hooks).not.toContain("$PLUGINSDIR\\ERechnungsAssistent");
     expect(hooks).not.toContain("TrustPrinterCertificate.ps1");
     expect(hooks.match(/AssertSessionAccount\.ps1"'/g)).toHaveLength(2);
     expect(hooks.indexOf("AssertSessionAccount.ps1\"'")).toBeLessThan(hooks.indexOf("PrepareUpdate"));
@@ -44,6 +46,9 @@ describe("combined Windows installer", () => {
     expect(config.productName).toBe("Druckwandel");
     expect(config.identifier).toBe("de.erechnung.converter");
     expect(config.plugins["deep-link"].desktop.schemes).toEqual(["erechnung-review"]);
+    const cargo = readFileSync(resolve(root, "apps/desktop/src-tauri/Cargo.toml"), "utf8");
+    expect(cargo).toContain('name = "druckwandel-desktop"');
+    expect(cargo).toContain('name = "druckwandel_desktop_lib"');
 
     const hooks = readFileSync(
       resolve(root, "apps/desktop/src-tauri/nsis/installer-hooks.nsh"),

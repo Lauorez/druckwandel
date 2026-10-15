@@ -5,9 +5,9 @@ param([ValidateRange(10,180)][int]$TimeoutSeconds = 90)
 # Creates one clearly named synthetic draft; does not export, learn, or delete.
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$installedApp = Join-Path $env:ProgramFiles 'Druckwandel\erechnung-desktop.exe'
+$installedApp = Join-Path $env:ProgramFiles 'Druckwandel\druckwandel-desktop.exe'
 if (-not (Test-Path -LiteralPath $installedApp)) { throw 'Install the application first.' }
-if (Get-Process erechnung-desktop -ErrorAction SilentlyContinue) { throw 'Close the application normally before this cold-start test.' }
+if (Get-Process druckwandel-desktop -ErrorAction SilentlyContinue) { throw 'Close the application normally before this cold-start test.' }
 $printer = Get-Printer -Name 'E-Rechnung'
 if ($printer.DriverName -ne 'Microsoft Virtual Print Class Driver') { throw 'Unexpected printer driver; test stopped.' }
 
@@ -71,7 +71,7 @@ while ([DateTime]::UtcNow -lt $deadline) {
 }
 if (-not $handoff -or -not $receipt) { throw 'Timed out waiting for the print handoff and opening receipt.' }
 if ($receipt.status -ne 'opened') { throw ('Print was not opened: ' + $receipt.message) }
-$process = Get-Process erechnung-desktop | Where-Object Path -EQ $installedApp
+$process = Get-Process druckwandel-desktop | Where-Object Path -EQ $installedApp
 if (@($process).Count -ne 1) { throw 'Expected exactly one installed application process.' }
 
 $workspaceData = Join-Path $env:LOCALAPPDATA 'de.erechnung.converter\workspace'

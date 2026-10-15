@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $workspace = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $workspace
-$toolsRoot = Join-Path $env:LOCALAPPDATA "ERechnungsAssistent\tools"
+$toolsRoot = Join-Path $env:LOCALAPPDATA "Druckwandel\tools"
 $nodeHome = Join-Path $toolsRoot "node"
 $dotnetHome = Join-Path $env:LOCALAPPDATA "Microsoft\dotnet"
 $cargoHome = Join-Path $env:USERPROFILE ".cargo\bin"

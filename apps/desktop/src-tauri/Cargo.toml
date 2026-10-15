@@ -1,5 +1,5 @@
 [package]
-name = "erechnung-desktop"
+name = "druckwandel-desktop"
 version = "0.3.4"
 description = "Native assistant for local e-invoice conversion"
 authors = ["Laurenz Grove"]
@@ -9,7 +9,7 @@ edition = "2024"
 publish = false
 
 [lib]
-name = "erechnung_desktop_lib"
+name = "druckwandel_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

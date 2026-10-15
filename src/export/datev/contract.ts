@@ -2,7 +2,7 @@
 export const DATEV_FORMAT = "EXTF-700-21-13" as const;
 export const DATEV_DOCUMENT_NS = "http://xml.datev.de/bedi/tps/document/v06.0";
 export const DATEV_DOCUMENT_SCHEMA = "Document_v060.xsd";
-export const DATEV_GENERATING_SYSTEM = "ERechnungsAssistent";
+export const DATEV_GENERATING_SYSTEM = "Druckwandel";
 /** Outgoing invoice document class in DATEV Belegtransfer. */
 export const DATEV_DOCUMENT_TYPE_OUTGOING = "2";
 /** Inbox processing; allowed only when the package has no ledger data XML. */
