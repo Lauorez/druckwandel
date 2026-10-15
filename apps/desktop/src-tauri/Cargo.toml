@@ -1,6 +1,6 @@
 [package]
 name = "druckwandel-desktop"
-version = "0.3.4"
+version = "0.3.5"
 description = "Native assistant for local e-invoice conversion"
 authors = ["Laurenz Grove"]
 license = "MIT"

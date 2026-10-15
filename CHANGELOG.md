@@ -6,6 +6,8 @@ Alle nennenswerten Änderungen an Druckwandel (bis 0.3.4 „E-Rechnungs-Assisten
 
 ## [Unveröffentlicht]
 
+## [0.3.5] – 2026-10-15
+
 ### Hinzugefügt
 
 - Veröffentlichung als Open-Source-Projekt unter der MIT-Lizenz mit Beitragsleitfaden, Verhaltenskodex, Sicherheitsrichtlinie, Drittanbieterhinweisen sowie Issue- und Pull-Request-Vorlagen.
@@ -77,7 +79,8 @@ Enthält auch den nicht separat veröffentlichten Stand 0.3.2.
 
 Erste Beta des virtuellen Windows-PDF-Druckers, siehe [drucker/CHANGELOG.md](drucker/CHANGELOG.md).
 
-[Unveröffentlicht]: https://github.com/Lauorez/druckwandel/compare/v0.3.4...HEAD
+[Unveröffentlicht]: https://github.com/Lauorez/druckwandel/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/Lauorez/druckwandel/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.4
 [0.3.3]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.3
 [0.3.1]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.1

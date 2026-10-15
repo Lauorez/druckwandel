@@ -40,15 +40,15 @@ Druckwandel (bis Version 0.3.4 „E-Rechnungs-Assistent“) ist eine lokale Desk
 
 ## Installation
 
-Voraussetzung: Windows 11 Version 24H2 oder neuer (Build 26100), 64-Bit. Die aktuelle Fassung ist **0.3.4** mit Drucker **0.1.0.12**.
+Voraussetzung: Windows 11 Version 24H2 oder neuer (Build 26100), 64-Bit. Die aktuelle Fassung ist **0.3.5** mit Drucker **0.1.0.12**.
 
-Setup und Prüfsumme stehen im [Release v0.3.4](https://github.com/Lauorez/druckwandel/releases/tag/v0.3.4). Diese Fassung ist noch unter dem früheren Namen erschienen:
+Setup und Prüfsumme stehen im [Release v0.3.5](https://github.com/Lauorez/druckwandel/releases/tag/v0.3.5):
 
-- [E-Rechnungs-Assistent-0.3.4-x64-Setup.exe](https://github.com/Lauorez/druckwandel/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe)
-- [SHA-256](https://github.com/Lauorez/druckwandel/releases/download/v0.3.4/E-Rechnungs-Assistent-0.3.4-x64-Setup.exe.sha256) (`723b4e0004899ad20e1eb66c6ebfb75bd16446e76b32ae2b82d75f50442cc661`)
+- [Druckwandel-0.3.5-x64-Setup.exe](https://github.com/Lauorez/druckwandel/releases/download/v0.3.5/Druckwandel-0.3.5-x64-Setup.exe)
+- [SHA-256-Prüfsumme](https://github.com/Lauorez/druckwandel/releases/download/v0.3.5/Druckwandel-0.3.5-x64-Setup.exe.sha256)
 - [Öffentliches Druckerzertifikat für die IT](https://github.com/Lauorez/druckwandel/releases/download/v0.3.4/ERechnung.Dev.cer)
 
-Das Setup braucht Administratorrechte, weil es einen Drucker einrichtet. Version 0.3.4 installiert nach `%LOCALAPPDATA%\E-Rechnungs-Assistent` und legt den Drucker **E-Rechnung** an. Ab der nächsten Version installiert das Setup nach `C:\Program Files\Druckwandel` und ersetzt dabei eine vorhandene Installation des E-Rechnungs-Assistenten; Daten, Archiv und Drucker bleiben erhalten. Drucker und Daten gehören zu dem Konto, das die Einrichtung ausführt. Kommt die Administratorbestätigung von einem anderen Konto, bricht das Setup mit einem Hinweis ab. Node, Rust, .NET SDK oder Java sind dafür nicht nötig. Ein Update behält Entwürfe, Archiv und Vorlagengedächtnis. Die Deinstallation entfernt den Drucker, nicht `Dokumente\E-Rechnungsarchiv`.
+Das Setup braucht Administratorrechte, weil es einen Drucker einrichtet. Version 0.3.5 installiert nach `C:\Program Files\Druckwandel` und ersetzt dabei eine vorhandene Installation des E-Rechnungs-Assistenten; Daten, Archiv und Drucker bleiben erhalten. Der Drucker heißt weiterhin **E-Rechnung**. Drucker und Daten gehören zu dem Konto, das die Einrichtung ausführt. Kommt die Administratorbestätigung von einem anderen Konto, bricht das Setup mit einem Hinweis ab. Node, Rust, .NET SDK oder Java sind dafür nicht nötig. Ein Update behält Entwürfe, Archiv und Vorlagengedächtnis. Die Deinstallation entfernt den Drucker, nicht `Dokumente\E-Rechnungsarchiv`.
 
 > [!WARNING]
 > **Signatur:** Das Setup ist unsigniert. Das Druckerpaket ist mit dem selbstsignierten Entwicklungszertifikat `CN=ERechnung Development` signiert. Das Setup prüft Zertifikat und Paket und hinterlegt nur das öffentliche Zertifikat in `LocalMachine\TrustedPeople`. Details: [Windows-Vorführpaket](docs/windows-demo-installation.md), [Installationsbericht 0.3.4](docs/releases/installation-0.3.4-2026-09-27.md).

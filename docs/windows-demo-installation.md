@@ -1,8 +1,8 @@
 # Vollständiges Windows-Vorführpaket
 
-## Aktueller Stand vom 27.09.2026
+## Aktueller Stand vom 15.10.2026
 
-Anwendung **0.3.4** ergänzt die Administratorabfrage für das Entwicklungszertifikat. Ab der nächsten Version läuft das ganze Setup mit Administratorrechten (siehe unten). Der Drucker **0.1.0.12** bleibt unverändert. Der [Installationsbericht 0.3.4](releases/installation-0.3.4-2026-09-27.md) beschreibt den neuen Ablauf. Die reale Druckprüfung aus [0.3.3](releases/installation-0.3.3-2026-09-27.md) bleibt die Referenz für den NativeAOT-Drucker.
+Anwendung **0.3.5** installiert unter dem Namen Druckwandel und führt das gesamte Setup mit Administratorrechten aus. Der Drucker **0.1.0.12** bleibt unverändert. Der [Installationsbericht 0.3.4](releases/installation-0.3.4-2026-09-27.md) beschreibt den bisherigen Ablauf. Die reale Druckprüfung aus [0.3.3](releases/installation-0.3.3-2026-09-27.md) bleibt die Referenz für den NativeAOT-Drucker.
 
 ## Prüfergebnis vom 11.09.2026
 
