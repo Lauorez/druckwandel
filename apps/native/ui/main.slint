@@ -1,0 +1,201 @@
+import { AboutSlint, Button, LineEdit, ScrollView, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export global OutputState {
+    in-out property <bool> can-email: false;
+}
+
+component LabeledField inherits HorizontalBox {
+    in property <string> label;
+    in-out property <string> value <=> input.text;
+    spacing: 8px;
+    Text { text: root.label; width: 150px; vertical-alignment: center; }
+    input := LineEdit {
+        horizontal-stretch: 1;
+        edited => { OutputState.can-email = false; }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Druckwandel";
+    preferred-width: 1320px;
+    preferred-height: 760px;
+    background: #f6f7f9;
+
+    in property <[string]> documents;
+    in property <string> selected-name;
+    in property <string> selected-path;
+    in property <string> selected-hash;
+    in property <string> source-text;
+    in property <string> status-text;
+    in-out property <string> invoice-number;
+    in-out property <string> issue-date;
+    in-out property <string> due-date;
+    in-out property <string> buyer-reference;
+    in-out property <string> seller-name;
+    in-out property <string> seller-street;
+    in-out property <string> seller-postal;
+    in-out property <string> seller-city;
+    in-out property <string> seller-vat;
+    in-out property <string> seller-endpoint;
+    in-out property <string> seller-contact-name;
+    in-out property <string> seller-contact-phone;
+    in-out property <string> seller-contact-email;
+    in-out property <string> buyer-name;
+    in-out property <string> buyer-street;
+    in-out property <string> buyer-postal;
+    in-out property <string> buyer-city;
+    in-out property <string> buyer-endpoint;
+    in-out property <string> line-name;
+    in-out property <string> line-quantity;
+    in-out property <string> line-price;
+    in-out property <string> line-tax-rate;
+    in-out property <string> payment-iban;
+    private property <bool> show-about: false;
+    callback import-pdf();
+    callback import-print-job();
+    callback select-document(int);
+    callback save-draft();
+    callback save-xml();
+    callback send-email();
+
+    VerticalBox {
+        padding: 20px;
+        spacing: 16px;
+
+        HorizontalBox {
+            spacing: 16px;
+            Text {
+                text: "Druckwandel";
+                font-size: 28px;
+                font-weight: 700;
+                color: #172435;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button { text: "Über"; clicked => { root.show-about = !root.show-about; } }
+            Button { text: "PDF importieren"; clicked => { root.import-pdf(); } }
+            Button { text: "Druckeingang"; clicked => { root.import-print-job(); } }
+            Button { text: "Entwurf speichern"; enabled: root.selected-name != ""; clicked => { root.save-draft(); } }
+            Button { text: "XRechnung prüfen und speichern"; enabled: root.selected-name != ""; clicked => { root.save-xml(); } }
+            Button { text: "Per E-Mail senden"; enabled: OutputState.can-email; clicked => { root.send-email(); } }
+        }
+
+        if root.show-about : Rectangle {
+            background: white;
+            border-radius: 8px;
+            vertical-stretch: 1;
+            VerticalBox {
+                padding: 24px;
+                spacing: 16px;
+                Text { text: "Über Druckwandel"; font-size: 22px; font-weight: 600; }
+                Text { text: "Rust- und Slint-Version im Aufbau"; }
+                AboutSlint {}
+            }
+        }
+
+        if !root.show-about : HorizontalBox {
+            spacing: 16px;
+            Rectangle {
+                width: 220px;
+                background: white;
+                border-radius: 8px;
+                VerticalBox {
+                    padding: 12px;
+                    spacing: 8px;
+                    Text { text: "Entwürfe"; font-size: 18px; font-weight: 600; }
+                    ScrollView {
+                        vertical-stretch: 1;
+                        VerticalBox {
+                            spacing: 4px;
+                            for document[index] in root.documents : Button {
+                                text: document;
+                                clicked => { root.select-document(index); }
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                width: 350px;
+                background: white;
+                border-radius: 8px;
+                horizontal-stretch: 1;
+                VerticalBox {
+                    padding: 20px;
+                    spacing: 12px;
+                    Text {
+                        text: root.selected-name == "" ? "PDF auswählen" : root.selected-name;
+                        font-size: 22px;
+                        font-weight: 600;
+                        color: #172435;
+                    }
+                    Text {
+                        text: root.selected-path;
+                        color: #526174;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: root.selected-hash == "" ? "" : "SHA-256: " + root.selected-hash;
+                        color: #526174;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: root.selected-name == "" ? "PDF-Datei importieren, um einen Entwurf anzulegen." : "Gelesener PDF-Text als Vorlage für die Erfassung.";
+                        color: #526174;
+                        wrap: word-wrap;
+                    }
+                    TextEdit {
+                        text: root.source-text;
+                        read-only: true;
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+            Rectangle {
+                background: white;
+                border-radius: 8px;
+                horizontal-stretch: 1;
+                ScrollView {
+                    VerticalBox {
+                        padding: 16px;
+                        spacing: 8px;
+                        Text { text: "Rechnungsdaten"; font-size: 20px; font-weight: 600; }
+                        LabeledField { label: "Rechnungsnummer"; value <=> root.invoice-number; }
+                        LabeledField { label: "Rechnungsdatum"; value <=> root.issue-date; }
+                        LabeledField { label: "Fälligkeit"; value <=> root.due-date; }
+                        LabeledField { label: "Leitweg-ID/Referenz"; value <=> root.buyer-reference; }
+                        Text { text: "Absender"; font-size: 16px; font-weight: 600; }
+                        LabeledField { label: "Name"; value <=> root.seller-name; }
+                        LabeledField { label: "Straße"; value <=> root.seller-street; }
+                        LabeledField { label: "PLZ"; value <=> root.seller-postal; }
+                        LabeledField { label: "Ort"; value <=> root.seller-city; }
+                        LabeledField { label: "USt-ID"; value <=> root.seller-vat; }
+                        LabeledField { label: "E-Adresse"; value <=> root.seller-endpoint; }
+                        LabeledField { label: "Kontakt"; value <=> root.seller-contact-name; }
+                        LabeledField { label: "Telefon"; value <=> root.seller-contact-phone; }
+                        LabeledField { label: "E-Mail"; value <=> root.seller-contact-email; }
+                        Text { text: "Empfänger"; font-size: 16px; font-weight: 600; }
+                        LabeledField { label: "Name"; value <=> root.buyer-name; }
+                        LabeledField { label: "Straße"; value <=> root.buyer-street; }
+                        LabeledField { label: "PLZ"; value <=> root.buyer-postal; }
+                        LabeledField { label: "Ort"; value <=> root.buyer-city; }
+                        LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; }
+                        Text { text: "Erste Position"; font-size: 16px; font-weight: 600; }
+                        LabeledField { label: "Bezeichnung"; value <=> root.line-name; }
+                        LabeledField { label: "Menge"; value <=> root.line-quantity; }
+                        LabeledField { label: "Nettopreis"; value <=> root.line-price; }
+                        LabeledField { label: "USt-Satz %"; value <=> root.line-tax-rate; }
+                        Text { text: "Zahlung"; font-size: 16px; font-weight: 600; }
+                        LabeledField { label: "IBAN"; value <=> root.payment-iban; }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: root.status-text;
+            color: #355b7c;
+            wrap: word-wrap;
+        }
+    }
+}

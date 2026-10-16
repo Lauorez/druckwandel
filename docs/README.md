@@ -37,5 +37,6 @@
 
 ## Planung
 
+- [Umstieg auf Rust und Slint](planning/slint-rust-umstieg.md): neuer Produktumfang, E-Mail-Versand und späterer DATEV-Belegupload
 - [Roadmap bis 1.0](planning/roadmap-1.0.md)
 - [Ursprünglicher MVP-Projektplan](planning/mvp-projektplan.md) (historisch)
