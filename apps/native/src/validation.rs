@@ -112,20 +112,9 @@ impl ValidatorBundle {
         fs::write(&input, xml).map_err(|e| e.to_string())?;
         let log = File::create(&log_path).map_err(|e| e.to_string())?;
         let error_log = log.try_clone().map_err(|e| e.to_string())?;
-        let mut command = Command::new(&self.java);
+        let mut command = self.java_command();
         command
-            .args([
-                "-Djava.awt.headless=true",
-                "-Djava.net.useSystemProxies=false",
-                "-Dhttp.proxyHost=127.0.0.1",
-                "-Dhttp.proxyPort=9",
-                "-Dhttps.proxyHost=127.0.0.1",
-                "-Dhttps.proxyPort=9",
-                "-Djavax.xml.accessExternalDTD=",
-                "-Djavax.xml.accessExternalSchema=file,jar:file",
-                "-Djavax.xml.accessExternalStylesheet=",
-                "-jar",
-            ])
+            .arg("-jar")
             .arg(&self.kosit)
             .arg("-s")
             .arg(&self.scenarios)
@@ -229,7 +218,12 @@ impl ValidatorBundle {
 impl ValidatorBundle {
     fn java_command(&self) -> Command {
         let mut command = Command::new(&self.java);
+        // System.out/System.err otherwise use a Windows code page even on
+        // Java 21. All machine-readable reports must arrive as UTF-8.
         command.args([
+            "-Dfile.encoding=UTF-8",
+            "-Dstdout.encoding=UTF-8",
+            "-Dstderr.encoding=UTF-8",
             "-Djava.awt.headless=true",
             "-Djava.net.useSystemProxies=false",
             "-Dhttp.proxyHost=127.0.0.1",
