@@ -215,29 +215,28 @@ impl RecognitionProvider for SchemaRecognizer {
                     .insert(name.into(), proposal(value, line, confidence));
             }
         }
-        if !result.fields.contains_key("dueDate") {
-            if let Some(issue) = result
+        if !result.fields.contains_key("dueDate")
+            && let Some(issue) = result
                 .fields
                 .get("issueDate")
                 .and_then(|field| NaiveDate::parse_from_str(&field.value, "%Y-%m-%d").ok())
-            {
-                let relative = re(
-                    r"(?i)(?:zahlungsziel\s*:?|zahlbar\s*(?:innerhalb(?:\s+von)?|binnen|in)?|innerhalb(?:\s+von)?|binnen|netto)\s*(\d{1,3})\s+tagen?|\b(\d{1,3})\s+tage\s+netto",
-                );
-                for line in &lines {
-                    if let Some(c) = relative.captures(&line.text) {
-                        let days = c
-                            .get(1)
-                            .or_else(|| c.get(2))
-                            .and_then(|m| m.as_str().parse::<i64>().ok())
-                            .unwrap_or(0);
-                        if (1..=366).contains(&days) {
-                            result.fields.insert(
-                                "dueDate".into(),
-                                proposal((issue + Duration::days(days)).to_string(), line, 0.86),
-                            );
-                            break;
-                        }
+        {
+            let relative = re(
+                r"(?i)(?:zahlungsziel\s*:?|zahlbar\s*(?:innerhalb(?:\s+von)?|binnen|in)?|innerhalb(?:\s+von)?|binnen|netto)\s*(\d{1,3})\s+tagen?|\b(\d{1,3})\s+tage\s+netto",
+            );
+            for line in &lines {
+                if let Some(c) = relative.captures(&line.text) {
+                    let days = c
+                        .get(1)
+                        .or_else(|| c.get(2))
+                        .and_then(|m| m.as_str().parse::<i64>().ok())
+                        .unwrap_or(0);
+                    if (1..=366).contains(&days) {
+                        result.fields.insert(
+                            "dueDate".into(),
+                            proposal((issue + Duration::days(days)).to_string(), line, 0.86),
+                        );
+                        break;
                     }
                 }
             }
@@ -272,13 +271,13 @@ impl RecognitionProvider for SchemaRecognizer {
                     .and_then(|field| Decimal::from_str(&field.value).ok())
             })
             .collect();
-        if let Some(values) = amounts {
-            if values[0].checked_add(values[1]) != Some(values[2]) {
-                result.warnings.push("Erkanntes Netto plus Steuer entspricht nicht dem Brutto. Manuelle Prüfung erforderlich.".into());
-                for key in ["lineNet", "taxTotal", "taxInclusive"] {
-                    if let Some(field) = result.fields.get_mut(key) {
-                        field.confidence = field.confidence.min(0.6);
-                    }
+        if let Some(values) = amounts
+            && values[0].checked_add(values[1]) != Some(values[2])
+        {
+            result.warnings.push("Erkanntes Netto plus Steuer entspricht nicht dem Brutto. Manuelle Prüfung erforderlich.".into());
+            for key in ["lineNet", "taxTotal", "taxInclusive"] {
+                if let Some(field) = result.fields.get_mut(key) {
+                    field.confidence = field.confidence.min(0.6);
                 }
             }
         }

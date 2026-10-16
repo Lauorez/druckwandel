@@ -15,4 +15,8 @@ Die [Erkennungsarchitektur](../../docs/recognition.md) beschreibt die vorbereite
 
 Der Windows-Drucker verwendet weiterhin `erechnung-review://print-job/<UUID>`. `installer/windows/druckwandel.nsi` registriert die Slint-EXE. Eine Dateisperre erzwingt eine Instanz je lokalem App-Datenordner; weitere Aufrufe landen in einer lokalen SQLite-Übergabewarteschlange.
 
-Noch nicht portiert sind eingebettete visuelle PDF-Vorschau, OCR und Lernprofile. Die Oberfläche deckt einfache Rechnungen ab; zusätzliche fachliche Exportfälle werden über die Referenzentwürfe im Rust-Fachkern geprüft. [Projektübersicht](../../README.md).
+Die PDF-Vorschau verwendet Hayro 0.8 direkt in Rust. Ein Hintergrund-Worker hält nur ein Dokument und rendert jeweils eine Seite; die Ausgabe ist auf 4 Millionen Pixel begrenzt. Seitenwechsel und Zoom verdrängen wartende ältere Aufträge. Rasterbilder sind ausschließlich im RAM; Original-PDFs werden nicht verändert. Die Texterkennung und die Vorschau können unabhängig voneinander fehlschlagen.
+
+Über das Zahnrad sind Darstellung (System/Hell/Dunkel) und Über-Informationen erreichbar. Rust 1.92 ist für den Renderer erforderlich.
+
+Noch nicht portiert sind OCR und Lernprofile. Die Oberfläche deckt einfache Rechnungen ab; zusätzliche fachliche Exportfälle werden über die Referenzentwürfe im Rust-Fachkern geprüft. [Projektübersicht](../../README.md).

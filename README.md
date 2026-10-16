@@ -17,7 +17,7 @@ Desktop-Anwendung in **Rust und Slint** für Windows und macOS. PDF-Rechnungen �
 
 Archiv, Buchungsexport, DATEV-Belegpakete und Backup-Oberfläche sind entfernt. Ein späterer DATEV-Belegupload ist im [Produktplan](docs/planning/slint-rust-umstieg.md) beschrieben.
 
-Die Oberfläche wird weiter ausgebaut: eine eingebettete visuelle PDF-Vorschau, OCR, Lernprofile und vollständige Bedienelemente für alle Sonderfälle sind noch nicht portiert. Die Fachkern-Regressionen enthalten die elf bisherigen Exportfälle. Automatische Erkennung liefert Vorschläge; sachliche Richtigkeit und Übereinstimmung mit dem Beleg müssen geprüft werden.
+Die eingebettete PDF-Vorschau rendert lokal in Rust mit Seitenwechsel und Zoom. Darstellung und Über-Informationen stehen in den Einstellungen (Zahnrad). OCR, Lernprofile und vollständige Bedienelemente für alle Sonderfälle sind noch nicht portiert. Die Fachkern-Regressionen enthalten die elf bisherigen Exportfälle. Automatische Erkennung liefert Vorschläge; sachliche Richtigkeit und Übereinstimmung mit dem Beleg müssen geprüft werden.
 
 ## Entwicklung
 

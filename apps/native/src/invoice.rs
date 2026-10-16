@@ -410,10 +410,10 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
         (input.due_date.as_deref(), "Fälligkeitsdatum"),
         (input.service_date.as_deref(), "Leistungsdatum"),
     ] {
-        if let Some(value) = value.filter(|v| !v.is_empty()) {
-            if !valid_date(value) {
-                errors.push(format!("{name} ist ungültig."));
-            }
+        if let Some(value) = value.filter(|v| !v.is_empty())
+            && !valid_date(value)
+        {
+            errors.push(format!("{name} ist ungültig."));
         }
     }
     if input.currency.len() != 3 || !input.currency.bytes().all(|c| c.is_ascii_uppercase()) {
@@ -460,10 +460,10 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
     if ["381", "384"].contains(&input.invoice_type.as_str()) && preceding(input).is_empty() {
         errors.push("Bezug zur Ursprungsrechnung fehlt.".into());
     }
-    if let Some(amount) = &input.prepaid_amount {
-        if decimal(amount).map_or(true, |value| value < Decimal::ZERO) {
-            errors.push("Bereits gezahlter Betrag ist ungültig.".into());
-        }
+    if let Some(amount) = &input.prepaid_amount
+        && decimal(amount).map_or(true, |value| value < Decimal::ZERO)
+    {
+        errors.push("Bereits gezahlter Betrag ist ungültig.".into());
     }
     errors
 }

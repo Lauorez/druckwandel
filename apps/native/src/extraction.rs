@@ -197,12 +197,10 @@ fn normalize_color_parameters(doc: &mut lopdf::Document) {
                     .first()
                     .and_then(|value| value.as_name().ok())
                     .is_some_and(|name| matches!(name, b"CalRGB" | b"CalGray" | b"Lab"))
+                    && let Some(Object::Reference(id)) = values.get(1)
+                    && let Some(parameters) = dictionaries.get(id)
                 {
-                    if let Some(Object::Reference(id)) = values.get(1) {
-                        if let Some(parameters) = dictionaries.get(id) {
-                            values[1] = parameters.clone();
-                        }
-                    }
+                    values[1] = parameters.clone();
                 }
                 for value in values {
                     visit(value, dictionaries, depth + 1);

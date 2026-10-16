@@ -1,4 +1,4 @@
-import { AboutSlint, Button, ComboBox, LineEdit, Palette, ScrollView, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, LineEdit, Palette, ScrollView, TabWidget, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export global OutputState {
     in-out property <bool> can-email: false;
@@ -30,7 +30,7 @@ export component MainWindow inherits Window {
     preferred-height: 760px;
     background: Palette.background;
     icon: @image-url("../assets/app-icon.svg");
-    min-width: 1100px;
+    min-width: 1200px;
     min-height: 650px;
 
     in property <[string]> documents;
@@ -71,7 +71,23 @@ export component MainWindow inherits Window {
     in-out property <string> line-price;
     in-out property <string> line-tax-rate;
     in-out property <string> payment-iban;
-    private property <bool> show-about: false;
+    private property <bool> show-settings: false;
+    out property <bool> settings-open: root.show-settings;
+    in property <image> preview-image;
+    in property <float> preview-aspect: 1.414;
+    in-out property <int> preview-page: 0;
+    in property <int> preview-page-count: 0;
+    in property <bool> preview-loading: false;
+    in property <string> preview-error;
+    in-out property <int> preview-zoom: 0;
+    private property <float> preview-zoom-factor: root.preview-zoom == 1 ? 1.25 : root.preview-zoom == 2 ? 1.5 : root.preview-zoom == 3 ? 2 : 1;
+    private property <length> preview-offset-x: 0px;
+    private property <length> preview-offset-y: 0px;
+    callback request-preview();
+    changed selected-path => { root.preview-page = 0; root.preview-offset-x = 0px; root.preview-offset-y = 0px; root.request-preview(); }
+    changed selected-hash => { root.request-preview(); }
+    changed preview-page => { root.preview-offset-x = 0px; root.preview-offset-y = 0px; root.request-preview(); }
+    changed preview-zoom => { root.preview-offset-x = 0px; root.preview-offset-y = 0px; root.request-preview(); }
     private property <bool> show-pdf-text: false;
     callback import-pdf();
     callback open-source();
@@ -92,28 +108,45 @@ export component MainWindow inherits Window {
             spacing: 16px;
             Image { source: @image-url("../assets/app-icon.svg"); width: 40px; height: 40px; image-fit: contain; }
             Rectangle { horizontal-stretch: 1; background: transparent; }
-            Text { text: "Darstellung"; vertical-alignment: center; }
-            ComboBox { width: 140px; model: ["System", "Hell", "Dunkel"]; current-index <=> root.appearance; }
-            Button { text: "Über"; clicked => { root.show-about = !root.show-about; } }
+
             Button { text: "Entwurf speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-draft(); } }
             Button { text: "Prüfen und speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-xml(); } }
             Button { text: "Per E-Mail senden"; enabled: OutputState.can-email && !OutputState.busy; clicked => { root.send-email(); } }
+            Button {
+                icon: @image-url("../assets/settings.svg");
+                icon-size: 20px;
+                colorize-icon: true;
+                height: 40px;
+                accessible-label: "Einstellungen";
+                width: 40px;
+                clicked => { root.show-settings = !root.show-settings; }
+            }
         }
 
-        if root.show-about : Rectangle {
+        if root.show-settings : Rectangle {
             background: Palette.alternate-background;
             border-radius: 8px;
             vertical-stretch: 1;
             VerticalBox {
                 padding: 24px;
                 spacing: 16px;
-                Text { text: "Über Druckwandel"; font-size: 22px; font-weight: 600; }
+                alignment: start;
+                HorizontalBox {
+                    Text { text: "Einstellungen"; font-size: 22px; font-weight: 600; horizontal-stretch: 1; }
+                    Button { text: "Zurück zur Rechnung"; clicked => { root.show-settings = false; } }
+                }
+                HorizontalBox {
+                    Text { text: "Darstellung"; vertical-alignment: center; }
+                    ComboBox { width: 180px; model: ["System", "Hell", "Dunkel"]; current-index <=> root.appearance; }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                }
+                Text { text: "Über Druckwandel"; font-size: 18px; font-weight: 600; }
                 Text { text: "Version 0.4.0 (in Entwicklung)"; }
-                AboutSlint {}
+                AboutSlint { max-width: 420px; max-height: 220px; }
             }
         }
 
-        if !root.show-about : HorizontalBox {
+        if !root.show-settings : HorizontalBox {
             spacing: 16px;
             Rectangle {
                 width: 220px;
@@ -152,42 +185,67 @@ export component MainWindow inherits Window {
                 }
             }
             if root.selected-name != "" : Rectangle {
-                width: 350px;
+                width: 500px;
+                horizontal-stretch: 1;
                 background: Palette.alternate-background;
                 border-radius: 8px;
-                horizontal-stretch: 1;
                 VerticalBox {
-                    padding: 20px;
-                    spacing: 12px;
-                    Text {
-                        text: "Original & Erkennung";
-                        font-size: 22px;
-                        font-weight: 600;
-                        color: Palette.foreground;
-                    }
-                    Text { text: root.selected-name; wrap: word-wrap; }
-                    Button { text: "Original ansehen"; enabled: root.selected-name != ""; clicked => { root.open-source(); } }
-                    Text {
-                        text: "Die bereits geöffnete PDF ist der Originalbeleg dieses Entwurfs. Hier kannst du sie zum Vergleich ansehen.";
-                        color: Palette.foreground;
-                        wrap: word-wrap;
-                    }
-                    if root.source-has-xml : Text {
-                        text: "ZUGFeRD-XML im Beleg vorhanden. Der aktuelle Import liest nur den PDF-Text; die eingebetteten Rechnungsdaten werden noch nicht übernommen.";
-                        wrap: word-wrap;
-                    }
-                    ComboBox { model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
-                    Button { text: "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
-                    TextEdit {
-                        text: root.recognition-text;
-                        read-only: true;
+                    padding: 12px;
+                    spacing: 8px;
+                    Text { text: root.selected-name; font-size: 18px; font-weight: 600; wrap: word-wrap; }
+                    TabWidget {
                         vertical-stretch: 1;
-                    }
-                    Button { text: root.show-pdf-text ? "PDF-Text ausblenden" : "PDF-Text anzeigen"; clicked => { root.show-pdf-text = !root.show-pdf-text; } }
-                    if root.show-pdf-text : TextEdit {
-                        text: root.source-text;
-                        read-only: true;
-                        vertical-stretch: 1;
+                        Tab {
+                            title: "PDF-Vorschau";
+                            VerticalBox {
+                                spacing: 8px;
+                                HorizontalBox {
+                                    Button { text: "‹"; accessible-label: "Vorherige Seite"; enabled: root.preview-page > 0; clicked => { root.preview-page -= 1; } }
+                                    Text { text: root.preview-page-count > 0 ? "Seite " + (root.preview-page + 1) + " / " + root.preview-page-count : "PDF"; vertical-alignment: center; }
+                                    Button { text: "›"; accessible-label: "Nächste Seite"; enabled: root.preview-page + 1 < root.preview-page-count; clicked => { root.preview-page += 1; } }
+                                    ComboBox { model: ["Seitenbreite", "125 %", "150 %", "200 %"]; current-index <=> root.preview-zoom; }
+                                }
+                                if root.preview-loading : Text { text: "Seite wird gerendert …"; }
+                                if root.preview-error != "" : Text { text: root.preview-error; wrap: word-wrap; }
+                                preview-scroll := ScrollView {
+                                    vertical-stretch: 1;
+                                    viewport-x <=> root.preview-offset-x;
+                                    viewport-y <=> root.preview-offset-y;
+                                    viewport-width: max(self.visible-width, page-image.width + 16px);
+                                    viewport-height: page-image.height + 16px;
+                                    Rectangle {
+                                        x: 0px; y: 0px;
+                                        width: preview-scroll.viewport-width;
+                                        height: preview-scroll.viewport-height;
+                                        background: #686b70;
+                                        page-image := Image {
+                                            x: 8px; y: 8px;
+                                            width: max(100px, (preview-scroll.visible-width - 16px) * root.preview-zoom-factor);
+                                            height: self.width * root.preview-aspect;
+                                            source: root.preview-image;
+                                            image-fit: contain;
+                                            accessible-label: "Gerenderte Original-PDF, Seite " + (root.preview-page + 1);
+                                        }
+                                    }
+                                }
+                                Button { text: "Im PDF-Programm öffnen"; clicked => { root.open-source(); } }
+                            }
+                        }
+                        Tab {
+                            title: "Erkennung";
+                            VerticalBox {
+                                spacing: 10px;
+                                if root.source-has-xml : Text {
+                                    text: "ZUGFeRD-XML vorhanden. Der aktuelle Import übernimmt nur PDF-Textvorschläge, noch nicht die eingebetteten Rechnungsdaten.";
+                                    wrap: word-wrap;
+                                }
+                                ComboBox { model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
+                                Button { text: "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
+                                TextEdit { text: root.recognition-text; read-only: true; vertical-stretch: 1; }
+                                Button { text: root.show-pdf-text ? "PDF-Text ausblenden" : "PDF-Text anzeigen"; clicked => { root.show-pdf-text = !root.show-pdf-text; } }
+                                if root.show-pdf-text : TextEdit { text: root.source-text; read-only: true; vertical-stretch: 1; }
+                            }
+                        }
                     }
                 }
             }

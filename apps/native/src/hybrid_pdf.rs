@@ -84,16 +84,16 @@ fn filename(spec: &Dictionary) -> Result<String, String> {
 pub fn extract_invoice_xml(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let doc = Document::load_mem(bytes).map_err(|e| e.to_string())?;
     for object in doc.objects.values() {
-        if let Ok(spec) = object.as_dict() {
-            if filename(spec).is_ok_and(|name| name.eq_ignore_ascii_case("factur-x.xml")) {
-                let ef = dict(&doc, spec.get(b"EF").map_err(|e| e.to_string())?)?;
-                return stream_bytes(
-                    &doc,
-                    ef.get(b"F")
-                        .or_else(|_| ef.get(b"UF"))
-                        .map_err(|e| e.to_string())?,
-                );
-            }
+        if let Ok(spec) = object.as_dict()
+            && filename(spec).is_ok_and(|name| name.eq_ignore_ascii_case("factur-x.xml"))
+        {
+            let ef = dict(&doc, spec.get(b"EF").map_err(|e| e.to_string())?)?;
+            return stream_bytes(
+                &doc,
+                ef.get(b"F")
+                    .or_else(|_| ef.get(b"UF"))
+                    .map_err(|e| e.to_string())?,
+            );
         }
     }
     Err("Die PDF enthält keine factur-x.xml.".into())

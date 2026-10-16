@@ -84,16 +84,16 @@ impl ValidatorBundle {
         if let Some(root) = std::env::var_os("ERECHNUNG_VALIDATOR_ROOT") {
             return Self::from_root(Path::new(&root));
         }
-        if let Ok(executable) = std::env::current_exe() {
-            if let Some(parent) = executable.parent() {
-                let packaged = parent.join("resources").join("validators");
-                if packaged.exists() {
-                    return Self::from_root(&packaged);
-                }
-                let mac_bundle = parent.join("../Resources/validators");
-                if mac_bundle.exists() {
-                    return Self::from_root(&mac_bundle);
-                }
+        if let Ok(executable) = std::env::current_exe()
+            && let Some(parent) = executable.parent()
+        {
+            let packaged = parent.join("resources").join("validators");
+            if packaged.exists() {
+                return Self::from_root(&packaged);
+            }
+            let mac_bundle = parent.join("../Resources/validators");
+            if mac_bundle.exists() {
+                return Self::from_root(&mac_bundle);
             }
         }
         let development = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/validators");

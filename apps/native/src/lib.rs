@@ -11,3 +11,5 @@ pub mod validation;
 pub mod workspace;
 
 mod pdf_compat;
+
+pub mod preview;

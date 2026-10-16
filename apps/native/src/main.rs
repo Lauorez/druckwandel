@@ -172,17 +172,32 @@ fn open_document(
     current_id: &RefCell<Option<String>>,
     current_draft: &RefCell<InvoiceInput>,
 ) -> Result<(), String> {
+    let mut recognition_error = None;
     if !store.has_invoice(&document.id)? {
-        let request = RecognitionRequest::from_pdf(document.path.clone(), &document.sha256)?;
-        let result = application_registry().recognize(RecognitionMethod::Schema, &request)?;
-        store.save_invoice(&document.id, &result.invoice_draft())?;
-        store.save_recognition(&document.id, &result)?;
+        let recognized = RecognitionRequest::from_pdf(document.path.clone(), &document.sha256)
+            .and_then(|request| {
+                application_registry().recognize(RecognitionMethod::Schema, &request)
+            });
+        match recognized {
+            Ok(result) => {
+                store.save_invoice(&document.id, &result.invoice_draft())?;
+                store.save_recognition(&document.id, &result)?;
+            }
+            Err(error) => {
+                // A text parser failure must not prevent visual review or manual entry.
+                store.save_invoice(&document.id, &InvoiceInput::blank())?;
+                recognition_error = Some(format!(
+                    "Texterkennung fehlgeschlagen: {error}\nDie PDF-Vorschau und manuelle Erfassung sind weiterhin verfügbar."
+                ));
+            }
+        }
     }
     let invoice = store.load_invoice(&document.id)?;
     window.set_recognition_text(
         store
             .load_recognition(&document.id)?
             .map(|result| result.review_text())
+            .or(recognition_error)
             .unwrap_or_default()
             .into(),
     );
@@ -364,6 +379,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     });
+    let preview = Rc::new(druckwandel_native::preview::PreviewWorker::new()?);
+    let worker = Rc::clone(&preview);
+    let weak = window.as_weak();
+    let preview_source = RefCell::new(String::new());
+    window.on_request_preview(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let path = window.get_selected_path();
+        let hash = window.get_selected_hash();
+        if path.is_empty() || hash.is_empty() {
+            return;
+        }
+        if preview_source.borrow().as_str() != path.as_str() {
+            window.set_preview_page_count(0);
+            *preview_source.borrow_mut() = path.to_string();
+        }
+        window.set_preview_loading(true);
+        window.set_preview_error("".into());
+        window.set_preview_image(slint::Image::default());
+        let width = match window.get_preview_zoom() {
+            1 => 1250,
+            2 => 1500,
+            3 => 2000,
+            _ => 1000,
+        };
+        worker.request(
+            PathBuf::from(path.as_str()),
+            hash.to_string(),
+            window.get_preview_page().max(0) as usize,
+            width,
+        );
+    });
+    let preview_timer = slint::Timer::default();
+    let weak = window.as_weak();
+    preview_timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(100),
+        move || {
+            let Some(window) = weak.upgrade() else { return };
+            if let Some(result) = preview.take_response() {
+                window.set_preview_loading(false);
+                match result {
+                    Ok(frame) => {
+                        window.set_preview_page_count(frame.page_count as i32);
+                        window.set_preview_aspect(frame.height as f32 / frame.width as f32);
+                        let buffer =
+                            slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                &frame.pixels,
+                                frame.width,
+                                frame.height,
+                            );
+                        window.set_preview_image(slint::Image::from_rgba8_premultiplied(buffer));
+                    }
+                    Err(error) => {
+                        window.set_preview_error(error.into());
+                        window.set_preview_page_count(0);
+                    }
+                }
+            }
+        },
+    );
     let documents = Rc::new(RefCell::new(refresh(&window, &workspace)?));
     let current_id = Rc::new(RefCell::new(None::<String>));
     let current_draft = Rc::new(RefCell::new(InvoiceInput::blank()));
