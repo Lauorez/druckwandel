@@ -273,7 +273,7 @@ impl RecognitionProvider for SchemaRecognizer {
             })
             .collect();
         if let Some(values) = amounts {
-            if values[0] + values[1] != values[2] {
+            if values[0].checked_add(values[1]) != Some(values[2]) {
                 result.warnings.push("Erkanntes Netto plus Steuer entspricht nicht dem Brutto. Manuelle Prüfung erforderlich.".into());
                 for key in ["lineNet", "taxTotal", "taxInclusive"] {
                     if let Some(field) = result.fields.get_mut(key) {
@@ -287,12 +287,12 @@ impl RecognitionProvider for SchemaRecognizer {
             .get("lineNet")
             .and_then(|f| Decimal::from_str(&f.value).ok())
         {
-            let sum: Decimal = result
+            let sum: Option<Decimal> = result
                 .lines
                 .iter()
                 .filter_map(|line| Decimal::from_str(&line.net_amount).ok())
-                .sum();
-            if !result.lines.is_empty() && net != sum {
+                .try_fold(Decimal::ZERO, |sum, value| sum.checked_add(value));
+            if !result.lines.is_empty() && Some(net) != sum {
                 result.warnings.push(
                     "Positionssumme weicht vom erkannten Netto ab. Manuelle Prüfung erforderlich."
                         .into(),
@@ -515,9 +515,8 @@ fn classify_tables(lines: &[crate::extraction::TextLine], result: &mut Recogniti
         let calculated = Decimal::from_str(&qty)
             .ok()
             .zip(Decimal::from_str(&price).ok())
-            .map(|(quantity, price)| {
-                (quantity * price).round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
-            });
+            .and_then(|(quantity, price)| quantity.checked_mul(price))
+            .map(|amount| amount.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero));
         let arithmetic_matches = calculated
             .zip(Decimal::from_str(&total).ok())
             .is_some_and(|(a, b)| a == b);

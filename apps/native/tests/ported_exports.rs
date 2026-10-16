@@ -51,3 +51,23 @@ fn cii_matches_every_previously_supported_export_case() {
         );
     }
 }
+
+#[test]
+fn zugferd_allows_b2b_invoices_without_a_government_buyer_reference() {
+    let mut input: InvoiceInput =
+        serde_json::from_str(include_str!("fixtures/export/standard.json")).unwrap();
+    input.buyer_reference.clear();
+    assert!(
+        !generate_cii(input.clone())
+            .unwrap()
+            .contains("<ram:BuyerReference>")
+    );
+    assert!(druckwandel_native::ubl::generate_ubl(input).is_err());
+}
+#[test]
+fn oversized_arithmetic_returns_an_error_instead_of_panicking() {
+    let mut input = InvoiceInput::blank();
+    input.lines[0].quantity = rust_decimal::Decimal::MAX.to_string();
+    input.lines[0].net_unit_price = "2".into();
+    assert!(druckwandel_native::invoice::calculate(input).is_err());
+}

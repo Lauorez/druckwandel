@@ -330,6 +330,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn handoffs_survive_reopening_and_are_consumed_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = Workspace::new(directory.path().to_owned()).unwrap();
+        let second = Workspace::new(directory.path().to_owned()).unwrap();
+        let arguments =
+            vec!["erechnung-review://print-job/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()];
+        second.enqueue_handoff(&arguments).unwrap();
+        assert_eq!(first.take_handoffs().unwrap(), vec![arguments]);
+        assert!(second.take_handoffs().unwrap().is_empty());
+    }
+
+    #[test]
     fn imports_pdf_and_lists_it_after_reopen() {
         let root = std::env::temp_dir().join(format!("druckwandel-native-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();

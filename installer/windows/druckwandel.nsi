@@ -53,11 +53,16 @@ Section "Druckwandel" SEC_APP
   ; Replace a previous installer before writing new files. /UPDATE retains the
   ; installed printer. The immutable legacy branch contains the old implementation.
   ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "UninstallString"
+  ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "InstallLocation"
   ${If} $R7 == ""
     ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "UninstallString"
+    ReadRegStr $R6 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "InstallLocation"
+  ${EndIf}
+  ${If} $R6 == ""
+    StrCpy $R6 $INSTDIR
   ${EndIf}
   ${If} $R7 != ""
-    ExecWait '$R7 /S /UPDATE _?=$INSTDIR' $0
+    ExecWait '$R7 /S /UPDATE _?=$R6' $0
     ${If} $0 != 0
       MessageBox MB_ICONSTOP "Die bisherige Installation konnte nicht entfernt werden. Bitte Druckwandel schließen und erneut versuchen." /SD IDOK
       SetErrorLevel 1

@@ -165,7 +165,11 @@ pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
         return Err("Verschlüsselte PDF wird nicht unterstützt.".into());
     }
     let mut output = Collector::default();
-    pdf_extract::output_doc(&doc, &mut output).map_err(|e| e.to_string())?;
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        pdf_extract::output_doc(&doc, &mut output)
+    }))
+    .map_err(|_| "Der PDF-Text konnte nicht sicher gelesen werden.".to_string())?
+    .map_err(|e| e.to_string())?;
     if output.pages.is_empty() {
         return Err("Die PDF enthält keine Seiten.".into());
     }

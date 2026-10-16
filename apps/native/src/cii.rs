@@ -1,4 +1,6 @@
-use crate::invoice::{AllowanceCharge, InvoiceInput, Party, calculate, preceding, validate};
+use crate::invoice::{
+    AllowanceCharge, InvoiceInput, Party, calculate, preceding, validate_en16931,
+};
 use crate::ubl::{e, element, escape, optional};
 
 fn date(tag: &str, value: &str) -> String {
@@ -79,7 +81,7 @@ fn allowance(item: &AllowanceCharge, with_tax: bool) -> String {
 
 /// ZUGFeRD / Factur-X EN 16931, using the same canonical invoice and rounding as UBL.
 pub fn generate_cii(input: InvoiceInput) -> Result<String, String> {
-    let errors = validate(&input);
+    let errors = validate_en16931(&input);
     if !errors.is_empty() {
         return Err(errors.join(" "));
     }

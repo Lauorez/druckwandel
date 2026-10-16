@@ -30,6 +30,12 @@ fn all_supported_invoice_cases_pass_independent_xml_validators() {
             .validate_cii(generate_cii(input).unwrap().as_bytes())
             .unwrap_or_else(|error| panic!("CII {name}: {error}"));
     }
+    let mut b2b: InvoiceInput =
+        serde_json::from_str(include_str!("fixtures/export/standard.json")).unwrap();
+    b2b.buyer_reference.clear();
+    validators
+        .validate_cii(generate_cii(b2b).unwrap().as_bytes())
+        .unwrap();
 }
 #[test]
 #[ignore = "requires the platform-specific offline validator bundle"]

@@ -238,17 +238,22 @@ fn money(value: Decimal) -> String {
     fixed(value, 2)
 }
 
+fn bounded(value: Option<Decimal>) -> Result<Decimal, String> {
+    value.ok_or_else(|| "Betrag oder Menge überschreitet den unterstützten Zahlenbereich.".into())
+}
+
 pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
     let mut lines = Vec::with_capacity(input.lines.len());
     let mut tax_groups: Vec<(Tax, Decimal)> = Vec::new();
     for line in &input.lines {
-        let mut amount = decimal(&line.quantity)? * decimal(&line.net_unit_price)?;
+        let mut amount =
+            bounded(decimal(&line.quantity)?.checked_mul(decimal(&line.net_unit_price)?))?;
         for item in &line.allowances {
             let adjustment = decimal(&item.amount)?;
             amount = if item.charge {
-                amount + adjustment
+                bounded(amount.checked_add(adjustment))?
             } else {
-                amount - adjustment
+                bounded(amount.checked_sub(adjustment))?
             };
         }
         let net_amount = money(amount);
@@ -272,18 +277,21 @@ pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
         taxes.push(TaxBreakdown {
             tax,
             taxable_amount: money(taxable),
-            tax_amount: money(taxable * rate / Decimal::from(100)),
+            tax_amount: money(bounded(
+                bounded(taxable.checked_mul(rate))?.checked_div(Decimal::from(100)),
+            )?),
         });
     }
     let line_net = lines.iter().try_fold(Decimal::ZERO, |sum, line| {
-        Ok::<_, String>(sum + decimal(&line.net_amount)?)
+        bounded(sum.checked_add(decimal(&line.net_amount)?))
     })?;
     let (allowance_total, charge_total) = adjustment_totals(&input.allowances)?;
-    let tax_exclusive = line_net - allowance_total + charge_total;
+    let tax_exclusive =
+        bounded(bounded(line_net.checked_sub(allowance_total))?.checked_add(charge_total))?;
     let tax_total = taxes.iter().try_fold(Decimal::ZERO, |sum, tax| {
-        Ok::<_, String>(sum + decimal(&tax.tax_amount)?)
+        bounded(sum.checked_add(decimal(&tax.tax_amount)?))
     })?;
-    let gross = tax_exclusive + tax_total;
+    let gross = bounded(tax_exclusive.checked_add(tax_total))?;
     let prepaid = if let Some(amount) = input
         .prepaid_amount
         .as_deref()
@@ -294,13 +302,14 @@ pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
         preceding(&input)
             .iter()
             .try_fold(Decimal::ZERO, |sum, item| {
-                Ok::<_, String>(
-                    sum + item
-                        .paid_amount
-                        .as_deref()
-                        .map(decimal)
-                        .transpose()?
-                        .unwrap_or(Decimal::ZERO),
+                bounded(
+                    sum.checked_add(
+                        item.paid_amount
+                            .as_deref()
+                            .map(decimal)
+                            .transpose()?
+                            .unwrap_or(Decimal::ZERO),
+                    ),
                 )
             })?
     };
@@ -313,7 +322,7 @@ pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
             tax_exclusive: money(tax_exclusive),
             tax_total: money(tax_total),
             tax_inclusive: money(gross),
-            payable: money(gross - prepaid),
+            payable: money(bounded(gross.checked_sub(prepaid))?),
         },
         allowance_total: money(allowance_total),
         charge_total: money(charge_total),
@@ -327,7 +336,7 @@ fn add_taxable(groups: &mut Vec<(Tax, Decimal)>, tax: &Tax, amount: Decimal) -> 
         existing.category_code == tax.category_code
             && fixed(decimal(&existing.rate).expect("validated tax group"), 2) == key
     }) {
-        *taxable += amount;
+        *taxable = bounded(taxable.checked_add(amount))?;
     } else {
         groups.push((tax.clone(), amount));
     }
@@ -340,9 +349,9 @@ pub fn adjustment_totals(items: &[AllowanceCharge]) -> Result<(Decimal, Decimal)
         |(allowance, charge), item| {
             let amount = decimal(&item.amount)?;
             Ok(if item.charge {
-                (allowance, charge + amount)
+                (allowance, bounded(charge.checked_add(amount))?)
             } else {
-                (allowance + amount, charge)
+                (bounded(allowance.checked_add(amount))?, charge)
             })
         },
     )
@@ -366,12 +375,19 @@ pub fn preceding(input: &InvoiceInput) -> Vec<&PrecedingInvoice> {
 }
 
 pub fn validate(input: &InvoiceInput) -> Vec<String> {
+    let mut errors = validate_en16931(input);
+    if input.buyer_reference.trim().is_empty() {
+        errors.push("Bestellnummer oder Leitweg-ID fehlt.".into());
+    }
+    errors
+}
+
+pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
     let mut errors = Vec::new();
     let required = [
         (&input.invoice_number, "Rechnungsnummer"),
         (&input.seller.name, "Verkäufer"),
         (&input.buyer.name, "Käufer"),
-        (&input.buyer_reference, "Bestellnummer oder Leitweg-ID"),
         (&input.seller.address.line1, "Straße des Verkäufers"),
         (&input.seller.address.city, "Ort des Verkäufers"),
         (&input.seller.address.postal_code, "PLZ des Verkäufers"),

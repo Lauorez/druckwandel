@@ -9,6 +9,9 @@ $setup = Get-ChildItem artifacts/windows/*-AppOnly-Setup.exe | Sort-Object LastW
 $installDirectory = Join-Path $env:TEMP 'Druckwandel-Installer-Test'
 $process = Start-Process -FilePath $setup.FullName -ArgumentList @('/S',"/D=$installDirectory") -PassThru -Wait
 if ($process.ExitCode -ne 0) {throw "Installation fehlgeschlagen ($($process.ExitCode))."}
+# Exercise the update path as well; the old uninstaller runs with /UPDATE.
+$process = Start-Process -FilePath $setup.FullName -ArgumentList @('/S',"/D=$installDirectory") -PassThru -Wait
+if ($process.ExitCode -ne 0) {throw "Aktualisierung fehlgeschlagen ($($process.ExitCode))."}
 $key = 'HKCU:\Software\Classes\erechnung-review\shell\open\command'
 $expected = '"' + (Join-Path $installDirectory 'Druckwandel.exe') + '" "%1"'
 if ((Get-Item $key).GetValue('') -ne $expected) {throw 'Falscher Protokollhandler.'}
