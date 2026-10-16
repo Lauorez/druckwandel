@@ -58,6 +58,15 @@ def replace_tree(source, destination):
     shutil.copytree(source, destination, symlinks=True)
 
 
+def remove_obsolete_jars(current):
+    # Each validator directory contains one standalone JAR. Packaging copies
+    # these directories, so previous versions must not remain beside it.
+    for candidate in current.parent.glob("*.jar"):
+        if candidate != current:
+            candidate.unlink()
+            print(f"Removed obsolete validator: {candidate.name}", flush=True)
+
+
 def main():
     checksums = {}
     for tool, url in [
@@ -67,6 +76,7 @@ def main():
     ]:
         relative = MANIFEST[tool]["jar"]
         download(url, ROOT / relative, checksums, relative, MANIFEST[tool]["sha256"])
+        remove_obsolete_jars(ROOT / relative)
     with tempfile.TemporaryDirectory(prefix="druckwandel-validators-") as temporary:
         temporary = Path(temporary)
         tag = MANIFEST["kosit"]["configurationTag"]
