@@ -22,6 +22,8 @@ export component MainWindow inherits Window {
     background: #f6f7f9;
 
     in property <[string]> documents;
+    in property <[string]> line-labels;
+    in-out property <int> selected-line: 0;
     in property <string> selected-name;
     in property <string> selected-path;
     in property <string> selected-hash;
@@ -57,6 +59,9 @@ export component MainWindow inherits Window {
     callback save-draft();
     callback save-xml();
     callback send-email();
+    callback select-line(int);
+    callback add-line();
+    callback remove-line();
 
     VerticalBox {
         padding: 20px;
@@ -180,7 +185,19 @@ export component MainWindow inherits Window {
                         LabeledField { label: "PLZ"; value <=> root.buyer-postal; }
                         LabeledField { label: "Ort"; value <=> root.buyer-city; }
                         LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; }
-                        Text { text: "Erste Position"; font-size: 16px; font-weight: 600; }
+                        HorizontalBox {
+                            spacing: 8px;
+                            Text { text: "Positionen"; font-size: 16px; font-weight: 600; horizontal-stretch: 1; }
+                            Button { text: "+"; enabled: root.selected-name != ""; clicked => { root.add-line(); } }
+                            Button { text: "−"; enabled: root.selected-name != "" && root.line-labels.length > 1; clicked => { root.remove-line(); } }
+                        }
+                        HorizontalBox {
+                            spacing: 4px;
+                            for line[index] in root.line-labels : Button {
+                                text: line;
+                                clicked => { root.select-line(index); }
+                            }
+                        }
                         LabeledField { label: "Bezeichnung"; value <=> root.line-name; }
                         LabeledField { label: "Menge"; value <=> root.line-quantity; }
                         LabeledField { label: "Nettopreis"; value <=> root.line-price; }

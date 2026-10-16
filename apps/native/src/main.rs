@@ -1,7 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 use druckwandel_native::extraction::extract_pages;
-use druckwandel_native::invoice::{Contact, ElectronicAddress, InvoiceInput};
+use druckwandel_native::invoice::{Contact, ElectronicAddress, InvoiceInput, InvoiceLine};
 use druckwandel_native::output::{SavedOutput, save_xrechnung};
 use druckwandel_native::print_inbox::{self, PrintJob};
 use druckwandel_native::validation::ValidatorBundle;
@@ -26,6 +26,40 @@ fn endpoint(value: String) -> Option<ElectronicAddress> {
         scheme_id: if value.contains('@') { "EM" } else { "0204" }.into(),
         value,
     })
+}
+
+fn set_line_form(window: &MainWindow, line: Option<&InvoiceLine>) {
+    window.set_line_name(line.map(|x| x.name.clone()).unwrap_or_default().into());
+    window.set_line_quantity(line.map(|x| x.quantity.clone()).unwrap_or_default().into());
+    window.set_line_price(
+        line.map(|x| x.net_unit_price.clone())
+            .unwrap_or_default()
+            .into(),
+    );
+    window.set_line_tax_rate(line.map(|x| x.tax.rate.clone()).unwrap_or_default().into());
+}
+
+fn refresh_line_labels(window: &MainWindow, invoice: &InvoiceInput) {
+    window.set_line_labels(ModelRc::new(VecModel::from(
+        invoice
+            .lines
+            .iter()
+            .enumerate()
+            .map(|(index, line)| {
+                let name = line.name.trim();
+                if name.is_empty() {
+                    format!("{}", index + 1).into()
+                } else {
+                    format!(
+                        "{}: {}",
+                        index + 1,
+                        name.chars().take(12).collect::<String>()
+                    )
+                    .into()
+                }
+            })
+            .collect::<Vec<SharedString>>(),
+    )));
 }
 
 fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
@@ -87,15 +121,9 @@ fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
             .unwrap_or_default()
             .into(),
     );
-    let line = invoice.lines.first();
-    window.set_line_name(line.map(|x| x.name.clone()).unwrap_or_default().into());
-    window.set_line_quantity(line.map(|x| x.quantity.clone()).unwrap_or_default().into());
-    window.set_line_price(
-        line.map(|x| x.net_unit_price.clone())
-            .unwrap_or_default()
-            .into(),
-    );
-    window.set_line_tax_rate(line.map(|x| x.tax.rate.clone()).unwrap_or_default().into());
+    window.set_selected_line(0);
+    set_line_form(window, invoice.lines.first());
+    refresh_line_labels(window, invoice);
     window.set_payment_iban(invoice.payment.iban.clone().unwrap_or_default().into());
 }
 
@@ -122,7 +150,7 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.buyer.address.city = window.get_buyer_city().to_string();
     invoice.buyer.address.country_code = "DE".into();
     invoice.buyer.electronic_address = endpoint(window.get_buyer_endpoint().to_string());
-    if let Some(line) = invoice.lines.first_mut() {
+    if let Some(line) = invoice.lines.get_mut(window.get_selected_line() as usize) {
         line.name = window.get_line_name().to_string();
         line.quantity = window.get_line_quantity().to_string();
         line.net_unit_price = window.get_line_price().to_string();
@@ -312,6 +340,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let weak = window.as_weak();
+    let draft = Rc::clone(&current_draft);
+    window.on_select_line(move |index| {
+        let Some(window) = weak.upgrade() else { return };
+        let invoice = collect_form(&window, draft.borrow().clone());
+        let Some(line) = invoice.lines.get(index as usize) else {
+            return;
+        };
+        window.set_selected_line(index);
+        set_line_form(&window, Some(line));
+        refresh_line_labels(&window, &invoice);
+        *draft.borrow_mut() = invoice;
+    });
+
+    let weak = window.as_weak();
+    let draft = Rc::clone(&current_draft);
+    window.on_add_line(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let mut invoice = collect_form(&window, draft.borrow().clone());
+        let mut line = InvoiceInput::blank().lines.remove(0);
+        line.id = (invoice.lines.len() + 1).to_string();
+        invoice.lines.push(line);
+        window.set_selected_line((invoice.lines.len() - 1) as i32);
+        set_line_form(&window, invoice.lines.last());
+        refresh_line_labels(&window, &invoice);
+        window.global::<OutputState>().set_can_email(false);
+        *draft.borrow_mut() = invoice;
+    });
+
+    let weak = window.as_weak();
+    let draft = Rc::clone(&current_draft);
+    window.on_remove_line(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let mut invoice = collect_form(&window, draft.borrow().clone());
+        if invoice.lines.len() <= 1 {
+            return;
+        }
+        let index = (window.get_selected_line() as usize).min(invoice.lines.len() - 1);
+        invoice.lines.remove(index);
+        for (index, line) in invoice.lines.iter_mut().enumerate() {
+            line.id = (index + 1).to_string();
+        }
+        let next = index.min(invoice.lines.len() - 1);
+        window.set_selected_line(next as i32);
+        set_line_form(&window, invoice.lines.get(next));
+        refresh_line_labels(&window, &invoice);
+        window.global::<OutputState>().set_can_email(false);
+        *draft.borrow_mut() = invoice;
+    });
+
+    let weak = window.as_weak();
     let store = Rc::clone(&workspace);
     let selected = Rc::clone(&current_id);
     let draft = Rc::clone(&current_draft);
@@ -324,6 +402,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match store.save_invoice(&id, &invoice) {
             Ok(()) => {
                 *draft.borrow_mut() = invoice;
+                refresh_line_labels(&window, &draft.borrow());
                 window.set_status_text("Rechnungsentwurf gespeichert.".into());
             }
             Err(error) => window.set_status_text(
