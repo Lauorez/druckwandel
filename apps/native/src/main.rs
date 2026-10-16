@@ -211,6 +211,12 @@ fn show_document(window: &MainWindow, document: &Document) -> Result<(), String>
     window.set_selected_name(document.name.clone().into());
     window.set_selected_path(document.path.to_string_lossy().into_owned().into());
     window.set_selected_hash(document.sha256.clone().into());
+    window.set_source_has_xml(
+        std::fs::read(&document.path)
+            .ok()
+            .and_then(|bytes| druckwandel_native::hybrid_pdf::extract_invoice_xml(&bytes).ok())
+            .is_some(),
+    );
     window.set_source_text("".into());
     let pages = extract_pages(&document.path)?;
     let no_text = pages.iter().all(|page| page.trim().is_empty());
@@ -310,7 +316,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let (output_sender, output_receiver) =
         std::sync::mpsc::channel::<Result<SavedOutput, String>>();
+    let appearance_path = root.join("appearance.json");
+    let appearance = std::fs::read(&appearance_path)
+        .ok()
+        .and_then(|data| serde_json::from_slice::<i32>(&data).ok())
+        .filter(|value| (0..=2).contains(value))
+        .unwrap_or(0);
+    let initial_theme = match appearance {
+        1 => Some(slint::winit_030::winit::window::Theme::Light),
+        2 => Some(slint::winit_030::winit::window::Theme::Dark),
+        _ => None,
+    };
+    slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .with_winit_window_attributes_hook(move |attributes| {
+            let attributes = attributes.with_transparent(false).with_theme(initial_theme);
+            #[cfg(target_os = "macos")]
+            {
+                use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
+                attributes
+                    .with_titlebar_transparent(false)
+                    .with_fullsize_content_view(false)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                attributes
+            }
+        })
+        .select()?;
     let window = MainWindow::new()?;
+    window.set_appearance(appearance);
+    let weak = window.as_weak();
+    window.on_appearance_changed(move || {
+        let Some(window) = weak.upgrade() else { return };
+        use slint::winit_030::{WinitWindowAccessor, winit::window::Theme};
+        let theme = match window.get_appearance() {
+            1 => Some(Theme::Light),
+            2 => Some(Theme::Dark),
+            _ => None,
+        };
+        window
+            .window()
+            .with_winit_window(|native| native.set_theme(theme));
+        if let Err(error) = std::fs::write(&appearance_path, window.get_appearance().to_string()) {
+            window.set_status_text(
+                format!("Darstellung konnte nicht gespeichert werden: {error}").into(),
+            );
+        }
+    });
     let documents = Rc::new(RefCell::new(refresh(&window, &workspace)?));
     let current_id = Rc::new(RefCell::new(None::<String>));
     let current_draft = Rc::new(RefCell::new(InvoiceInput::blank()));
@@ -428,7 +481,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         *saved.borrow_mut() = None;
         window.global::<OutputState>().set_can_email(false);
         match open_document(&window, &store, &document, &selected, &draft) {
-            Ok(()) => window.set_status_text(format!("Entwurf {} geöffnet.", document.id).into()),
+            Ok(()) => window.set_status_text(format!("{} geöffnet.", document.name).into()),
             Err(error) => window.set_status_text(error.into()),
         }
     });

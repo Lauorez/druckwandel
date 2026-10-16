@@ -21,6 +21,10 @@ Ein Ergebnis ist ein **editierbarer Vorschlag**. Es überspringt weder die manue
 
 `extraction.rs` liest PDF-Zeichen mit Koordinaten über `pdf-extract`, gruppiert sie in Wörter und Zeilen und behält deren Fundstellen. `recognition/schema.rs` wendet Feldregeln, Datums- und Betragsnormalisierung, Adressblöcke und Tabellenregeln an. Es prüft erkannte Summen sowie Menge × Preis gegen den gedruckten Positionsbetrag und meldet Abweichungen. Nicht eingebettete Rechnungspreisstellen können aus gerundeten Druckwerten nicht rekonstruiert werden; solche Fälle benötigen manuelle Korrektur. PDFs ohne Text werden als manuell zu erfassen gekennzeichnet. OCR und die alten Lernprofile sind noch nicht portiert.
 
+Beim Lesen normalisiert die App indirekte Parameter der Farbräume CalRGB/CalGray/Lab und überspringt Flate-komprimierte Inline-Bilder ausschließlich in einer internen Lesekopie. Die Bildgrenze wird anhand des vollständigen Zlib-Datenstroms ermittelt, nicht anhand vermuteter `EI`-Zeichen in Binärdaten. Originaldatei, Seiteninhalt für den Export und eingebettete Anhänge bleiben unverändert. Synthetische Regressionstests benötigen keine echten Rechnungsdaten.
+
+Bereits vorhandene `factur-x.xml` wird erkannt und in der Oberfläche angezeigt, aber derzeit nicht als strukturierter Rechnungsentwurf importiert. Die Schemaerkennung verwendet auch bei solchen Belegen den sichtbaren PDF-Text. Fehlende Pflichtangaben und nicht erkannte Positionstabellen werden ausdrücklich gemeldet. Ein gültiger ZUGFeRD-Beleg kann daher aktuell nur unvollständige Textvorschläge liefern; der direkte CII-Import ist noch offen.
+
 Beim ersten Öffnen eines neuen Dokuments läuft die Schemaerkennung. Ein vorhandener Entwurf wird wiederhergestellt. Der Button „Fehlende Felder erkennen“ verwendet die aktuell gewählte Methode.
 
 ## Spätere KI aus einem separaten Repository

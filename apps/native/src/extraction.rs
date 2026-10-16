@@ -160,10 +160,12 @@ pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
     if bytes.len() > 100 * 1024 * 1024 {
         return Err("PDF überschreitet 100 MB.".into());
     }
-    let doc = lopdf::Document::load_mem(bytes).map_err(|e| e.to_string())?;
+    let mut doc = lopdf::Document::load_mem(bytes).map_err(|e| e.to_string())?;
     if doc.is_encrypted() {
         return Err("Verschlüsselte PDF wird nicht unterstützt.".into());
     }
+    normalize_color_parameters(&mut doc);
+    crate::pdf_compat::prepare_text_content(&mut doc)?;
     let mut output = Collector::default();
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         pdf_extract::output_doc(&doc, &mut output)
@@ -174,6 +176,65 @@ pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
         return Err("Die PDF enthält keine Seiten.".into());
     }
     Ok(output.pages)
+}
+
+// pdf-extract 0.10 assumes calibrated color-space parameters are inline
+// dictionaries. PDF permits indirect dictionaries as well. Resolve just those
+// parameters in the extraction copy; never modify or resave the source PDF.
+fn normalize_color_parameters(doc: &mut lopdf::Document) {
+    use lopdf::Object;
+    fn visit(
+        value: &mut Object,
+        dictionaries: &std::collections::BTreeMap<lopdf::ObjectId, Object>,
+        depth: usize,
+    ) {
+        if depth > 64 {
+            return;
+        }
+        match value {
+            Object::Array(values) => {
+                if values
+                    .first()
+                    .and_then(|value| value.as_name().ok())
+                    .is_some_and(|name| matches!(name, b"CalRGB" | b"CalGray" | b"Lab"))
+                {
+                    if let Some(Object::Reference(id)) = values.get(1) {
+                        if let Some(parameters) = dictionaries.get(id) {
+                            values[1] = parameters.clone();
+                        }
+                    }
+                }
+                for value in values {
+                    visit(value, dictionaries, depth + 1);
+                }
+            }
+            Object::Dictionary(dict) => {
+                for (_, value) in dict.iter_mut() {
+                    visit(value, dictionaries, depth + 1);
+                }
+            }
+            Object::Stream(stream) => {
+                for (_, value) in stream.dict.iter_mut() {
+                    visit(value, dictionaries, depth + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    // Only small dictionaries can be color parameters. Keep streams and page
+    // content out of the lookup copy to avoid duplicating the PDF payload.
+    let dictionaries = doc
+        .objects
+        .iter()
+        .filter_map(|(id, value)| {
+            let (_, value) = doc.dereference(value).ok()?;
+            let dict = value.as_dict().ok()?;
+            (dict.has(b"WhitePoint")).then(|| (*id, Object::Dictionary(dict.clone())))
+        })
+        .collect();
+    for value in doc.objects.values_mut() {
+        visit(value, &dictionaries, 0);
+    }
 }
 
 pub fn reconstruct_lines(pages: &[DocumentPage]) -> Vec<TextLine> {

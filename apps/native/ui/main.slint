@@ -18,11 +18,20 @@ component LabeledField inherits HorizontalBox {
 }
 
 export component MainWindow inherits Window {
-    init => { Palette.color-scheme = ColorScheme.light; }
+    in-out property <int> appearance: 0;
+    callback appearance-changed();
+    changed appearance => {
+        Palette.color-scheme = root.appearance == 1 ? ColorScheme.light : root.appearance == 2 ? ColorScheme.dark : ColorScheme.unknown;
+        root.appearance-changed();
+    }
+    init => { Palette.color-scheme = ColorScheme.unknown; }
     title: "Druckwandel";
     preferred-width: 1320px;
     preferred-height: 760px;
-    background: #f6f7f9;
+    background: Palette.background;
+    icon: @image-url("../assets/app-icon.svg");
+    min-width: 1100px;
+    min-height: 650px;
 
     in property <[string]> documents;
     in property <[string]> line-labels;
@@ -31,6 +40,7 @@ export component MainWindow inherits Window {
     in property <string> selected-path;
     in property <string> selected-hash;
     in property <string> source-text;
+    in property <bool> source-has-xml;
     in property <string> recognition-text;
     in-out property <int> recognition-method: 0;
     in-out property <int> output-format: 0;
@@ -62,6 +72,7 @@ export component MainWindow inherits Window {
     in-out property <string> line-tax-rate;
     in-out property <string> payment-iban;
     private property <bool> show-about: false;
+    private property <bool> show-pdf-text: false;
     callback import-pdf();
     callback open-source();
     callback import-print-job();
@@ -79,33 +90,18 @@ export component MainWindow inherits Window {
 
         HorizontalBox {
             spacing: 16px;
-            Text {
-                text: "Druckwandel";
-                font-size: 28px;
-                font-weight: 700;
-                color: #172435;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
+            Image { source: @image-url("../assets/app-icon.svg"); width: 40px; height: 40px; image-fit: contain; }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+            Text { text: "Darstellung"; vertical-alignment: center; }
+            ComboBox { width: 140px; model: ["System", "Hell", "Dunkel"]; current-index <=> root.appearance; }
             Button { text: "Über"; clicked => { root.show-about = !root.show-about; } }
-            Button { text: "PDF importieren"; enabled: !OutputState.busy; clicked => { root.import-pdf(); } }
-            Button { text: "Druckeingang"; enabled: !OutputState.busy; clicked => { root.import-print-job(); } }
             Button { text: "Entwurf speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-draft(); } }
             Button { text: "Prüfen und speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-xml(); } }
             Button { text: "Per E-Mail senden"; enabled: OutputState.can-email && !OutputState.busy; clicked => { root.send-email(); } }
         }
 
-        HorizontalBox {
-            spacing: 12px;
-            Text { text: "Erkennung"; vertical-alignment: center; }
-            ComboBox { model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
-            Button { text: "Fehlende Felder erkennen"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.recognize(); } }
-            Text { text: "Ausgabe"; vertical-alignment: center; horizontal-stretch: 1; horizontal-alignment: right; }
-            ComboBox { model: ["XRechnung (XML)", "ZUGFeRD (PDF)"]; current-index <=> root.output-format; enabled: !OutputState.busy; selected => { OutputState.can-email = false; } }
-        }
-
         if root.show-about : Rectangle {
-            background: white;
+            background: Palette.alternate-background;
             border-radius: 8px;
             vertical-stretch: 1;
             VerticalBox {
@@ -121,11 +117,13 @@ export component MainWindow inherits Window {
             spacing: 16px;
             Rectangle {
                 width: 220px;
-                background: white;
+                background: Palette.alternate-background;
                 border-radius: 8px;
                 VerticalBox {
                     padding: 12px;
                     spacing: 8px;
+                    Button { text: "Neue PDF öffnen"; enabled: !OutputState.busy; clicked => { root.import-pdf(); } }
+                    Button { text: "Druckeingang"; enabled: !OutputState.busy; clicked => { root.import-print-job(); } }
                     Text { text: "Entwürfe"; font-size: 18px; font-weight: 600; }
                     ScrollView {
                         vertical-stretch: 1;
@@ -141,47 +139,67 @@ export component MainWindow inherits Window {
                     }
                 }
             }
-            Rectangle {
+            if root.selected-name == "" : Rectangle {
+                background: Palette.alternate-background;
+                border-radius: 8px;
+                horizontal-stretch: 1;
+                VerticalBox {
+                    padding: 32px;
+                    alignment: center;
+                    spacing: 18px;
+                    Text { text: "Rechnung öffnen und prüfen"; font-size: 24px; font-weight: 600; }
+                    Text { text: "1. Links eine neue PDF öffnen oder einen Entwurf auswählen.\n2. Erkannte Rechnungsdaten mit dem Original vergleichen.\n3. Ausgabe prüfen, speichern und per E-Mail teilen."; wrap: word-wrap; }
+                }
+            }
+            if root.selected-name != "" : Rectangle {
                 width: 350px;
-                background: white;
+                background: Palette.alternate-background;
                 border-radius: 8px;
                 horizontal-stretch: 1;
                 VerticalBox {
                     padding: 20px;
                     spacing: 12px;
                     Text {
-                        text: root.selected-name == "" ? "PDF auswählen" : root.selected-name;
+                        text: "Original & Erkennung";
                         font-size: 22px;
                         font-weight: 600;
-                        color: #172435;
+                        color: Palette.foreground;
                     }
-                    Button { text: "Original-PDF öffnen"; enabled: root.selected-name != ""; clicked => { root.open-source(); } }
+                    Text { text: root.selected-name; wrap: word-wrap; }
+                    Button { text: "Original ansehen"; enabled: root.selected-name != ""; clicked => { root.open-source(); } }
                     Text {
-                        text: root.selected-name == "" ? "PDF-Datei importieren, um einen Entwurf anzulegen." : "Erkennungsvorschläge mit dem Originalbeleg vergleichen und Rechnungsdaten korrigieren.";
-                        color: #526174;
+                        text: "Die bereits geöffnete PDF ist der Originalbeleg dieses Entwurfs. Hier kannst du sie zum Vergleich ansehen.";
+                        color: Palette.foreground;
                         wrap: word-wrap;
                     }
+                    if root.source-has-xml : Text {
+                        text: "ZUGFeRD-XML im Beleg vorhanden. Der aktuelle Import liest nur den PDF-Text; die eingebetteten Rechnungsdaten werden noch nicht übernommen.";
+                        wrap: word-wrap;
+                    }
+                    ComboBox { model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
+                    Button { text: "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
                     TextEdit {
                         text: root.recognition-text;
                         read-only: true;
                         vertical-stretch: 1;
                     }
-                    Text { text: "PDF-Text"; font-weight: 600; }
-                    TextEdit {
+                    Button { text: root.show-pdf-text ? "PDF-Text ausblenden" : "PDF-Text anzeigen"; clicked => { root.show-pdf-text = !root.show-pdf-text; } }
+                    if root.show-pdf-text : TextEdit {
                         text: root.source-text;
                         read-only: true;
                         vertical-stretch: 1;
                     }
                 }
             }
-            Rectangle {
-                background: white;
+            if root.selected-name != "" : Rectangle {
+                background: Palette.alternate-background;
                 border-radius: 8px;
                 horizontal-stretch: 1;
                 ScrollView {
                     VerticalBox {
                         padding: 16px;
                         spacing: 8px;
+                        ComboBox { model: ["XRechnung (XML)", "ZUGFeRD (PDF)"]; current-index <=> root.output-format; enabled: !OutputState.busy; selected => { OutputState.can-email = false; } }
                         Text { text: "Rechnungsdaten"; font-size: 20px; font-weight: 600; }
                         LabeledField { label: "Rechnungsnummer"; value <=> root.invoice-number; }
                         LabeledField { label: "Rechnungsdatum"; value <=> root.issue-date; }
@@ -231,7 +249,7 @@ export component MainWindow inherits Window {
 
         Text {
             text: root.status-text;
-            color: #355b7c;
+            color: Palette.foreground;
             wrap: word-wrap;
         }
     }

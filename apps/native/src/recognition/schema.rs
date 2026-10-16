@@ -302,6 +302,25 @@ impl RecognitionProvider for SchemaRecognizer {
                 }
             }
         }
+        if result.lines.is_empty() {
+            result.warnings.push("Keine Rechnungspositionen erkannt. Die Tabellenstruktur passt nicht zu den vorhandenen Regeln; Positionen bitte manuell erfassen.".into());
+        }
+        let missing: Vec<_> = [
+            ("invoiceNumber", "Rechnungsnummer"),
+            ("issueDate", "Rechnungsdatum"),
+            ("sellerName", "Absender"),
+            ("buyerName", "Empfänger"),
+        ]
+        .into_iter()
+        .filter(|(key, _)| !result.fields.contains_key(*key))
+        .map(|(_, label)| label)
+        .collect();
+        if !missing.is_empty() {
+            result.warnings.push(format!(
+                "Nicht erkannt: {}. Bitte im Original prüfen und ergänzen.",
+                missing.join(", ")
+            ));
+        }
         Ok(result)
     }
 }

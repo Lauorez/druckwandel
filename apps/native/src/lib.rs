@@ -9,3 +9,5 @@ pub mod recognition;
 pub mod ubl;
 pub mod validation;
 pub mod workspace;
+
+mod pdf_compat;
