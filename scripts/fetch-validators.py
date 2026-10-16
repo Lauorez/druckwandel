@@ -7,6 +7,8 @@ import shutil
 import tarfile
 import tempfile
 import urllib.request
+import urllib.error
+import time
 import zipfile
 from pathlib import Path
 
@@ -16,14 +18,23 @@ MANIFEST = json.loads((ROOT / "manifest.json").read_text())
 
 def get(url):
     request = urllib.request.Request(url, headers={"User-Agent": "druckwandel-validator-build"})
-    return urllib.request.urlopen(request, timeout=180)
+    for attempt in range(3):
+        try:
+            return urllib.request.urlopen(request, timeout=180)
+        except urllib.error.URLError as error:
+            if attempt == 2 or (isinstance(error, urllib.error.HTTPError) and error.code not in (403, 408, 429, 500, 502, 503, 504)):
+                raise
+            time.sleep(2 ** (attempt + 1))
 
 
-def download(url, target, checksums, key):
+def download(url, target, checksums, key, expected=None):
     target.parent.mkdir(parents=True, exist_ok=True)
     with get(url) as response, target.open("wb") as output:
         shutil.copyfileobj(response, output)
-    digest = hashlib.file_digest(target.open("rb"), "sha256").hexdigest()
+    with target.open("rb") as artifact:
+        digest = hashlib.file_digest(artifact, "sha256").hexdigest()
+    if expected is not None and digest != expected:
+        raise ValueError(f"SHA-256 mismatch for {key}")
     checksums[key] = digest
     print(f"{digest}  {key}", flush=True)
 
@@ -55,15 +66,13 @@ def main():
         ("verapdf", f"https://repo.maven.apache.org/maven2/org/verapdf/apps/greenfield-apps/{MANIFEST['verapdf']['engineVersion']}/{Path(MANIFEST['verapdf']['jar']).name}"),
     ]:
         relative = MANIFEST[tool]["jar"]
-        download(url, ROOT / relative, checksums, relative)
+        download(url, ROOT / relative, checksums, relative, MANIFEST[tool]["sha256"])
     with tempfile.TemporaryDirectory(prefix="druckwandel-validators-") as temporary:
         temporary = Path(temporary)
         tag = MANIFEST["kosit"]["configurationTag"]
-        with get(f"https://api.github.com/repos/itplr-kosit/validator-configuration-xrechnung/releases/tags/{tag}") as response:
-            release = json.load(response)
-        asset = next(asset for asset in release["assets"] if asset["name"].endswith(".zip"))
+        name = MANIFEST["kosit"]["configurationArchive"]
         archive = temporary / "configuration.zip"
-        download(asset["browser_download_url"], archive, checksums, "kosit/configuration.zip")
+        download(f"https://github.com/itplr-kosit/validator-configuration-xrechnung/releases/download/{tag}/{name}", archive, checksums, "kosit/configuration.zip", MANIFEST["kosit"]["configurationSha256"])
         unpack(archive, temporary / "configuration")
         scenarios = next((temporary / "configuration").rglob("scenarios.xml"))
         replace_tree(scenarios.parent, ROOT / "kosit" / "xrechnung")

@@ -318,6 +318,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     window.set_status_text("PDF importieren oder gespeicherten Entwurf auswählen.".into());
 
     let weak = window.as_weak();
+    window.on_open_source(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let path = PathBuf::from(window.get_selected_path().as_str());
+        #[cfg(target_os = "macos")]
+        let result = std::process::Command::new("open").arg(&path).spawn();
+        #[cfg(target_os = "windows")]
+        let result = std::process::Command::new("explorer.exe")
+            .arg(&path)
+            .spawn();
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let result = std::process::Command::new("xdg-open").arg(&path).spawn();
+        if let Err(error) = result {
+            window.set_status_text(
+                format!("Original-PDF konnte nicht geöffnet werden: {error}").into(),
+            );
+        }
+    });
+
+    let weak = window.as_weak();
     let store = Rc::clone(&workspace);
     let list = Rc::clone(&documents);
     let selected = Rc::clone(&current_id);

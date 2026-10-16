@@ -1,4 +1,4 @@
-import { AboutSlint, Button, ComboBox, LineEdit, ScrollView, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, LineEdit, Palette, ScrollView, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export global OutputState {
     in-out property <bool> can-email: false;
@@ -18,6 +18,7 @@ component LabeledField inherits HorizontalBox {
 }
 
 export component MainWindow inherits Window {
+    init => { Palette.color-scheme = ColorScheme.light; }
     title: "Druckwandel";
     preferred-width: 1320px;
     preferred-height: 760px;
@@ -62,6 +63,7 @@ export component MainWindow inherits Window {
     in-out property <string> payment-iban;
     private property <bool> show-about: false;
     callback import-pdf();
+    callback open-source();
     callback import-print-job();
     callback select-document(int);
     callback save-draft();
@@ -110,7 +112,7 @@ export component MainWindow inherits Window {
                 padding: 24px;
                 spacing: 16px;
                 Text { text: "Über Druckwandel"; font-size: 22px; font-weight: 600; }
-                Text { text: "Rust- und Slint-Version im Aufbau"; }
+                Text { text: "Version 0.4.0 (in Entwicklung)"; }
                 AboutSlint {}
             }
         }
@@ -128,9 +130,11 @@ export component MainWindow inherits Window {
                     ScrollView {
                         vertical-stretch: 1;
                         VerticalBox {
+                            alignment: start;
                             spacing: 4px;
                             for document[index] in root.documents : Button {
                                 text: document;
+                                height: 36px;
                                 enabled: !OutputState.busy; clicked => { root.select-document(index); }
                             }
                         }
@@ -151,18 +155,9 @@ export component MainWindow inherits Window {
                         font-weight: 600;
                         color: #172435;
                     }
+                    Button { text: "Original-PDF öffnen"; enabled: root.selected-name != ""; clicked => { root.open-source(); } }
                     Text {
-                        text: root.selected-path;
-                        color: #526174;
-                        wrap: word-wrap;
-                    }
-                    Text {
-                        text: root.selected-hash == "" ? "" : "SHA-256: " + root.selected-hash;
-                        color: #526174;
-                        wrap: word-wrap;
-                    }
-                    Text {
-                        text: root.selected-name == "" ? "PDF-Datei importieren, um einen Entwurf anzulegen." : "Gelesener PDF-Text als Vorlage für die Erfassung.";
+                        text: root.selected-name == "" ? "PDF-Datei importieren, um einen Entwurf anzulegen." : "Erkennungsvorschläge mit dem Originalbeleg vergleichen und Rechnungsdaten korrigieren.";
                         color: #526174;
                         wrap: word-wrap;
                     }

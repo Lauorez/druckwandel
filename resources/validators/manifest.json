@@ -17,20 +17,25 @@
     "license": "Apache-2.0",
     "source": "https://github.com/itplr-kosit/validator/releases/tag/v1.6.3",
     "configurationSource": "https://github.com/itplr-kosit/validator-configuration-xrechnung",
-    "configurationTag": "v2026-01-31"
+    "configurationTag": "v2026-01-31",
+    "configurationArchive": "xrechnung-3.0.2-validator-configuration-2026-01-31.zip",
+    "sha256": "799e64befca97d4080e03608c80b85dd5a5ecc5f4ae4f35d1116ec2855b9a7c9",
+    "configurationSha256": "6a5a5911a421b25fbc423f62f93f894df7b236f5d73ca4f84bb222a945082704"
   },
   "mustang": {
     "engineVersion": "2.26.0",
     "ruleVersion": "factur-x-en16931",
     "jar": "mustang/Mustang-CLI-2.26.0.jar",
     "license": "Apache-2.0",
-    "source": "https://repo.maven.apache.org/maven2/org/mustangproject/Mustang-CLI/2.26.0/"
+    "source": "https://repo.maven.apache.org/maven2/org/mustangproject/Mustang-CLI/2.26.0/",
+    "sha256": "42d7868cb68264874a7b8cab4c3587b03b23ccc7cd72373da917f66758bb9736"
   },
   "verapdf": {
     "engineVersion": "1.28.2",
     "ruleVersion": "pdfa-3b",
     "jar": "verapdf/greenfield-apps-1.28.2.jar",
     "license": "GPL-3.0-or-later OR MPL-2.0",
-    "source": "https://repo1.maven.org/maven2/org/verapdf/apps/greenfield-apps/1.28.2/"
+    "source": "https://repo1.maven.org/maven2/org/verapdf/apps/greenfield-apps/1.28.2/",
+    "sha256": "687d4d8bcfec48c9f7e931cf78ed061f1eeccfba55d4cdc000ba9b4d8aa46ce6"
   }
 }

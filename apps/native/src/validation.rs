@@ -134,7 +134,11 @@ impl ValidatorBundle {
             .arg("-o")
             .arg(&reports)
             .arg(&input)
-            .stdin(Stdio::null())
+            // Java's FileInputStream.available() fails on Windows NUL. KoSIT
+            // probes stdin even when a filename is supplied, so use an empty file.
+            .stdin(Stdio::from(
+                tempfile::tempfile().map_err(|e| e.to_string())?,
+            ))
             .stdout(Stdio::from(log))
             .stderr(Stdio::from(error_log));
         #[cfg(windows)]

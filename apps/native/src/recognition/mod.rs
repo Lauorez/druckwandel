@@ -164,10 +164,45 @@ impl RecognitionRegistry {
     }
 }
 
+fn field_label(name: &str) -> &str {
+    match name {
+        "invoiceNumber" => "Rechnungsnummer",
+        "issueDate" => "Rechnungsdatum",
+        "dueDate" => "Fälligkeit",
+        "serviceDate" => "Leistungsdatum",
+        "buyerReference" => "Bestellnummer / Leitweg-ID",
+        "currency" => "Währung",
+        "sellerName" => "Absender",
+        "sellerAddressLine1" => "Absender: Straße",
+        "sellerPostalCode" => "Absender: PLZ",
+        "sellerCity" => "Absender: Ort",
+        "sellerCountryCode" => "Absender: Land",
+        "sellerVatId" => "Absender: USt-ID",
+        "sellerContact" => "Ansprechpartner",
+        "sellerPhone" => "Telefon",
+        "sellerEmail" => "E-Mail",
+        "buyerName" => "Empfänger",
+        "buyerAddressLine1" => "Empfänger: Straße",
+        "buyerPostalCode" => "Empfänger: PLZ",
+        "buyerCity" => "Empfänger: Ort",
+        "buyerCountryCode" => "Empfänger: Land",
+        "buyerVatId" => "Empfänger: USt-ID",
+        "iban" => "IBAN",
+        "bic" => "BIC",
+        "paymentTerms" => "Zahlungsbedingungen",
+        "lineNet" => "Netto",
+        "taxTotal" => "Umsatzsteuer",
+        "taxInclusive" => "Brutto",
+        "payable" => "Zahlbetrag",
+        _ => name,
+    }
+}
+
 impl RecognitionResult {
     pub fn review_text(&self) -> String {
         let mut text = String::from("Erkennungsvorschläge – bitte mit dem Beleg vergleichen.\n");
         for (name, field) in &self.fields {
+            let name = field_label(name);
             text += &format!(
                 "\n{name}: {} ({:.0} %)\nQuelle: {}\n",
                 field.value,
