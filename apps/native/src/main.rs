@@ -2,8 +2,11 @@
 
 use druckwandel_native::extraction::extract_pages;
 use druckwandel_native::invoice::{Contact, ElectronicAddress, InvoiceInput, InvoiceLine};
-use druckwandel_native::output::{SavedOutput, save_xrechnung};
+use druckwandel_native::output::{SavedOutput, save_xrechnung, save_zugferd};
 use druckwandel_native::print_inbox::{self, PrintJob};
+use druckwandel_native::recognition::{
+    RecognitionMethod, RecognitionRequest, application_registry,
+};
 use druckwandel_native::validation::ValidatorBundle;
 use druckwandel_native::workspace::{Document, Workspace};
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel};
@@ -71,6 +74,7 @@ fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
     window.set_seller_street(invoice.seller.address.line1.clone().into());
     window.set_seller_postal(invoice.seller.address.postal_code.clone().into());
     window.set_seller_city(invoice.seller.address.city.clone().into());
+    window.set_seller_country(invoice.seller.address.country_code.clone().into());
     window.set_seller_vat(invoice.seller.vat_id.clone().unwrap_or_default().into());
     window.set_seller_endpoint(
         invoice
@@ -112,6 +116,7 @@ fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
     window.set_buyer_street(invoice.buyer.address.line1.clone().into());
     window.set_buyer_postal(invoice.buyer.address.postal_code.clone().into());
     window.set_buyer_city(invoice.buyer.address.city.clone().into());
+    window.set_buyer_country(invoice.buyer.address.country_code.clone().into());
     window.set_buyer_endpoint(
         invoice
             .buyer
@@ -136,7 +141,7 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.seller.address.line1 = window.get_seller_street().to_string();
     invoice.seller.address.postal_code = window.get_seller_postal().to_string();
     invoice.seller.address.city = window.get_seller_city().to_string();
-    invoice.seller.address.country_code = "DE".into();
+    invoice.seller.address.country_code = window.get_seller_country().to_string();
     invoice.seller.vat_id = optional(window.get_seller_vat().to_string());
     invoice.seller.electronic_address = endpoint(window.get_seller_endpoint().to_string());
     invoice.seller.contact = Some(Contact {
@@ -148,7 +153,7 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.buyer.address.line1 = window.get_buyer_street().to_string();
     invoice.buyer.address.postal_code = window.get_buyer_postal().to_string();
     invoice.buyer.address.city = window.get_buyer_city().to_string();
-    invoice.buyer.address.country_code = "DE".into();
+    invoice.buyer.address.country_code = window.get_buyer_country().to_string();
     invoice.buyer.electronic_address = endpoint(window.get_buyer_endpoint().to_string());
     if let Some(line) = invoice.lines.get_mut(window.get_selected_line() as usize) {
         line.name = window.get_line_name().to_string();
@@ -167,7 +172,20 @@ fn open_document(
     current_id: &RefCell<Option<String>>,
     current_draft: &RefCell<InvoiceInput>,
 ) -> Result<(), String> {
+    if !store.has_invoice(&document.id)? {
+        let request = RecognitionRequest::from_pdf(document.path.clone(), &document.sha256)?;
+        let result = application_registry().recognize(RecognitionMethod::Schema, &request)?;
+        store.save_invoice(&document.id, &result.invoice_draft())?;
+        store.save_recognition(&document.id, &result)?;
+    }
     let invoice = store.load_invoice(&document.id)?;
+    window.set_recognition_text(
+        store
+            .load_recognition(&document.id)?
+            .map(|result| result.review_text())
+            .unwrap_or_default()
+            .into(),
+    );
     set_form(window, &invoice);
     *current_id.borrow_mut() = Some(document.id.clone());
     *current_draft.borrow_mut() = invoice;
@@ -229,12 +247,69 @@ fn receive_print_job(
     open_document(window, workspace, &document, current_id, current_draft)
 }
 
+fn receive_argument(
+    window: &MainWindow,
+    workspace: &Workspace,
+    documents: &RefCell<Vec<Document>>,
+    current_id: &RefCell<Option<String>>,
+    current_draft: &RefCell<InvoiceInput>,
+    saved_output: &RefCell<Option<SavedOutput>>,
+    argument: &str,
+) {
+    let result = if argument
+        .to_ascii_lowercase()
+        .starts_with("erechnung-review:")
+    {
+        print_inbox::job_from_uri(argument).and_then(|job| {
+            receive_print_job(
+                window,
+                workspace,
+                documents,
+                current_id,
+                current_draft,
+                saved_output,
+                &job,
+            )
+        })
+    } else {
+        (|| {
+            save_current(window, workspace, current_id, current_draft)?;
+            let document = workspace.import_pdf(std::path::Path::new(argument))?;
+            *documents.borrow_mut() = refresh(window, workspace)?;
+            *saved_output.borrow_mut() = None;
+            window.global::<OutputState>().set_can_email(false);
+            open_document(window, workspace, &document, current_id, current_draft)
+        })()
+    };
+    match result {
+        Ok(()) => window.set_status_text("Dokument aus der Übergabe geöffnet.".into()),
+        Err(error) => window.set_status_text(format!("Übergabe fehlgeschlagen: {error}").into()),
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = dirs::data_local_dir()
         .ok_or("Kein lokaler Datenordner verfügbar")?
         .join("Druckwandel")
         .join("native");
-    let workspace = Rc::new(Workspace::new(root)?);
+    let workspace = Rc::new(Workspace::new(root.clone())?);
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let instance_file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(root.join("app.lock"))?;
+    match fs2::FileExt::try_lock_exclusive(&instance_file) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            workspace.enqueue_handoff(&arguments)?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    }
+    let (output_sender, output_receiver) =
+        std::sync::mpsc::channel::<Result<SavedOutput, String>>();
     let window = MainWindow::new()?;
     let documents = Rc::new(RefCell::new(refresh(&window, &workspace)?));
     let current_id = Rc::new(RefCell::new(None::<String>));
@@ -393,6 +468,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = Rc::clone(&workspace);
     let selected = Rc::clone(&current_id);
     let draft = Rc::clone(&current_draft);
+    let saved = Rc::clone(&saved_output);
+    window.on_recognize(move || {
+        let Some(window)=weak.upgrade() else {return};
+        let Some(id)=selected.borrow().clone() else {return};
+        let method=if window.get_recognition_method()==1 {RecognitionMethod::LocalAi} else {RecognitionMethod::Schema};
+        let result=(|| {
+            let registry=application_registry();
+            // Check availability before reading a PDF or touching the existing draft.
+            if !registry.available(method) {return Err("Lokale KI-Erkennung ist noch nicht installiert. Der lokale Adapter aus dem separaten KI-Projekt kann später ergänzt werden.".to_string());}
+            let request=RecognitionRequest::from_pdf(PathBuf::from(window.get_selected_path().as_str()),window.get_selected_hash().as_str())?;
+            registry.recognize(method,&request)
+        })();
+        match result {
+            Ok(result)=>{
+                let mut invoice=collect_form(&window,draft.borrow().clone());
+                // Re-running recognition fills missing values only. Existing corrections remain.
+                druckwandel_native::recognition::fill_missing(&mut invoice,&result);
+                if let Err(error)=store.save_invoice(&id,&invoice).and_then(|_|store.save_recognition(&id,&result)) {window.set_status_text(error.into());return;}
+                set_form(&window,&invoice);*draft.borrow_mut()=invoice;*saved.borrow_mut()=None;window.global::<OutputState>().set_can_email(false);
+                window.set_recognition_text(result.review_text().into());window.set_status_text("Erkennungsvorschläge übernommen. Bitte Fundstellen und Rechnungsdaten prüfen.".into());
+            },
+            Err(error)=>window.set_status_text(error.into()),
+        }
+    });
+
+    let weak = window.as_weak();
+    let store = Rc::clone(&workspace);
+    let selected = Rc::clone(&current_id);
+    let draft = Rc::clone(&current_draft);
     window.on_save_draft(move || {
         let Some(window) = weak.upgrade() else { return };
         let Some(id) = selected.borrow().clone() else {
@@ -429,37 +533,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return;
         }
         *draft.borrow_mut() = invoice.clone();
+        let zugferd = window.get_output_format() == 1;
+        let extension = if zugferd { "pdf" } else { "xml" };
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("XRechnung", &["xml"])
+            .add_filter(if zugferd { "ZUGFeRD" } else { "XRechnung" }, &[extension])
             .set_file_name(format!(
-                "{}.xml",
-                invoice.invoice_number.trim().replace(['/', '\\'], "-")
+                "{}.{}",
+                invoice.invoice_number.trim().replace(['/', '\\'], "-"),
+                extension
             ))
             .save_file()
         else {
             return;
         };
-        window.set_status_text("XRechnung wird unabhängig geprüft ...".into());
+        let source = PathBuf::from(window.get_selected_path().as_str());
+        if source == path
+            || source
+                .canonicalize()
+                .ok()
+                .zip(path.canonicalize().ok())
+                .is_some_and(|(a, b)| a == b)
+        {
+            window.set_status_text(
+                "Bitte einen anderen Speicherort als die Original-PDF wählen.".into(),
+            );
+            return;
+        }
+        window.set_status_text("Ausgabe wird erzeugt und unabhängig geprüft ...".into());
         *saved.borrow_mut() = None;
         window.global::<OutputState>().set_can_email(false);
-        let result =
-            ValidatorBundle::discover().and_then(|bundle| save_xrechnung(invoice, &path, &bundle));
-        match result {
-            Ok(output) => {
-                window.set_status_text(
-                    format!(
-                        "Geprüfte XRechnung gespeichert: {}",
-                        output.path().display()
-                    )
-                    .into(),
-                );
-                *saved.borrow_mut() = Some(output);
-                window.global::<OutputState>().set_can_email(true);
-            }
-            Err(error) => {
-                window.set_status_text(format!("XRechnung wurde nicht gespeichert: {error}").into())
-            }
-        }
+        window.global::<OutputState>().set_busy(true);
+        let sender = output_sender.clone();
+        std::thread::spawn(move || {
+            let result = ValidatorBundle::discover().and_then(|bundle| {
+                if zugferd {
+                    let bytes = std::fs::read(source).map_err(|e| e.to_string())?;
+                    save_zugferd(invoice, &bytes, &path, &bundle)
+                } else {
+                    save_xrechnung(invoice, &path, &bundle)
+                }
+            });
+            let _ = sender.send(result);
+        });
     });
 
     let weak = window.as_weak();
@@ -477,7 +592,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         drop(binding);
         let result = robius_share::ShareSheet::new()
             .set_title("Rechnung per E-Mail senden")
-            .set_subject("XRechnung")
+            .set_subject("E-Rechnung")
             .add_file(&path)
             .share();
         match result {
@@ -494,6 +609,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let Some(window) = weak.upgrade() else {
             return CloseRequestResponse::HideWindow;
         };
+        if window.global::<OutputState>().get_busy() {
+            return CloseRequestResponse::KeepWindowShown;
+        }
         if let Err(error) = save_current(&window, &store, &selected, &draft) {
             window.set_status_text(
                 format!("Entwurf konnte nicht gespeichert werden: {error}").into(),
@@ -503,45 +621,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         CloseRequestResponse::HideWindow
     });
 
-    for arg in std::env::args_os().skip(1) {
-        if let Some(uri) = arg
-            .to_str()
-            .filter(|value| value.starts_with("erechnung-review:"))
-        {
-            let result = print_inbox::job_from_uri(uri).and_then(|job| {
-                receive_print_job(
-                    &window,
-                    &workspace,
-                    &documents,
-                    &current_id,
-                    &current_draft,
-                    &saved_output,
-                    &job,
-                )
-            });
-            match result {
-                Ok(()) => window.set_status_text("Druckauftrag aus der Übergabe geöffnet.".into()),
-                Err(error) => {
-                    window.set_status_text(format!("Druckübergabe fehlgeschlagen: {error}").into())
-                }
-            }
-            continue;
-        }
-        let path = PathBuf::from(arg);
-        match workspace.import_pdf(&path) {
-            Ok(document) => {
-                window.global::<OutputState>().set_can_email(false);
-                match open_document(&window, &workspace, &document, &current_id, &current_draft) {
-                    Ok(()) => window.set_status_text("PDF aus der Übergabe importiert.".into()),
-                    Err(error) => window.set_status_text(format!("PDF importiert. {error}").into()),
-                }
-            }
-            Err(error) => {
-                window.set_status_text(format!("Übergabe fehlgeschlagen: {error}").into())
-            }
-        }
+    for argument in arguments {
+        receive_argument(
+            &window,
+            &workspace,
+            &documents,
+            &current_id,
+            &current_draft,
+            &saved_output,
+            &argument,
+        );
     }
     *documents.borrow_mut() = refresh(&window, &workspace)?;
+    let timer = slint::Timer::default();
+    let weak = window.as_weak();
+    let store = Rc::clone(&workspace);
+    let selected = Rc::clone(&current_id);
+    let draft = Rc::clone(&current_draft);
+    let list = Rc::clone(&documents);
+    let saved = Rc::clone(&saved_output);
+    timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(500),
+        move || {
+            let Some(window) = weak.upgrade() else { return };
+            if let Ok(result) = output_receiver.try_recv() {
+                window.global::<OutputState>().set_busy(false);
+                match result {
+                    Ok(output) => {
+                        window.set_status_text(
+                            format!("Geprüfte Ausgabe gespeichert: {}", output.path().display())
+                                .into(),
+                        );
+                        *saved.borrow_mut() = Some(output);
+                        window.global::<OutputState>().set_can_email(true);
+                    }
+                    Err(error) => window.set_status_text(
+                        format!("Ausgabe wurde nicht gespeichert: {error}").into(),
+                    ),
+                }
+            }
+            if !window.global::<OutputState>().get_busy() {
+                match store.take_handoffs() {
+                    Ok(batches) => {
+                        for arguments in batches {
+                            let _ = window.show();
+                            for argument in arguments {
+                                receive_argument(
+                                    &window, &store, &list, &selected, &draft, &saved, &argument,
+                                );
+                            }
+                        }
+                    }
+                    Err(error) => window
+                        .set_status_text(format!("Druckübergabe fehlgeschlagen: {error}").into()),
+                }
+            }
+        },
+    );
     window.run()?;
     Ok(())
 }

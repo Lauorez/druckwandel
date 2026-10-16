@@ -2,9 +2,9 @@
 
 Stand: 16.10.2026. Ausgangspunkt: Druckwandel 0.3.5.
 
-Umsetzung begonnen: Die [neue Rust/Slint-App](../../apps/native/README.md) importiert PDFs einschließlich bestehender Windows-Druckaufträge, speichert Entwürfe und kann eine einfache XRechnung nach KoSIT-Prüfung ausgeben und per Systemfreigabe weitergeben. Der bisherige Release bleibt bis zur vollständigen fachlichen Portierung bestehen.
+Umsetzung begonnen: Die [neue Rust/Slint-App](../../apps/native/README.md) importiert PDFs einschließlich bestehender Windows-Druckaufträge, speichert Entwürfe und kann eine einfache XRechnung nach KoSIT-Prüfung ausgeben und per Systemfreigabe weitergeben. Der bisherige Stand ist im gesperrten Branch `legacy/tauri-0.3.5` eingefroren. `main` enthält ausschließlich Rust/Slint.
 
-Druckwandel soll eine schlanke Desktop-Anwendung für Windows und macOS werden. Der Kern bleibt: PDF-Rechnungen übernehmen, Daten prüfen und korrigieren, XRechnung oder ZUGFeRD erzeugen und die fertige Datei speichern oder per E-Mail weitergeben. Dieser Plan ersetzt die bisherige [Roadmap bis 1.0](roadmap-1.0.md) als Richtung für die nächste Version; deren Beschreibung des bisherigen Systems bleibt historisch erhalten.
+Druckwandel soll eine schlanke Desktop-Anwendung für Windows und macOS werden. Der Kern bleibt: PDF-Rechnungen übernehmen, Daten prüfen und korrigieren, XRechnung oder ZUGFeRD erzeugen und die fertige Datei speichern oder per E-Mail weitergeben. Die frühere Roadmap und Produktdokumentation bleiben im Legacy-Branch erhalten.
 
 ## Produktumfang
 
@@ -36,3 +36,7 @@ Phase 2 ergänzt DATEV-Anmeldung, Auswahl des berechtigten Bestands und einen be
 - RAM-Verbrauch wird für gleiche Nutzungsszenarien mit Version 0.3.5 verglichen und dokumentiert. Ein fester Grenzwert ist kein Release-Kriterium.
 
 Der Quellcode bleibt unter MIT. Für die kostenlose Slint-Desktop-Lizenz erscheint die erforderliche Slint-Nennung in einem über das Hauptmenü erreichbaren „Über“-Dialog. [Slint-Lizenzbedingungen](https://slint.dev/terms-and-conditions)
+
+## Ergänzung: lokale KI-Erkennung
+
+Neben der Schemaerkennung wird eine lokale KI-Methode auswählbar vorbereitet. Das kleine LLM und sein spezieller LoRA-Adapter entstehen vollständig in einem separaten Repository. Hier werden ausschließlich der gemeinsame versionierte Erkennungsvertrag, die Anbieterregistrierung und die Auswahloberfläche vorbereitet. Ohne registrierten lokalen Adapter bleibt die KI-Methode ausdrücklich nicht verfügbar. Es gibt keine externe API. Details: [Erkennungsarchitektur](../recognition.md).

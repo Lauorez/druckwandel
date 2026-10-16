@@ -2,24 +2,21 @@ name: Rust-Slint-App
 
 on:
   workflow_dispatch:
+    inputs:
+      package:
+        description: Installer als Entwicklungsartefakte bauen
+        type: boolean
+        default: false
   pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "apps/native/**"
-      - ".github/workflows/native-slint.yml"
   push:
     branches: [main]
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "apps/native/**"
-      - ".github/workflows/native-slint.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: native-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -34,6 +31,57 @@ jobs:
         with:
           toolchain: "1.88.0"
           components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - run: cargo fmt --all -- --check
       - run: cargo clippy -p druckwandel-native --all-targets --locked -- -D warnings
       - run: cargo test -p druckwandel-native --locked
+      - name: Offline-Prüfer laden
+        run: python scripts/fetch-validators.py
+      - name: XML- und PDF-Ausgaben unabhängig prüfen
+        run: cargo test -p druckwandel-native --locked --test external_validators -- --ignored
+      - name: Windows-Druckerpaket übernehmen
+        if: runner.os == 'Windows' && inputs.package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release download v0.3.5 --pattern 'Druckwandel-0.3.5-x64-Setup.exe' --dir old-release
+          if ($LASTEXITCODE -ne 0) {throw 'Download fehlgeschlagen.'}
+          $setup = Resolve-Path old-release/Druckwandel-0.3.5-x64-Setup.exe
+          if ((Get-FileHash $setup -Algorithm SHA256).Hash -ne '0B46ADB704563CBEC79B6C1AEDE5C16D1A59CA0DB57A055382C15A697EA6091A') {throw 'Falsche Setup-Prüfsumme.'}
+          & 'C:\Program Files\7-Zip\7z.exe' x -y '-oold-extracted' $setup
+          if ($LASTEXITCODE -ne 0) {throw 'Entpacken fehlgeschlagen.'}
+          $package = @(Get-ChildItem old-extracted -Recurse -Filter Printer.msix)
+          if ($package.Count -ne 1) {throw 'Druckerpaket nicht eindeutig.'}
+          New-Item -ItemType Directory -Force artifacts/printer | Out-Null
+          foreach ($name in @('Printer.msix','PrinterCertificate.cer','WindowsAppRuntime.msix')) {
+            Copy-Item (Join-Path $package[0].DirectoryName $name) artifacts/printer/
+          }
+      - name: Windows-Installer bauen
+        if: runner.os == 'Windows' && inputs.package
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) {throw 'NSIS-Installation fehlgeschlagen.'}
+          ./scripts/build-windows-installer.ps1 -SkipChecks -PrinterPackagePath artifacts/printer/Printer.msix -PrinterDependencyPath artifacts/printer/WindowsAppRuntime.msix -PrinterCertificatePath artifacts/printer/PrinterCertificate.cer
+      - name: Installer-Protokollregistrierung prüfen
+        if: runner.os == 'Windows' && inputs.package
+        shell: pwsh
+        run: ./scripts/test-native-installer.ps1
+      - name: macOS-App und DMG bauen
+        if: runner.os == 'macOS' && inputs.package
+        run: sh scripts/build-macos-installer.sh
+      - uses: actions/upload-artifact@v7
+        if: inputs.package
+        with:
+          name: Druckwandel-Slint-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            artifacts/windows/Druckwandel-*-Setup.exe
+            artifacts/windows/Druckwandel-*-Setup.exe.sha256
+            artifacts/macos/*.dmg
+            artifacts/macos/*.dmg.sha256
+          if-no-files-found: error

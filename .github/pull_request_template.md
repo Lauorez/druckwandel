@@ -1,16 +1,11 @@
-## Worum geht es?
+## Änderung
 
-<!-- Was ändert sich und warum? Verweise auf zugehörige Issues, z. B. "Closes #123". -->
+Beschreibe Problem und Verhalten nach der Änderung.
 
 ## Prüfung
 
-- [ ] `npm run check`
-- [ ] `npm run check:native` (bei Änderungen in `apps/desktop/src-tauri`)
-- [ ] `npm run check:xml` / `npm run check:pdf` (bei Änderungen an XRechnung, ZUGFeRD oder PDF/A)
-- [ ] Windows-Tests bzw. `npm run release:gate` (bei Änderungen am Drucker oder Installer)
-
-## Checkliste
-
-- [ ] Tests für das geänderte Verhalten ergänzt
-- [ ] Dokumentation und `CHANGELOG.md` aktualisiert
-- [ ] Keine echten Rechnungen oder personenbezogenen Daten im Diff
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --all-targets --locked -- -D warnings`
+- [ ] `cargo test --locked`
+- [ ] Unabhängige Prüfer bei Änderungen an XML/PDF
+- [ ] Windows-Prüfung bei Änderungen an Drucker oder Installer

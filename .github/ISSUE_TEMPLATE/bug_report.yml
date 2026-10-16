@@ -14,8 +14,6 @@ body:
         - Erkennung/Extraktion aus PDF
         - Prüfung und Bearbeitung (Oberfläche)
         - XRechnung-/ZUGFeRD-Ausgabe
-        - Rechnungsarchiv
-        - DATEV-Export
         - Virtueller Drucker „E-Rechnung“
         - Installer/Setup
         - Sonstiges

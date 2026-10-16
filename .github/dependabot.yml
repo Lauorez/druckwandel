@@ -1,78 +1,25 @@
 version: 2
 updates:
-  - package-ecosystem: npm
+  - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-      # Tauri minor releases require a newer Rust than rust-toolchain.toml.
-      - dependency-name: "@tauri-apps/api"
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: "@tauri-apps/plugin-*"
-        update-types:
-          - version-update:semver-minor
     groups:
-      # Must be updated together with the Cargo group "tauri".
-      tauri:
-        patterns:
-          - "@tauri-apps/*"
-      npm:
-        patterns:
-          - "*"
-  - package-ecosystem: cargo
-    directory: /apps/desktop/src-tauri
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
-      # Tauri minor releases require a newer Rust than rust-toolchain.toml.
-      - dependency-name: "tauri"
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: "tauri-*"
-        update-types:
-          - version-update:semver-minor
-    groups:
-      # Must be updated together with the npm group "tauri".
-      tauri:
-        patterns:
-          - "tauri"
-          - "tauri-*"
       cargo:
-        patterns:
-          - "*"
+        patterns: ['*']
   - package-ecosystem: nuget
     directory: /printer
     schedule:
       interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
     ignore:
       - dependency-name: Microsoft.Windows.SDK.BuildTools
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
     groups:
       nuget:
-        patterns:
-          - "*"
+        patterns: ['*']
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
     groups:
       actions:
-        patterns:
-          - "*"
+        patterns: ['*']

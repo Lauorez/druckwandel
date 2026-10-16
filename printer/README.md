@@ -40,9 +40,9 @@ Das Projekt verwendet die aktuelle Virtual-Printer-API, die erst mit Build 26100
 Im Wurzelverzeichnis des Gesamtprojekts wird der bestätigte Build- und Installationsweg verwendet:
 
 ```powershell
-npm run printer:build
+./scripts/printer-build.ps1
 # anschließend in einer PowerShell als Administrator:
-npm run printer:install
+./scripts/printer-reinstall.ps1
 ```
 
 Das Zertifikat ist ausschließlich für lokale Entwicklungstests bestimmt. Für verteilbare Pakete ist ein vertrauenswürdiges Codesigning-Zertifikat oder Store-Signing erforderlich.

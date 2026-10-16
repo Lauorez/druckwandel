@@ -4,7 +4,7 @@ Der Quellcode dieses Repositorys steht unter der [MIT-Lizenz](LICENSE). Die folg
 
 ## Gebündelte Prüfwerkzeuge (nicht im Repository)
 
-`npm run validators:fetch` lädt diese Werkzeuge von den Herausgebern herunter und legt sie unter `apps/desktop/src-tauri/resources/validators/` ab. Der Windows-Installer liefert sie unverändert mit aus. Versionen und Quellen stehen in [`manifest.json`](apps/desktop/src-tauri/resources/validators/manifest.json), das vollständige Inventar aller gebündelten Bestandteile in [docs/components.md](docs/components.md).
+`python3 scripts/fetch-validators.py` lädt diese Werkzeuge von den Herausgebern herunter und legt sie unter `resources/validators/` ab. Der Windows-Installer liefert sie unverändert mit aus. Versionen und Quellen stehen in [`manifest.json`](resources/validators/manifest.json).
 
 | Komponente | Zweck | Lizenz |
 | --- | --- | --- |
@@ -21,4 +21,8 @@ Die Platzhalter-Assets unter `printer/src/CompanionApp/Assets` stammen aus [micr
 
 ## Bibliotheken
 
-npm-, Cargo- und NuGet-Abhängigkeiten werden über die Paketmanager bezogen. Ihre Lizenzen stehen in den jeweiligen Paketen (`package-lock.json`, `apps/desktop/src-tauri/Cargo.lock`, `printer/**/*.csproj`).
+Cargo- und NuGet-Abhängigkeiten werden über die Paketmanager bezogen. Ihre Lizenzen stehen in den jeweiligen Paketen (`Cargo.lock`, `printer/**/*.csproj`).
+
+## Desktop-Oberfläche
+
+[Slint](https://slint.dev/) wird nach den Slint-Lizenzbedingungen verwendet. Der über „Über“ erreichbare Dialog enthält die erforderliche Slint-Nennung. Rust-Bibliotheken einschließlich lopdf, pdf-extract und robius-share behalten ihre Paketlizenzen. Das kompakte RGB-ICC-Profil in `apps/native/assets/srgb.icc` trägt den eingebetteten CC0-Hinweis.

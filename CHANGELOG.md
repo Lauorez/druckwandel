@@ -1,87 +1,13 @@
-# Changelog
+# Änderungen
 
-Alle nennenswerten Änderungen an Druckwandel (bis 0.3.4 „E-Rechnungs-Assistent“) werden in dieser Datei dokumentiert. Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
+## 0.4.0 (in Entwicklung)
 
-Änderungen am virtuellen Drucker stehen zusätzlich in [printer/CHANGELOG.md](printer/CHANGELOG.md). Ausführliche Prüfberichte je Version liegen unter [docs/releases/](docs/releases/).
+- Rust/Slint als einzige App auf `main`; bisheriger Stand im gesperrten Branch `legacy/tauri-0.3.5`.
+- PDF-Import, Entwürfe und Schemaerkennung mit Fundstellen in Rust.
+- Gemeinsamer Erkennungsvertrag und reservierte Auswahl für einen späteren lokalen KI-Adapter aus einem separaten Projekt.
+- XRechnung und ZUGFeRD mit KoSIT, Mustang und veraPDF; bytegleiche eingebettete XML-Datei und unveränderte PDF-Seiten.
+- Eigenständiger Windows-Installer mit Drucker und Protokollhandler, macOS-App-Bundle und DMG.
+- E-Mail-Weitergabe der unveränderten gespeicherten Ausgabe.
+- Archiv, Buchungsexport, Backup-Oberfläche und frühere Web-Buildkette entfernt.
 
-## [Unveröffentlicht]
-
-## [0.3.5] – 2026-10-15
-
-### Hinzugefügt
-
-- Veröffentlichung als Open-Source-Projekt unter der MIT-Lizenz mit Beitragsleitfaden, Verhaltenskodex, Sicherheitsrichtlinie, Drittanbieterhinweisen sowie Issue- und Pull-Request-Vorlagen.
-- Benutzerhandbuch und Dokumentationsübersicht unter `docs/`.
-- Die Drucker-Workflows liegen jetzt unter `.github/workflows/` im Repository-Root und laufen damit auf GitHub. Dependabot deckt npm, Cargo, NuGet und GitHub Actions ab.
-
-### Geändert
-
-- Die Anwendung heißt jetzt **Druckwandel**, das Repository `Lauorez/druckwandel`. Das Setup installiert nach `C:\Program Files\Druckwandel` und ersetzt eine vorhandene Installation des E-Rechnungs-Assistenten wie ein Update; Daten, Archiv, Vorlagengedächtnis und Drucker bleiben erhalten. Desktop-EXE, temporäre Installer-Dateien, Setup-Werkzeugverzeichnis und DATEV-Herkunftskennung tragen den neuen Namen. Für bestehende Installationen bleiben `de.erechnung.converter`, `erechnung-review://`, der Drucker „E-Rechnung“ und die Ordner unter „Dokumente“ erhalten.
-- npm-Skripte umbenannt: `wp5:*` → `printer:*`, `wp6:check` → `corpus:check`. Die zugehörigen Skripte heißen jetzt `scripts/printer-build.ps1`, `printer-reinstall.ps1`, `printer-repair-spooler.ps1` und `smoke-native-window.ps1`; der Workflow „Windows-Vorführinstaller“ heißt „Windows-Setup“ und ist nicht mehr auf eine Version festgelegt.
-- Das Setup verlangt jetzt immer Administratorrechte und installiert die Anwendung nach `C:\Program Files\Druckwandel`. Das Druckerzertifikat wird direkt hinterlegt; der gesonderte erhöhte Hilfsschritt `TrustPrinterCertificate.ps1` entfällt. Kommt die Administratorbestätigung von einem anderen als dem angemeldeten Konto, brechen Einrichtung und Deinstallation ab, damit Drucker und Daten nicht beim falschen Konto landen.
-- Neues Logo: ein Drucker, aus dem das geprüfte Dokument kommt. Auch die Druckerbegleit-App nutzt es jetzt statt der Vorlagen-Platzhalter.
-- Code durchgehend auf Englisch: Der Druckerordner heißt `printer/` statt `drucker/`, das Diagnosemodul `diagnostics` statt `diagnose`, der DATEV-Export verwendet `documentGuid`/`documentLink` statt `belegGuid`/`belegLink`. Kommentare und Testtitel sind englisch. Oberfläche, Meldungen und Dokumentation bleiben deutsch, gespeicherte Formate und Kennungen unverändert.
-- Dokumentation unter `docs/` neu gegliedert (Abnahmeprotokolle, Entscheidungen, Prüfberichte, Installationsberichte, Planung).
-
-### Behoben
-
-- Lizenzangabe von KoSIT-Validator und XRechnung-Konfiguration im Validatorenmanifest und in `docs/components.md` korrigiert (Apache-2.0 statt EUPL-1.2).
-- `npm run printer:install` suchte das Drucker-MSIX nur im veralteten Ordner `printer\src\CompanionApp\AppPackages`, der Installer-Build zusätzlich dort. Beide konnten so ein altes Paket verwenden oder keines finden. Sie nehmen jetzt nur noch die Ausgabe von `printer/scripts/build.ps1` unter `printer\artifacts\packages`.
-
-## [0.3.4] – 2026-09-27
-
-### Geändert
-
-- Fehlt das Entwicklungszertifikat des Druckers in `LocalMachine\TrustedPeople`, fragt das Setup einmalig nach Administratorrechten. Ein erhöhter Hilfsschritt prüft Paket und Zertifikat erneut und importiert nur dieses Zertifikat. Anwendung und Drucker werden weiterhin im Benutzerkonto installiert.
-
-## [0.3.3] – 2026-09-27
-
-Enthält auch den nicht separat veröffentlichten Stand 0.3.2.
-
-### Hinzugefügt
-
-- Belegarten Gutschrift (381) und Rechnungskorrektur (384), positions- und belegweite Nachlässe und Zuschläge, Abschlags-, Anzahlungs- und Schlussrechnungen.
-- Wählbare Steuerfälle: Reverse Charge, steuerfrei, innergemeinschaftliche Lieferung und steuerbare 0 %.
-- Einstellungsfenster mit kennwortgeschützter Sicherung und Wiederherstellung (`.erechnung`, verschlüsselt mit `age`), Diagnosebericht ohne Rechnungsinhalte und Verwaltung der Erkennungsprofile.
-- Unter Windows wird der lokale Archivschlüssel mit DPAPI geschützt.
-- Messbare Erkennungsqualität (`artifacts/quality-report.json`) sowie anzeigbare, deaktivierbare und rückgängig machbare gelernte Zuordnungen.
-- Release-Gate (`npm run release:gate`), Komponenteninventar und Abnahmematrix. Vor einem Update sichert das Setup die Nutzerdaten und weist ältere Versionen ab.
-
-### Behoben
-
-- Der Drucker-Background-Task ist mit NativeAOT gebaut und schließt echte Druckaufträge ab (Drucker 0.1.0.12).
-- Zahlreiche Korrekturen an Beträgen, Validierung, UBL/CII-Serialisierung, DATEV-Verteilung, Speichern und Wiederherstellung, siehe [docs/audits/](docs/audits/).
-
-## [0.3.1] – 2026-09-08
-
-### Hinzugefügt
-
-- Gemerkte PDF-Stellen liegen in auswählbaren Erkennungsprofilen.
-- Fälligkeitsangaben wie „fällig in 14 Tagen“ und ausgeschriebene Datumsformate werden erkannt.
-- Beim Zuordnen über **Im PDF markieren** wird der Wert gegen die Feldregeln geprüft.
-
-### Geändert
-
-- Robustere Adresserkennung. Gemerkte Stellen unterhalb der Positionstabelle folgen der Tabelle, wenn die Rechnung durch mehr Positionen länger wird.
-
-## 0.3.0 – 2026-09-07 (ohne eigenes Release)
-
-### Hinzugefügt
-
-- Vollständige Tauri-Desktopanwendung mit Posteingang, automatischer Entwurfssicherung und Wiederaufnahme nach Neustart.
-- Verbindliche lokale Prüfung mit gebündeltem KoSIT-Validator, Mustang und veraPDF vor jeder fertigen Ausgabe.
-- Hybrid-PDF: neue PDF/A-3-Datei mit eingebetteter `factur-x.xml`.
-- Rechnungsarchiv mit SQLite-Suche, verketteten SHA-256-Prüfsummen und optionaler Ed25519-Bestätigung.
-- Entwicklungsstand des DATEV-Exports (EXTF-Buchungsstapel und Belegpaket).
-- Gemeinsamer Windows-Installer mit eingebettetem virtuellen Drucker und das Setup-Skript `scripts/setup-windows.ps1`.
-
-## [0.1.0-beta.1] – 2026-08-23
-
-Erste Beta des virtuellen Windows-PDF-Druckers, siehe [drucker/CHANGELOG.md](drucker/CHANGELOG.md).
-
-[Unveröffentlicht]: https://github.com/Lauorez/druckwandel/compare/v0.3.5...HEAD
-[0.3.5]: https://github.com/Lauorez/druckwandel/compare/v0.3.4...v0.3.5
-[0.3.4]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.4
-[0.3.3]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.3
-[0.3.1]: https://github.com/Lauorez/druckwandel/releases/tag/v0.3.1
-[0.1.0-beta.1]: https://github.com/Lauorez/druckwandel/releases/tag/v0.1.0-beta.1
+Frühere Änderungen stehen im [Legacy-Changelog](https://github.com/Lauorez/druckwandel/blob/legacy/tauri-0.3.5/CHANGELOG.md).

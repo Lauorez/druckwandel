@@ -1,7 +1,8 @@
-import { AboutSlint, Button, LineEdit, ScrollView, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, LineEdit, ScrollView, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export global OutputState {
     in-out property <bool> can-email: false;
+    in-out property <bool> busy: false;
 }
 
 component LabeledField inherits HorizontalBox {
@@ -11,6 +12,7 @@ component LabeledField inherits HorizontalBox {
     Text { text: root.label; width: 150px; vertical-alignment: center; }
     input := LineEdit {
         horizontal-stretch: 1;
+        enabled: !OutputState.busy;
         edited => { OutputState.can-email = false; }
     }
 }
@@ -28,6 +30,10 @@ export component MainWindow inherits Window {
     in property <string> selected-path;
     in property <string> selected-hash;
     in property <string> source-text;
+    in property <string> recognition-text;
+    in-out property <int> recognition-method: 0;
+    in-out property <int> output-format: 0;
+    callback recognize();
     in property <string> status-text;
     in-out property <string> invoice-number;
     in-out property <string> issue-date;
@@ -37,6 +43,7 @@ export component MainWindow inherits Window {
     in-out property <string> seller-street;
     in-out property <string> seller-postal;
     in-out property <string> seller-city;
+    in-out property <string> seller-country;
     in-out property <string> seller-vat;
     in-out property <string> seller-endpoint;
     in-out property <string> seller-contact-name;
@@ -46,6 +53,7 @@ export component MainWindow inherits Window {
     in-out property <string> buyer-street;
     in-out property <string> buyer-postal;
     in-out property <string> buyer-city;
+    in-out property <string> buyer-country;
     in-out property <string> buyer-endpoint;
     in-out property <string> line-name;
     in-out property <string> line-quantity;
@@ -78,11 +86,20 @@ export component MainWindow inherits Window {
                 horizontal-stretch: 1;
             }
             Button { text: "Über"; clicked => { root.show-about = !root.show-about; } }
-            Button { text: "PDF importieren"; clicked => { root.import-pdf(); } }
-            Button { text: "Druckeingang"; clicked => { root.import-print-job(); } }
-            Button { text: "Entwurf speichern"; enabled: root.selected-name != ""; clicked => { root.save-draft(); } }
-            Button { text: "XRechnung prüfen und speichern"; enabled: root.selected-name != ""; clicked => { root.save-xml(); } }
-            Button { text: "Per E-Mail senden"; enabled: OutputState.can-email; clicked => { root.send-email(); } }
+            Button { text: "PDF importieren"; enabled: !OutputState.busy; clicked => { root.import-pdf(); } }
+            Button { text: "Druckeingang"; enabled: !OutputState.busy; clicked => { root.import-print-job(); } }
+            Button { text: "Entwurf speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-draft(); } }
+            Button { text: "Prüfen und speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-xml(); } }
+            Button { text: "Per E-Mail senden"; enabled: OutputState.can-email && !OutputState.busy; clicked => { root.send-email(); } }
+        }
+
+        HorizontalBox {
+            spacing: 12px;
+            Text { text: "Erkennung"; vertical-alignment: center; }
+            ComboBox { model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
+            Button { text: "Fehlende Felder erkennen"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.recognize(); } }
+            Text { text: "Ausgabe"; vertical-alignment: center; horizontal-stretch: 1; horizontal-alignment: right; }
+            ComboBox { model: ["XRechnung (XML)", "ZUGFeRD (PDF)"]; current-index <=> root.output-format; enabled: !OutputState.busy; selected => { OutputState.can-email = false; } }
         }
 
         if root.show-about : Rectangle {
@@ -114,7 +131,7 @@ export component MainWindow inherits Window {
                             spacing: 4px;
                             for document[index] in root.documents : Button {
                                 text: document;
-                                clicked => { root.select-document(index); }
+                                enabled: !OutputState.busy; clicked => { root.select-document(index); }
                             }
                         }
                     }
@@ -150,6 +167,12 @@ export component MainWindow inherits Window {
                         wrap: word-wrap;
                     }
                     TextEdit {
+                        text: root.recognition-text;
+                        read-only: true;
+                        vertical-stretch: 1;
+                    }
+                    Text { text: "PDF-Text"; font-weight: 600; }
+                    TextEdit {
                         text: root.source-text;
                         read-only: true;
                         vertical-stretch: 1;
@@ -174,6 +197,7 @@ export component MainWindow inherits Window {
                         LabeledField { label: "Straße"; value <=> root.seller-street; }
                         LabeledField { label: "PLZ"; value <=> root.seller-postal; }
                         LabeledField { label: "Ort"; value <=> root.seller-city; }
+                        LabeledField { label: "Land (ISO)"; value <=> root.seller-country; }
                         LabeledField { label: "USt-ID"; value <=> root.seller-vat; }
                         LabeledField { label: "E-Adresse"; value <=> root.seller-endpoint; }
                         LabeledField { label: "Kontakt"; value <=> root.seller-contact-name; }
@@ -184,18 +208,19 @@ export component MainWindow inherits Window {
                         LabeledField { label: "Straße"; value <=> root.buyer-street; }
                         LabeledField { label: "PLZ"; value <=> root.buyer-postal; }
                         LabeledField { label: "Ort"; value <=> root.buyer-city; }
+                        LabeledField { label: "Land (ISO)"; value <=> root.buyer-country; }
                         LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; }
                         HorizontalBox {
                             spacing: 8px;
                             Text { text: "Positionen"; font-size: 16px; font-weight: 600; horizontal-stretch: 1; }
-                            Button { text: "+"; enabled: root.selected-name != ""; clicked => { root.add-line(); } }
-                            Button { text: "−"; enabled: root.selected-name != "" && root.line-labels.length > 1; clicked => { root.remove-line(); } }
+                            Button { text: "+"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.add-line(); } }
+                            Button { text: "−"; enabled: root.selected-name != "" && root.line-labels.length > 1 && !OutputState.busy; clicked => { root.remove-line(); } }
                         }
                         HorizontalBox {
                             spacing: 4px;
                             for line[index] in root.line-labels : Button {
                                 text: line;
-                                clicked => { root.select-line(index); }
+                                enabled: !OutputState.busy; clicked => { root.select-line(index); }
                             }
                         }
                         LabeledField { label: "Bezeichnung"; value <=> root.line-name; }

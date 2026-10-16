@@ -1,17 +1,18 @@
-# Druckwandel mit Slint: erster Implementierungsschritt
+# Druckwandel in Rust und Slint
 
-Die neue Desktop-Anwendung liegt getrennt von der bisherigen Tauri-Version. Sie importiert PDFs bis 100 MB, liest den enthaltenen Text und speichert Original und Rechnungsentwurf lokal. Unter Windows übernimmt „Druckeingang“ Aufträge der vorhandenen Druckbrücke, einschließlich Metadaten und Bestätigung; der Link `erechnung-review://print-job/<UUID>` wird als Startargument verarbeitet. Die Erfassungsmaske für einfache Rechnungen kann mehrere Positionen bearbeiten und XRechnung-XML erzeugen. Die Ausgabe wird vor dem Speichern durch KoSIT geprüft. Danach kann die unveränderte Datei über die Systemfreigabe an ein Mailprogramm übergeben werden. Ein PDF-Pfad kann auch als Startargument übergeben werden.
+Dies ist die einzige Desktop-App auf `main`. Einstieg ist `src/main.rs`, die Oberfläche liegt unter `ui/`, die Fachlogik in der Rust-Bibliothek.
 
 ```sh
 cargo run -p druckwandel-native --locked
 cargo test -p druckwandel-native --locked
-cargo test -p druckwandel-native --test kosit -- --ignored
+python3 scripts/fetch-validators.py
+cargo test -p druckwandel-native --locked --test external_validators -- --ignored
 ```
 
-Für einen Prüflauf aus einem vollständigen JSON-Entwurf:
+Der Anwendungskern übernimmt PDF-Text mit Positionen, Schemaerkennung, Entwürfe, XRechnung, ZUGFeRD und die Offline-Prüfer. Beide Ausgabeformate werden erst nach erfolgreicher Prüfung gespeichert. Der E-Mail-Button gibt ausschließlich die unveränderte, gespeicherte Ausgabe an die Systemfreigabe weiter.
 
-```sh
-cargo run -p druckwandel-native --bin druckwandel-xml --locked -- apps/native/tests/fixtures/standard-invoice.json target/rechnung.xml
-```
+Die [Erkennungsarchitektur](../../docs/recognition.md) beschreibt die vorbereitete Schnittstelle zum späteren separaten lokalen KI-Projekt. Ein KI-Backend oder Modell ist nicht enthalten.
 
-Die Oberfläche unterstützt noch keine automatische Felderkennung, Sonderfälle oder ZUGFeRD. Die Windows-Protokollregistrierung und ein nativer Installer fehlen noch; neue Aufträge lassen sich über „Druckeingang“ manuell abrufen. Der KoSIT-Integrationstest benötigt das lokale Prüfpaket aus `npm run validators:fetch`. Bis die fehlenden Funktionen portiert und auf beiden Plattformen geprüft sind, bleibt die bisherige Tauri-Anwendung der nutzbare Stand.
+Der Windows-Drucker verwendet weiterhin `erechnung-review://print-job/<UUID>`. `installer/windows/druckwandel.nsi` registriert die Slint-EXE. Eine Dateisperre erzwingt eine Instanz je lokalem App-Datenordner; weitere Aufrufe landen in einer lokalen SQLite-Übergabewarteschlange.
+
+Noch nicht portiert sind eingebettete visuelle PDF-Vorschau, OCR und Lernprofile. Die Oberfläche deckt einfache Rechnungen ab; zusätzliche fachliche Exportfälle werden über die Referenzentwürfe im Rust-Fachkern geprüft. [Projektübersicht](../../README.md).

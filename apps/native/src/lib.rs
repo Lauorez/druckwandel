@@ -1,7 +1,11 @@
+pub mod cii;
 pub mod extraction;
+pub mod hybrid_pdf;
 pub mod invoice;
 pub mod output;
 pub mod print_inbox;
+pub mod protocol;
+pub mod recognition;
 pub mod ubl;
 pub mod validation;
 pub mod workspace;

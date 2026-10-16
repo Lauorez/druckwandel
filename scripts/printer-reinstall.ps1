@@ -7,7 +7,7 @@ $package = Get-ChildItem -Path (Join-Path $workspace 'printer\artifacts\packages
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
 if (-not $package) {
-    throw 'Kein aktuelles Drucker-MSIX gefunden. Führe zuerst npm run printer:build aus.'
+    throw 'Kein aktuelles Drucker-MSIX gefunden. Führe zuerst scripts\printer-build.ps1 aus.'
 }
 $packagePath = $package.FullName
 $artifactRoot = $package.DirectoryName

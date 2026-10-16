@@ -2,7 +2,7 @@
 
 ## Scope
 
-Dieses Teilprojekt implementiert ausschließlich die lokale Windows-Druckannahme. PDF-Analyse, Prüfung, Ausgabe und Archivierung liegen in der Tauri-Anwendung des Hauptprojekts.
+Dieses Teilprojekt implementiert ausschließlich die lokale Windows-Druckannahme. PDF-Analyse, Prüfung und Ausgabe liegen in der Rust/Slint-Anwendung des Hauptprojekts.
 
 ## Datenfluss
 
@@ -18,7 +18,7 @@ Windows-Anwendung
   -> WinUI-Druckbrücke (windows.printSupportJobUI)
   -> Dokumente/E-Rechnung Druckeingang/<UUID>.pdf + <UUID>.printjob.json
   -> erechnung-review://print-job/<UUID>
-  -> Tauri-App Druckwandel
+  -> Slint-App Druckwandel
   -> <UUID>.review.json
 ```
 
@@ -28,9 +28,9 @@ Windows-Anwendung
 
 - `PrintCore`: plattformunabhängiges DTO, atomare Metadaten, Statuslog, Session-Index und versionierter Review-Handoff.
 - `VirtualPrinter.Tasks`: WinRT-Background-Task. Er verarbeitet den PDL-Stream und schließt den Spooler-Job ab.
-- `CompanionApp`: technisch notwendiger WinUI-3-Endpunkt für `windows.printSupportJobUI`; automatische Übergabe an Tauri, sichtbare Oberfläche nur als Fehlerfallback.
+- `CompanionApp`: technisch notwendiger WinUI-3-Endpunkt für `windows.printSupportJobUI`; automatische Übergabe an die Slint-App, sichtbare Oberfläche nur als Fehlerfallback.
 
-Die WinUI-Komponente ist absichtlich keine zweite Fachanwendung. Microsofts Print-Support-Vertrag aktiviert den Vordergrundteil über `PrintWorkflowUILauncher`; der paketisolierte Background-Task bleibt für Konvertierung und Abschluss des Spooler-Jobs zuständig. Rechnungsanalyse und Benutzerbearbeitung gehören ausschließlich in die Tauri-App.
+Die WinUI-Komponente ist absichtlich keine zweite Fachanwendung. Microsofts Print-Support-Vertrag aktiviert den Vordergrundteil über `PrintWorkflowUILauncher`; der paketisolierte Background-Task bleibt für Konvertierung und Abschluss des Spooler-Jobs zuständig. Rechnungsanalyse und Benutzerbearbeitung gehören ausschließlich in die Slint-App.
 
 ## Parallelität und Übergabe
 

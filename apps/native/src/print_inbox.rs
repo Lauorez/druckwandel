@@ -103,12 +103,8 @@ pub fn pending_jobs(workspace: &Workspace) -> Result<Vec<PrintJob>, String> {
 }
 
 pub fn job_from_uri(uri: &str) -> Result<PrintJob, String> {
-    let prefix = "erechnung-review://print-job/";
-    let id = uri
-        .strip_prefix(prefix)
-        .and_then(|rest| rest.split(['?', '#']).next())
-        .ok_or("Ungültiger Druckauftrag-Link")?;
-    read_job(&inbox_path()?, id)
+    let id = crate::protocol::print_job_id(uri)?;
+    read_job(&inbox_path()?, &id)
 }
 
 pub fn import_job(workspace: &Workspace, job: &PrintJob) -> Result<Document, String> {

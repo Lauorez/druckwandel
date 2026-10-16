@@ -1,6 +1,5 @@
-node_modules/
 artifacts/
-bin/
+printer/**/bin/
 obj/
 AppPackages/
 .vs/
@@ -20,30 +19,22 @@ AppPackages/
 *.user
 *.suo
 TestResults/
-apps/desktop/src-tauri/gen/
-dist/
 target/
 coverage/
 .validators/
 *-report.xml
 *-report.html
-test/fixtures/generated/
 .wp5-*/
-test/corpus/pdf/
-test/corpus/private/
-artifacts/corpus-report.json
-artifacts/quality-report.json
-artifacts/synthetic-fuzz-report.json
-artifacts/fuzz-failures/
 artifacts/windows/
-apps/desktop/src-tauri/resources/validators/jre/
-apps/desktop/src-tauri/resources/validators/kosit/
-apps/desktop/src-tauri/resources/validators/mustang/
-apps/desktop/src-tauri/resources/validators/verapdf/
-apps/desktop/src-tauri/resources/validators/checksums.json
-apps/desktop/src-tauri/installer/windows/payload/
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
+resources/validators/jre/
+resources/validators/kosit/
+resources/validators/mustang/
+resources/validators/verapdf/
+resources/validators/checksums.json
+installer/windows/payload/
+__pycache__/

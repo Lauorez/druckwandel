@@ -6,7 +6,7 @@ pub const CUSTOMIZATION_ID: &str =
     "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0";
 pub const PROFILE_ID: &str = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0";
 
-fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -15,16 +15,16 @@ fn escape(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn element(name: &str, value: Option<&str>, attributes: &str) -> String {
+pub(crate) fn element(name: &str, value: Option<&str>, attributes: &str) -> String {
     value.map_or_else(String::new, |value| {
         format!("<{name}{attributes}>{}</{name}>", escape(value))
     })
 }
 
-fn e(name: &str, value: &str) -> String {
+pub(crate) fn e(name: &str, value: &str) -> String {
     element(name, Some(value), "")
 }
-fn optional(name: &str, value: Option<&str>) -> String {
+pub(crate) fn optional(name: &str, value: Option<&str>) -> String {
     element(name, value, "")
 }
 fn amount(name: &str, value: &str, currency: &str) -> String {

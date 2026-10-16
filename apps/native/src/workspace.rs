@@ -1,4 +1,5 @@
 use crate::invoice::InvoiceInput;
+use crate::recognition::RecognitionResult;
 use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
@@ -32,6 +33,8 @@ impl Workspace {
     fn database(&self) -> Result<Connection, String> {
         let db =
             Connection::open(self.root.join("workspace.sqlite3")).map_err(|e| e.to_string())?;
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| e.to_string())?;
         db.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA foreign_keys=ON;
@@ -48,6 +51,14 @@ impl Workspace {
              CREATE TABLE IF NOT EXISTS imported_print_jobs (
                job_id TEXT PRIMARY KEY,
                document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE
+             );
+             CREATE TABLE IF NOT EXISTS recognition_results (
+               document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+               data TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS handoff_queue (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               arguments TEXT NOT NULL
              );",
         )
         .map_err(|e| e.to_string())?;
@@ -90,6 +101,77 @@ impl Workspace {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(InvoiceInput::blank()),
             Err(error) => Err(error.to_string()),
         }
+    }
+
+    pub fn has_invoice(&self, document_id: &str) -> Result<bool, String> {
+        let db = self.database()?;
+        db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM invoice_drafts WHERE document_id=?1)",
+            [document_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn save_recognition(
+        &self,
+        document_id: &str,
+        result: &RecognitionResult,
+    ) -> Result<(), String> {
+        let data = serde_json::to_string(result).map_err(|e| e.to_string())?;
+        if data.len() > 5 * 1024 * 1024 {
+            return Err("Erkennungsergebnis ist zu groß.".into());
+        }
+        self.database()?.execute("INSERT INTO recognition_results(document_id,data) VALUES (?1,?2) ON CONFLICT(document_id) DO UPDATE SET data=excluded.data",params![document_id,data]).map_err(|e|e.to_string())?;
+        Ok(())
+    }
+
+    pub fn load_recognition(&self, document_id: &str) -> Result<Option<RecognitionResult>, String> {
+        let result = self.database()?.query_row(
+            "SELECT data FROM recognition_results WHERE document_id=?1",
+            [document_id],
+            |row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(data) => serde_json::from_str(&data)
+                .map(Some)
+                .map_err(|e| e.to_string()),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn enqueue_handoff(&self, arguments: &[String]) -> Result<(), String> {
+        let data = serde_json::to_string(arguments).map_err(|e| e.to_string())?;
+        if data.len() > 64 * 1024 {
+            return Err("Startargumente sind zu groß.".into());
+        }
+        self.database()?
+            .execute("INSERT INTO handoff_queue(arguments) VALUES (?1)", [data])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn take_handoffs(&self) -> Result<Vec<Vec<String>>, String> {
+        let mut db = self.database()?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<(i64, String)> = tx
+            .prepare("SELECT id,arguments FROM handoff_queue ORDER BY id LIMIT 16")
+            .map_err(|e| e.to_string())?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        let mut result = Vec::new();
+        for (id, data) in rows {
+            result.push(serde_json::from_str(&data).map_err(|e| e.to_string())?);
+            tx.execute("DELETE FROM handoff_queue WHERE id=?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(result)
     }
 
     pub fn save_invoice(&self, document_id: &str, invoice: &InvoiceInput) -> Result<(), String> {
