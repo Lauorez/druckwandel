@@ -47,9 +47,8 @@ pub struct ValidatorBundle {
 
 impl ValidatorBundle {
     pub fn from_root(root: &Path) -> Result<Self, String> {
-        let root = root
-            .canonicalize()
-            .map_err(|e| format!("Prüfpaket fehlt: {e}"))?;
+        // Java's JAR classloader does not reliably accept Win32 verbatim paths.
+        let root = dunce::canonicalize(root).map_err(|e| format!("Prüfpaket fehlt: {e}"))?;
         let manifest: Manifest = serde_json::from_slice(
             &fs::read(root.join("manifest.json")).map_err(|e| format!("Prüfpaket fehlt: {e}"))?,
         )
