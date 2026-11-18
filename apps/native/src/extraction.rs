@@ -150,10 +150,10 @@ impl OutputDev for Collector {
 }
 
 pub fn read_document(path: &Path) -> Result<Vec<DocumentPage>, String> {
-    if std::fs::metadata(path).map_err(|e| e.to_string())?.len() > 100 * 1024 * 1024 {
-        return Err("PDF überschreitet 100 MB.".into());
-    }
-    read_document_bytes(&std::fs::read(path).map_err(|e| e.to_string())?)
+    read_document_bytes(&crate::file_io::read_limited(
+        path,
+        crate::file_io::MAX_PDF_BYTES,
+    )?)
 }
 
 pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
@@ -178,7 +178,7 @@ pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
     Ok(output.pages)
 }
 
-// pdf-extract 0.10 assumes calibrated color-space parameters are inline
+// pdf-extract 0.12.1 still assumes calibrated color-space parameters are inline
 // dictionaries. PDF permits indirect dictionaries as well. Resolve just those
 // parameters in the extraction copy; never modify or resave the source PDF.
 fn normalize_color_parameters(doc: &mut lopdf::Document) {

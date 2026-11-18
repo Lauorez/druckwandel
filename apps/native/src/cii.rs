@@ -140,9 +140,10 @@ pub fn generate_cii(input: InvoiceInput) -> Result<String, String> {
     xml += "</ram:ApplicableHeaderTradeAgreement><ram:ApplicableHeaderTradeDelivery>";
     if let Some(address) = &data.delivery_address {
         xml += &format!(
-            "<ram:ShipToTradeParty><ram:PostalTradeAddress>{}{}{}{}</ram:PostalTradeAddress></ram:ShipToTradeParty>",
+            "<ram:ShipToTradeParty><ram:PostalTradeAddress>{}{}{}{}{}</ram:PostalTradeAddress></ram:ShipToTradeParty>",
             e("ram:PostcodeCode", &address.postal_code),
             e("ram:LineOne", &address.line1),
+            optional("ram:LineTwo", address.line2.as_deref()),
             e("ram:CityName", &address.city),
             e("ram:CountryID", &address.country_code)
         );
@@ -154,6 +155,10 @@ pub fn generate_cii(input: InvoiceInput) -> Result<String, String> {
         );
     }
     xml += "</ram:ApplicableHeaderTradeDelivery><ram:ApplicableHeaderTradeSettlement>";
+    xml += &optional(
+        "ram:PaymentReference",
+        data.payment.payment_reference.as_deref(),
+    );
     xml += &e("ram:InvoiceCurrencyCode", &data.currency);
     xml += "<ram:SpecifiedTradeSettlementPaymentMeans>";
     xml += &e("ram:TypeCode", &data.payment.means_code);
@@ -191,7 +196,14 @@ pub fn generate_cii(input: InvoiceInput) -> Result<String, String> {
                     .map(|s| s.to_uppercase())
                     .as_deref()
             ),
-            e("ram:RateApplicablePercent", &format!("{rate:.2}"))
+            e(
+                "ram:RateApplicablePercent",
+                &if rate.normalize().scale() > 2 {
+                    rate.normalize().to_string()
+                } else {
+                    format!("{rate:.2}")
+                }
+            )
         );
     }
     for adjustment in &data.allowances {

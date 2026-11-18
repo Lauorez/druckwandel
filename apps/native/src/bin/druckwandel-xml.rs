@@ -16,10 +16,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.next().is_some() {
         return Err("Zu viele Argumente.".into());
     }
-    let data = std::fs::read(&source)?;
-    if data.len() > 1024 * 1024 {
-        return Err("Der Rechnungsentwurf überschreitet 1 MB.".into());
-    }
+    let data = druckwandel_native::file_io::read_limited(
+        &source,
+        druckwandel_native::file_io::MAX_DRAFT_BYTES,
+    )?;
     let invoice: InvoiceInput = serde_json::from_slice(&data)?;
     let bundle = ValidatorBundle::discover()?;
     let saved = save_xrechnung(invoice, &destination, &bundle)?;

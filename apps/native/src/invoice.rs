@@ -242,6 +242,14 @@ fn bounded(value: Option<Decimal>) -> Result<Decimal, String> {
     value.ok_or_else(|| "Betrag oder Menge überschreitet den unterstützten Zahlenbereich.".into())
 }
 
+fn payment_amount(value: &str) -> Result<Decimal, String> {
+    let amount = decimal(value)?;
+    if amount < Decimal::ZERO || amount.normalize().scale() > 2 {
+        return Err("Bereits gezahlter Betrag benötigt einen nicht negativen Betrag mit höchstens zwei Nachkommastellen.".into());
+    }
+    Ok(amount)
+}
+
 pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
     let mut lines = Vec::with_capacity(input.lines.len());
     let mut tax_groups: Vec<(Tax, Decimal)> = Vec::new();
@@ -297,7 +305,7 @@ pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
         .as_deref()
         .filter(|s| !s.trim().is_empty())
     {
-        decimal(amount)?
+        payment_amount(amount)?
     } else {
         preceding(&input)
             .iter()
@@ -306,7 +314,7 @@ pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
                     sum.checked_add(
                         item.paid_amount
                             .as_deref()
-                            .map(decimal)
+                            .map(payment_amount)
                             .transpose()?
                             .unwrap_or(Decimal::ZERO),
                     ),
@@ -331,10 +339,10 @@ pub fn calculate(input: InvoiceInput) -> Result<CalculatedInvoice, String> {
 }
 
 fn add_taxable(groups: &mut Vec<(Tax, Decimal)>, tax: &Tax, amount: Decimal) -> Result<(), String> {
-    let key = fixed(decimal(&tax.rate)?, 2);
+    let key = decimal(&tax.rate)?;
     if let Some((_, taxable)) = groups.iter_mut().find(|(existing, _)| {
         existing.category_code == tax.category_code
-            && fixed(decimal(&existing.rate).expect("validated tax group"), 2) == key
+            && decimal(&existing.rate).expect("validated tax group") == key
     }) {
         *taxable = bounded(taxable.checked_add(amount))?;
     } else {
@@ -433,12 +441,19 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
     if input.lines.is_empty() {
         errors.push("Mindestens eine Position ist erforderlich.".into());
     }
+    let mut line_ids = std::collections::HashSet::new();
     for (index, line) in input.lines.iter().enumerate() {
         if line.id.trim().is_empty()
             || line.name.trim().is_empty()
             || line.unit_code.trim().is_empty()
         {
             errors.push(format!("Position {} ist unvollständig.", index + 1));
+        }
+        if !line_ids.insert(line.id.trim()) {
+            errors.push(format!(
+                "Positionsnummer {} ist mehrfach vergeben.",
+                line.id
+            ));
         }
         if decimal(&line.quantity).map_or(true, |value| value <= Decimal::ZERO) {
             errors.push(format!("Menge der Position {} ist ungültig.", index + 1));
@@ -484,13 +499,13 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
         if reference
             .paid_amount
             .as_deref()
-            .is_some_and(|amount| decimal(amount).map_or(true, |v| v < Decimal::ZERO))
+            .is_some_and(|amount| payment_amount(amount).is_err())
         {
             errors.push("Gezahlter Betrag eines Rechnungsbezugs ist ungültig.".into());
         }
     }
     if let Some(amount) = &input.prepaid_amount
-        && decimal(amount).map_or(true, |value| value < Decimal::ZERO)
+        && payment_amount(amount).is_err()
     {
         errors.push("Bereits gezahlter Betrag ist ungültig.".into());
     }

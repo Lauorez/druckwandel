@@ -36,27 +36,29 @@ impl RecognitionRequest {
             &crate::ocr::OcrSettings::default(),
         )
     }
+    /// Recognize a standalone file without a previously recorded import hash.
+    pub fn from_file(source_pdf: PathBuf) -> Result<Self, String> {
+        use sha2::{Digest, Sha256};
+        let bytes = crate::file_io::read_limited(&source_pdf, crate::file_io::MAX_PDF_BYTES)?;
+        let hash = format!("{:x}", Sha256::digest(&bytes));
+        Self::from_bytes(source_pdf, bytes, hash, &crate::ocr::OcrSettings::default())
+    }
+
     pub fn from_pdf_with_ocr(
         source_pdf: PathBuf,
         expected_sha256: &str,
         options: &crate::ocr::OcrSettings,
     ) -> Result<Self, String> {
-        use sha2::{Digest, Sha256};
-        if std::fs::metadata(&source_pdf)
-            .map_err(|e| e.to_string())?
-            .len()
-            > 100 * 1024 * 1024
-        {
-            return Err("PDF überschreitet 100 MB.".into());
-        }
-        let bytes = std::fs::read(&source_pdf).map_err(|e| e.to_string())?;
-        if bytes.len() > 100 * 1024 * 1024 {
-            return Err("PDF überschreitet 100 MB.".into());
-        }
-        let document_sha256 = format!("{:x}", Sha256::digest(&bytes));
-        if document_sha256 != expected_sha256 {
-            return Err("Die Original-PDF wurde außerhalb der Anwendung verändert.".into());
-        }
+        let bytes = crate::file_io::read_verified_pdf(&source_pdf, expected_sha256)?;
+        Self::from_bytes(source_pdf, bytes, expected_sha256.to_owned(), options)
+    }
+
+    fn from_bytes(
+        source_pdf: PathBuf,
+        bytes: Vec<u8>,
+        document_sha256: String,
+        options: &crate::ocr::OcrSettings,
+    ) -> Result<Self, String> {
         let (pages, warnings) = crate::ocr::read_pages(&bytes, &document_sha256, options)?;
         Ok(Self {
             schema_version: CONTRACT_VERSION,
@@ -344,6 +346,7 @@ pub fn fill_missing(invoice: &mut InvoiceInput, result: &RecognitionResult) {
     }
     text(&mut invoice.invoice_number, proposal.invoice_number);
     text(&mut invoice.issue_date, proposal.issue_date);
+    text(&mut invoice.currency, proposal.currency);
     optional(&mut invoice.due_date, proposal.due_date);
     optional(&mut invoice.service_date, proposal.service_date);
     text(&mut invoice.buyer_reference, proposal.buyer_reference);
@@ -373,7 +376,9 @@ pub fn fill_missing(invoice: &mut InvoiceInput, result: &RecognitionResult) {
     optional(&mut invoice.payment.iban, proposal.payment.iban);
     optional(&mut invoice.payment.bic, proposal.payment.bic);
     optional(&mut invoice.payment.terms, proposal.payment.terms);
-    if invoice.lines.iter().all(|line| line.name.trim().is_empty()) && !result.lines.is_empty() {
+    // A missing description does not make a partially edited line disposable.
+    let blank_lines = InvoiceInput::blank().lines;
+    if (invoice.lines.is_empty() || invoice.lines == blank_lines) && !result.lines.is_empty() {
         invoice.lines = proposal.lines;
     }
 }

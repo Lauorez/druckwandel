@@ -1,5 +1,6 @@
 pub mod cii;
 pub mod extraction;
+pub mod file_io;
 pub mod hybrid_pdf;
 pub mod invoice;
 pub mod learning;

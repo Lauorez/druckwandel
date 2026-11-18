@@ -1,14 +1,16 @@
 use druckwandel_native::recognition::{RecognitionMethod, RecognitionRegistry, RecognitionRequest};
-use sha2::{Digest, Sha256};
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
     let path = PathBuf::from(
-        std::env::args_os()
-            .nth(1)
+        args.next()
             .ok_or("Aufruf: druckwandel-recognize quelle.pdf")?,
     );
-    let hash = format!("{:x}", Sha256::digest(fs::read(&path)?));
-    let request = RecognitionRequest::from_pdf(path, &hash)?;
+    if args.next().is_some() {
+        return Err("Zu viele Argumente.".into());
+    }
+    let request = RecognitionRequest::from_file(path)?;
     let result = RecognitionRegistry::default().recognize(RecognitionMethod::Schema, &request)?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())

@@ -45,6 +45,8 @@ jobs:
         run: |
           python scripts/fetch-ocr.py
           cargo test -p druckwandel-native --locked --test ocr -- --ignored
+      - name: Download-Regressionen prüfen
+        run: python -m unittest discover -s scripts -p "test_*.py"
       - name: Offline-Prüfer laden
         run: python scripts/fetch-validators.py
       - name: XML- und PDF-Ausgaben unabhängig prüfen

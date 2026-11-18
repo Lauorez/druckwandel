@@ -229,7 +229,7 @@ impl Workspace {
     }
 
     pub fn import_pdf(&self, source: &Path) -> Result<Document, String> {
-        self.import_pdf_named(source, None)
+        self.import_pdf_named(source, None, None)
     }
 
     pub fn has_print_job(&self, job_id: &str) -> Result<bool, String> {
@@ -275,23 +275,14 @@ impl Workspace {
         if self.has_print_job(job_id)? {
             return Err("Druckauftrag wurde bereits importiert.".into());
         }
-        let document = self.import_pdf_named(source, Some(name))?;
-        let db = self.database()?;
-        if let Err(error) = db.execute(
-            "INSERT INTO imported_print_jobs(job_id, document_id) VALUES (?1, ?2)",
-            params![job_id, document.id],
-        ) {
-            let _ = db.execute("DELETE FROM documents WHERE id=?1", [&document.id]);
-            let _ = fs::remove_file(&document.path);
-            return Err(error.to_string());
-        }
-        Ok(document)
+        self.import_pdf_named(source, Some(name), Some(job_id))
     }
 
     fn import_pdf_named(
         &self,
         source: &Path,
         display_name: Option<&str>,
+        job_id: Option<&str>,
     ) -> Result<Document, String> {
         let source_name = source
             .file_name()
@@ -306,8 +297,11 @@ impl Workspace {
             .take(255)
             .collect::<String>();
         let mut input = File::open(source).map_err(|e| e.to_string())?;
-        let size = input.metadata().map_err(|e| e.to_string())?.len();
-        if size > MAX_PDF_BYTES {
+        let metadata = input.metadata().map_err(|e| e.to_string())?;
+        if !metadata.is_file() {
+            return Err("Die Quelle ist keine reguläre PDF-Datei.".into());
+        }
+        if metadata.len() > MAX_PDF_BYTES {
             return Err("Die PDF-Datei überschreitet 100 MB.".into());
         }
         let mut header = [0_u8; 5];
@@ -338,28 +332,40 @@ impl Workspace {
                 hash.update(&buffer[..n]);
             }
             output.sync_all().map_err(|e| e.to_string())?;
+            drop(output);
             fs::rename(&temporary, &path).map_err(|e| e.to_string())?;
             let sha256 = format!("{:x}", hash.finalize());
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|e| e.to_string())?
                 .as_millis() as i64;
-            let db = self.database()?;
-            if let Err(error) = db.execute(
+            let mut db = self.database()?;
+            let tx = db.transaction().map_err(|e| e.to_string())?;
+            tx.execute(
                 "INSERT INTO documents (id, name, sha256, created_at_ms) VALUES (?1, ?2, ?3, ?4)",
                 params![id, name, sha256, now],
-            ) {
-                let _ = fs::remove_file(&path);
-                return Err(error.to_string());
+            )
+            .map_err(|e| e.to_string())?;
+            // A crash must never commit the draft without the deduplication key.
+            if let Some(job_id) = job_id {
+                tx.execute(
+                    "INSERT INTO imported_print_jobs(job_id, document_id) VALUES (?1, ?2)",
+                    params![job_id, id],
+                )
+                .map_err(|e| e.to_string())?;
             }
+            tx.commit().map_err(|e| e.to_string())?;
             Ok(Document {
                 id,
                 name,
-                path,
+                path: path.clone(),
                 sha256,
             })
         })();
         let _ = fs::remove_file(&temporary);
+        if result.is_err() {
+            let _ = fs::remove_file(&path);
+        }
         result
     }
 }
@@ -367,6 +373,35 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_print_job_mapping_rolls_back_document_and_pdf() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(directory.path().join("workspace")).unwrap();
+        let source = directory.path().join("source.pdf");
+        fs::write(&source, b"%PDF-test").unwrap();
+        workspace
+            .database()
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER fail_mapping BEFORE INSERT ON imported_print_jobs
+             BEGIN SELECT RAISE(ABORT, 'simulated mapping failure'); END;",
+            )
+            .unwrap();
+        assert!(
+            workspace
+                .import_print_job(&source, "invoice", "job-1")
+                .is_err()
+        );
+        assert!(workspace.list().unwrap().is_empty());
+        assert!(!workspace.has_print_job("job-1").unwrap());
+        assert_eq!(
+            fs::read_dir(workspace.root.join("documents"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
 
     #[test]
     fn handoffs_survive_reopening_and_are_consumed_once() {

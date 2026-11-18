@@ -63,12 +63,30 @@ pub fn save_zugferd(
     save_validated(&pdf, destination, "pdf")
 }
 
+pub fn ensure_distinct_paths(source: &Path, destination: &Path) -> Result<(), String> {
+    if source == destination
+        || source
+            .canonicalize()
+            .ok()
+            .zip(destination.canonicalize().ok())
+            .is_some_and(|(a, b)| a == b)
+    {
+        return Err("Bitte einen anderen Speicherort als die Original-PDF wählen.".into());
+    }
+    Ok(())
+}
+
 fn save_validated(
     bytes: &[u8],
     destination: &Path,
     extension: &str,
 ) -> Result<SavedOutput, String> {
     let parent = destination.parent().ok_or("Ungültiger Speicherort.")?;
+    let parent = if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    };
     if !parent.is_dir() {
         return Err("Der Zielordner existiert nicht.".into());
     }
@@ -103,4 +121,33 @@ fn save_validated(
     })();
     let _ = fs::remove_file(temporary);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saves_relative_filename_and_detects_same_size_tampering() {
+        let file = tempfile::Builder::new()
+            .suffix(".xml")
+            .tempfile_in(".")
+            .unwrap();
+        let temporary = file.into_temp_path();
+        let destination = Path::new(temporary.file_name().unwrap());
+        let saved = save_validated(b"original", destination, "xml").unwrap();
+        saved.verify_unchanged().unwrap();
+        fs::write(destination, b"modified").unwrap();
+        assert!(saved.verify_unchanged().is_err());
+    }
+
+    #[test]
+    fn rejects_source_aliases_and_preserves_existing_output_on_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("invoice.pdf");
+        fs::write(&source, b"original").unwrap();
+        assert!(ensure_distinct_paths(&source, &directory.path().join("./invoice.pdf")).is_err());
+        assert!(save_validated(b"replacement", &source, "xml").is_err());
+        assert_eq!(fs::read(source).unwrap(), b"original");
+    }
 }

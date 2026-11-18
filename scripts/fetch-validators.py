@@ -29,12 +29,22 @@ def get(url):
 
 def download(url, target, checksums, key, expected=None):
     target.parent.mkdir(parents=True, exist_ok=True)
-    with get(url) as response, target.open("wb") as output:
-        shutil.copyfileobj(response, output)
-    with target.open("rb") as artifact:
-        digest = hashlib.file_digest(artifact, "sha256").hexdigest()
-    if expected is not None and digest != expected:
-        raise ValueError(f"SHA-256 mismatch for {key}")
+    # Keep a working offline bundle intact if a download is interrupted or fails
+    # verification. The temporary file is on the same filesystem for replacement.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=target.parent, suffix=".download", delete=False) as output:
+            temporary = Path(output.name)
+            with get(url) as response:
+                shutil.copyfileobj(response, output)
+        with temporary.open("rb") as artifact:
+            digest = hashlib.file_digest(artifact, "sha256").hexdigest()
+        if expected is not None and digest != expected:
+            raise ValueError(f"SHA-256 mismatch for {key}")
+        temporary.replace(target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     checksums[key] = digest
     print(f"{digest}  {key}", flush=True)
 

@@ -1,5 +1,6 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+use druckwandel_native::file_io::read_verified_pdf;
 use druckwandel_native::invoice::{Contact, ElectronicAddress, InvoiceInput, InvoiceLine};
 use druckwandel_native::output::{SavedOutput, save_xrechnung, save_zugferd};
 use druckwandel_native::print_inbox::{self, PrintJob};
@@ -86,7 +87,12 @@ fn optional(value: String) -> Option<String> {
     }
 }
 
-fn endpoint(value: String) -> Option<ElectronicAddress> {
+fn endpoint(value: String, existing: Option<&ElectronicAddress>) -> Option<ElectronicAddress> {
+    if let Some(existing) = existing
+        && existing.value == value
+    {
+        return Some(existing.clone());
+    }
     optional(value).map(|value| ElectronicAddress {
         scheme_id: if value.contains('@') { "EM" } else { "0204" }.into(),
         value,
@@ -218,18 +224,27 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.seller.address.country_code = window.get_seller_country().to_string();
     invoice.seller.vat_id = optional(window.get_seller_vat().to_string());
     invoice.seller.tax_registration_id = optional(window.get_seller_tax_number().to_string());
-    invoice.seller.electronic_address = endpoint(window.get_seller_endpoint().to_string());
-    invoice.seller.contact = Some(Contact {
+    invoice.seller.electronic_address = endpoint(
+        window.get_seller_endpoint().to_string(),
+        invoice.seller.electronic_address.as_ref(),
+    );
+    let contact = Contact {
         name: optional(window.get_seller_contact_name().to_string()),
         phone: optional(window.get_seller_contact_phone().to_string()),
         email: optional(window.get_seller_contact_email().to_string()),
-    });
+    };
+    invoice.seller.contact =
+        (contact.name.is_some() || contact.phone.is_some() || contact.email.is_some())
+            .then_some(contact);
     invoice.buyer.name = window.get_buyer_name().to_string();
     invoice.buyer.address.line1 = window.get_buyer_street().to_string();
     invoice.buyer.address.postal_code = window.get_buyer_postal().to_string();
     invoice.buyer.address.city = window.get_buyer_city().to_string();
     invoice.buyer.address.country_code = window.get_buyer_country().to_string();
-    invoice.buyer.electronic_address = endpoint(window.get_buyer_endpoint().to_string());
+    invoice.buyer.electronic_address = endpoint(
+        window.get_buyer_endpoint().to_string(),
+        invoice.buyer.electronic_address.as_ref(),
+    );
     if let Some(line) = invoice.lines.get_mut(window.get_selected_line() as usize) {
         extended_form::collect_line(window, line);
         line.name = window.get_line_name().to_string();
@@ -295,12 +310,10 @@ fn show_document(
     window.set_selected_name(document.name.clone().into());
     window.set_selected_path(document.path.to_string_lossy().into_owned().into());
     window.set_selected_hash(document.sha256.clone().into());
-    window.set_source_has_xml(
-        std::fs::read(&document.path)
-            .ok()
-            .and_then(|bytes| druckwandel_native::hybrid_pdf::extract_invoice_xml(&bytes).ok())
-            .is_some(),
-    );
+    window.set_source_has_xml(false);
+    window.set_source_text("".into());
+    let bytes = read_verified_pdf(&document.path, &document.sha256)?;
+    window.set_source_has_xml(druckwandel_native::hybrid_pdf::extract_invoice_xml(&bytes).is_ok());
     window.set_source_text(
         store
             .load_recognition_source(&document.id)?
@@ -830,16 +843,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return;
         };
         let source = PathBuf::from(window.get_selected_path().as_str());
-        if source == path
-            || source
-                .canonicalize()
-                .ok()
-                .zip(path.canonicalize().ok())
-                .is_some_and(|(a, b)| a == b)
-        {
-            window.set_status_text(
-                "Bitte einen anderen Speicherort als die Original-PDF wählen.".into(),
-            );
+        let source_hash = window.get_selected_hash().to_string();
+        if let Err(error) = druckwandel_native::output::ensure_distinct_paths(&source, &path) {
+            window.set_status_text(error.into());
             return;
         }
         window.set_status_text("Ausgabe wird erzeugt und unabhängig geprüft ...".into());
@@ -849,8 +855,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let sender = output_sender.clone();
         std::thread::spawn(move || {
             let result = ValidatorBundle::discover().and_then(|bundle| {
+                // Recheck at export time, including XML-only exports. Recognition
+                // and preview checks do not cover subsequent external edits.
+                let bytes = read_verified_pdf(&source, &source_hash)?;
                 if zugferd {
-                    let bytes = std::fs::read(source).map_err(|e| e.to_string())?;
                     save_zugferd(invoice, &bytes, &path, &bundle)
                 } else {
                     save_xrechnung(invoice, &path, &bundle)
@@ -864,6 +872,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saved = Rc::clone(&saved_output);
     window.on_send_email(move || {
         let Some(window) = weak.upgrade() else { return };
+        if !window.global::<OutputState>().get_can_email()
+            || window.global::<OutputState>().get_busy()
+        {
+            return;
+        }
         let binding = saved.borrow();
         let Some(output) = binding.as_ref() else { return };
         if let Err(error) = output.verify_unchanged() {
@@ -966,4 +979,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     window.window().set_maximized(true);
     window.run()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unedited_form_roundtrip_preserves_invoice_data() {
+        struct Offscreen;
+        impl slint::platform::Platform for Offscreen {
+            fn create_window_adapter(
+                &self,
+            ) -> Result<Rc<dyn slint::platform::WindowAdapter>, slint::PlatformError> {
+                Ok(
+                    slint::platform::software_renderer::MinimalSoftwareWindow::new(
+                        slint::platform::software_renderer::RepaintBufferType::NewBuffer,
+                    ),
+                )
+            }
+        }
+        slint::platform::set_platform(Box::new(Offscreen)).unwrap();
+        let window = MainWindow::new().unwrap();
+        let mut input: InvoiceInput =
+            serde_json::from_str(include_str!("../tests/fixtures/export/standard.json")).unwrap();
+        input.seller.contact = None;
+        input.buyer.electronic_address = Some(ElectronicAddress {
+            value: "1234567890123".into(),
+            scheme_id: "0088".into(),
+        });
+        set_form(&window, &input);
+        let output = collect_form(&window, input.clone());
+        assert_eq!(
+            serde_json::to_value(output).unwrap(),
+            serde_json::to_value(input).unwrap()
+        );
+    }
+
+    #[test]
+    fn unchanged_endpoint_preserves_its_scheme() {
+        let existing = ElectronicAddress {
+            value: "1234567890123".into(),
+            scheme_id: "0088".into(),
+        };
+        assert_eq!(
+            endpoint(existing.value.clone(), Some(&existing))
+                .unwrap()
+                .scheme_id,
+            "0088"
+        );
+        assert_eq!(
+            endpoint("mail@example.org".into(), Some(&existing))
+                .unwrap()
+                .scheme_id,
+            "EM"
+        );
+        assert!(endpoint("".into(), Some(&existing)).is_none());
+    }
 }

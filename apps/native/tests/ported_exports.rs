@@ -4,7 +4,9 @@ use druckwandel_native::{cii::generate_cii, invoice::InvoiceInput};
 fn facts(xml: &str) -> Vec<String> {
     let doc = roxmltree::Document::parse(xml).unwrap();
     doc.descendants()
-        .filter(|node| node.is_element())
+        // Frozen legacy exports omitted the payment reference. Its preservation
+        // is tested separately; retain the original reference files unchanged.
+        .filter(|node| node.is_element() && node.tag_name().name() != "PaymentReference")
         .map(|node| {
             let mut attrs: Vec<_> = node
                 .attributes()

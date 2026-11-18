@@ -62,6 +62,11 @@ fn party_xml(wrapper: &str, party: &Party) -> String {
         inner.push_str(&e("cbc:CompanyID", vat_id));
         inner.push_str("<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>");
     }
+    if let Some(tax_id) = &party.tax_registration_id {
+        inner.push_str("<cac:PartyTaxScheme>");
+        inner.push_str(&e("cbc:CompanyID", tax_id));
+        inner.push_str("<cac:TaxScheme><cbc:ID>FC</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>");
+    }
     inner.push_str("<cac:PartyLegalEntity>");
     inner.push_str(&e("cbc:RegistrationName", &party.name));
     inner.push_str("</cac:PartyLegalEntity>");
@@ -185,6 +190,10 @@ fn render(invoice: &CalculatedInvoice) -> String {
         if let Some(address) = &data.delivery_address {
             xml.push_str("<cac:DeliveryLocation><cac:Address>");
             xml.push_str(&e("cbc:StreetName", &address.line1));
+            xml.push_str(&optional(
+                "cbc:AdditionalStreetName",
+                address.line2.as_deref(),
+            ));
             xml.push_str(&e("cbc:CityName", &address.city));
             xml.push_str(&e("cbc:PostalZone", &address.postal_code));
             xml.push_str("<cac:Country>");

@@ -2,6 +2,25 @@ use druckwandel_native::{
     cii::generate_cii, hybrid_pdf::extract_invoice_xml, invoice::InvoiceInput,
     output::save_zugferd, ubl::generate_ubl, validation::ValidatorBundle,
 };
+
+#[test]
+#[ignore = "requires the platform-specific offline validator bundle"]
+fn preserved_export_fields_pass_independent_validators() {
+    let mut input: InvoiceInput =
+        serde_json::from_str(include_str!("fixtures/export/standard.json")).unwrap();
+    input.seller.tax_registration_id = Some("12/345/67890".into());
+    input.payment.payment_reference = Some("Referenz & 123".into());
+    let mut delivery = input.buyer.address.clone();
+    delivery.line2 = Some("Hinterhaus & Lager".into());
+    input.delivery_address = Some(delivery);
+    let validators = ValidatorBundle::discover().unwrap();
+    validators
+        .validate_xrechnung(generate_ubl(input.clone()).unwrap().as_bytes())
+        .unwrap();
+    validators
+        .validate_cii(generate_cii(input).unwrap().as_bytes())
+        .unwrap();
+}
 #[test]
 #[ignore = "requires the platform-specific offline validator bundle"]
 fn all_supported_invoice_cases_pass_independent_xml_validators() {

@@ -49,7 +49,7 @@ fn read_job(root: &Path, id: &str) -> Result<PrintJob, String> {
         return Err("Druckauftrag-Metadaten sind ungültig.".into());
     }
     let handoff: Handoff =
-        serde_json::from_slice(&fs::read(&metadata_path).map_err(|e| e.to_string())?)
+        serde_json::from_slice(&crate::file_io::read_limited(&metadata_path, 64 * 1024)?)
             .map_err(|e| e.to_string())?;
     let filename = format!("{id}.pdf");
     if handoff.schema_version != 1

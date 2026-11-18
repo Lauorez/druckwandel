@@ -205,11 +205,10 @@ impl RecognitionProvider for SchemaRecognizer {
             ),
         ] {
             let label = re(pattern);
-            if let Some((line, value)) = lines
-                .iter()
-                .filter(|line| label.is_match(&line.text))
-                .find_map(|line| date(&line.text).map(|value| (line, value)))
-            {
+            if let Some((line, value)) = lines.iter().find_map(|line| {
+                let matched = label.find(&line.text)?;
+                date(&line.text[matched.end()..]).map(|value| (line, value))
+            }) {
                 result
                     .fields
                     .insert(name.into(), proposal(value, line, confidence));
@@ -431,11 +430,18 @@ fn classify_parties(lines: &[crate::extraction::TextLine], result: &mut Recognit
 
 fn classify_tables(lines: &[crate::extraction::TextLine], result: &mut RecognitionResult) {
     let tax_pattern = re(r"(?i)(?:umsatzsteuer|mwst\.?|ust\.?|vat)[^%\d]*(\d+(?:[.,]\d+)?)\s*%");
-    let tax_rate = lines.iter().find_map(|line| {
-        tax_pattern
-            .captures(&line.text)
-            .and_then(|c| decimal(&c[1]))
-    });
+    let mut tax_rates = Vec::new();
+    for line in lines {
+        for captures in tax_pattern.captures_iter(&line.text) {
+            if let Some(rate) = decimal(&captures[1])
+                && !tax_rates.contains(&rate)
+            {
+                tax_rates.push(rate);
+            }
+        }
+    }
+    // A document with multiple tax rates needs evidence on each line.
+    let tax_rate = (tax_rates.len() == 1).then(|| tax_rates[0].clone());
     let summary = re(
         r"(?i)^(?:netto|zwischensumme|umsatzsteuer|mwst\.?|ust\.?|gesamt|zahlbetrag|zahlungsbedingungen)\b",
     );
@@ -513,12 +519,13 @@ fn classify_tables(lines: &[crate::extraction::TextLine], result: &mut Recogniti
             })
             .find_map(|t| decimal(&t.text));
         let rate = explicit_rate.or_else(|| tax_rate.clone());
+        let rate_known = rate.is_some();
         if rate.is_none() {
             result.warnings.push(
                 "Steuersatz einer Position konnte nicht erkannt werden. Bitte ergänzen.".into(),
             );
         }
-        let rate = rate.unwrap_or_else(|| "19".into());
+        let rate = rate.unwrap_or_default();
         let name = re(r"^\d+[.)]?\s+").replace(c[1].trim(), "").into_owned();
         let unit = match c
             .get(3)
@@ -558,7 +565,11 @@ fn classify_tables(lines: &[crate::extraction::TextLine], result: &mut Recogniti
                 allowances: vec![],
             },
             net_amount: total,
-            confidence: if arithmetic_matches { 0.91 } else { 0.60 },
+            confidence: if arithmetic_matches && rate_known {
+                0.91
+            } else {
+                0.60
+            },
             source_token_ids: line.tokens.iter().map(|t| t.id.clone()).collect(),
             source_text: line.text.clone(),
         });

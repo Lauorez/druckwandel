@@ -194,16 +194,7 @@ impl ValidatorBundle {
         if accepted {
             return Ok(());
         }
-        let issues: Vec<_> = root
-            .descendants()
-            .filter(|node| node.is_element() && node.tag_name().name() == "failed-assert")
-            .filter_map(|node| {
-                node.descendants()
-                    .find(|child| child.is_element() && child.tag_name().name() == "text")
-            })
-            .filter_map(|node| node.text())
-            .take(3)
-            .collect();
+        let issues = kosit_issues(root);
         if issues.is_empty() {
             Err("KoSIT hat die XRechnung abgelehnt.".into())
         } else {
@@ -213,6 +204,22 @@ impl ValidatorBundle {
             ))
         }
     }
+}
+
+fn kosit_issues<'a>(root: roxmltree::Node<'a, 'a>) -> Vec<&'a str> {
+    root.descendants()
+        .filter(|node| node.is_element())
+        .filter_map(|node| match node.tag_name().name() {
+            // KoSIT transforms SVRL assertions into its own report messages.
+            "message" if node.attribute("level") == Some("error") => node.text(),
+            "failed-assert" => node
+                .descendants()
+                .find(|child| child.is_element() && child.tag_name().name() == "text")
+                .and_then(|child| child.text()),
+            _ => None,
+        })
+        .take(3)
+        .collect()
 }
 
 impl ValidatorBundle {
@@ -401,5 +408,47 @@ fn evaluate_verapdf(success: bool, output: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err("veraPDF hat die PDF/A-3B-Prüfung abgelehnt. Bitte eine PDF mit eingebetteten Schriften und ohne Formulare verwenden.".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_kosit_errors_from_transformed_reports() {
+        let report = roxmltree::Document::parse(r#"<report><message level="warning">warning</message><message level="error">BR-CO-26: missing supplier ID</message></report>"#).unwrap();
+        assert_eq!(
+            kosit_issues(report.root_element()),
+            ["BR-CO-26: missing supplier ID"]
+        );
+    }
+
+    #[test]
+    fn independent_reports_fail_closed() {
+        assert!(evaluate_mustang(true, "no report").is_err());
+        assert!(
+            evaluate_mustang(
+                false,
+                "<validation><summary status=\"valid\"/></validation>"
+            )
+            .is_err()
+        );
+        assert!(
+            evaluate_mustang(
+                true,
+                "<validation><summary status=\"invalid\"/></validation>"
+            )
+            .is_err()
+        );
+        assert!(evaluate_verapdf(true, "<report/>").is_err());
+        assert!(
+            evaluate_verapdf(
+                true,
+                "<report><validationReport isCompliant=\"true\" flavour=\"1b\"/></report>"
+            )
+            .is_err()
+        );
+        assert!(evaluate_verapdf(true, "<report><validationReport isCompliant=\"true\" flavour=\"3b\"/><batchSummary failedToParse=\"1\"/></report>").is_err());
     }
 }
