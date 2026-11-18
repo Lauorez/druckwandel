@@ -19,13 +19,21 @@ Ein Ergebnis ist ein **editierbarer Vorschlag**. Es überspringt weder die manue
 
 ## Schemaanbieter
 
-`extraction.rs` liest PDF-Zeichen mit Koordinaten über `pdf-extract`, gruppiert sie in Wörter und Zeilen und behält deren Fundstellen. `recognition/schema.rs` wendet Feldregeln, Datums- und Betragsnormalisierung, Adressblöcke und Tabellenregeln an. Es prüft erkannte Summen sowie Menge × Preis gegen den gedruckten Positionsbetrag und meldet Abweichungen. Nicht eingebettete Rechnungspreisstellen können aus gerundeten Druckwerten nicht rekonstruiert werden; solche Fälle benötigen manuelle Korrektur. PDFs ohne Text werden als manuell zu erfassen gekennzeichnet. OCR und die alten Lernprofile sind noch nicht portiert.
+`extraction.rs` liest PDF-Zeichen mit Koordinaten über `pdf-extract`, gruppiert sie in Wörter und Zeilen und behält deren Fundstellen. `recognition/schema.rs` wendet Feldregeln, Datums- und Betragsnormalisierung, Adressblöcke und Tabellenregeln an. Es prüft erkannte Summen sowie Menge × Preis gegen den gedruckten Positionsbetrag und meldet Abweichungen. Nicht eingebettete Rechnungspreisstellen können aus gerundeten Druckwerten nicht rekonstruiert werden; solche Fälle benötigen manuelle Korrektur. Textarme Seiten werden bei aktivierter OCR lokal über Tesseract erkannt. Deutsche und englische Sprachdaten werden im Windows-Installer mitgeliefert; die Sprache ist einstellbar. Native Textseiten bleiben erhalten, gemischte PDFs werden seitenweise behandelt. OCR-Wörter besitzen PDF-Koordinaten und IDs mit `-ocr`; OCR-Vorschläge werden auf höchstens 80 % (Positionen 75 %) begrenzt und ausdrücklich zur Prüfung gekennzeichnet.
 
 Beim Lesen normalisiert die App indirekte Parameter der Farbräume CalRGB/CalGray/Lab und überspringt Flate-komprimierte Inline-Bilder ausschließlich in einer internen Lesekopie. Die Bildgrenze wird anhand des vollständigen Zlib-Datenstroms ermittelt, nicht anhand vermuteter `EI`-Zeichen in Binärdaten. Originaldatei, Seiteninhalt für den Export und eingebettete Anhänge bleiben unverändert. Synthetische Regressionstests benötigen keine echten Rechnungsdaten.
 
 Bereits vorhandene `factur-x.xml` wird erkannt und in der Oberfläche angezeigt, aber derzeit nicht als strukturierter Rechnungsentwurf importiert. Die Schemaerkennung verwendet auch bei solchen Belegen den sichtbaren PDF-Text. Fehlende Pflichtangaben und nicht erkannte Positionstabellen werden ausdrücklich gemeldet. Ein gültiger ZUGFeRD-Beleg kann daher aktuell nur unvollständige Textvorschläge liefern; der direkte CII-Import ist noch offen.
 
-Beim ersten Öffnen eines neuen Dokuments läuft die Schemaerkennung. Ein vorhandener Entwurf wird wiederhergestellt. Der Button „Fehlende Felder erkennen“ verwendet die aktuell gewählte Methode.
+Beim ersten Öffnen eines neuen Dokuments läuft die gewählte Erkennung im Hintergrund. Die Oberfläche bleibt aktiv; Änderungen und Export sind während des Laufs gesperrt, damit Ergebnisse keine zwischenzeitlichen Korrekturen überschreiben. Fundstellen einschließlich OCR-Text werden lokal beim Entwurf gespeichert und beim Wiederöffnen geladen. Ein vorhandener Entwurf wird wiederhergestellt. Der Button „Fehlende Felder erkennen“ verwendet die aktuell gewählte Methode.
+
+## Lokale OCR und Lernprofile
+
+`ocr.rs` erkennt nur textarme Seiten, rendert mit Hayro und liest Tesseract-TSV mit Wortkoordinaten. Originaldateien werden nicht verändert. PNG/TSV liegen ausschließlich im temporären Arbeitsordner und werden nach dem Lauf entfernt. Grenzen: 40 Seiten, 4 Millionen Pixel je gerenderter Seite, 30 Sekunden je OCR-Prozess und 120 Sekunden je Dokument. Fehler lassen die manuelle Erfassung und Vorschau verfügbar. Paket und Quellen stehen unter [resources/ocr](../resources/ocr/README.md).
+
+Unter Einstellungen → Erkennung werden OCR, Sprache und Lernprofile verwaltet. Nach dem Korrigieren einer Rechnung übernimmt „Aus Korrekturen lernen“ ausschließlich Werte, die eindeutig im aktuellen Beleg gefunden werden. Das aktive Profil lernt relative Fundstellen mit Textankern sowie Tabellenspalten. Rechnungsnummern und Datumswerte werden beim nächsten Beleg aus dessen Tokens gelesen; die zuvor bestätigten Werte werden nicht kopiert. Lieferantenmerkmale und Layoutanker begrenzen die Anwendung auf passende Belege. Mehrdeutige oder nicht im Quelltext enthaltene Korrekturen werden nicht als Feldregel gespeichert. Gelernte Tabellen verlangen nachvollziehbare Mengen-/Preis-/Betragsangaben, unterstützen einen gemeinsamen bestätigten Steuerfall und müssen manuell geprüft werden.
+
+Bis zu 20 Profile lassen sich erstellen, auswählen, umbenennen und löschen. Einzelne Regeln können deaktiviert oder entfernt und die letzte Speicheränderung rückgängig gemacht werden. Regeln werden lokal und atomar in `native/learning-profiles.json` gespeichert; OCR-Einstellungen stehen in `settings.json`. Die neue Rust-Profildatei ist von den alten Tauri-Profilen getrennt; eine automatische Migration alter Profil-JSON-Dateien erfolgt nicht. Profile wirken auf neue Vorschläge. Erneute Erkennung füllt weiterhin nur fehlende Felder und bewahrt manuelle Korrekturen.
 
 ## Spätere KI aus einem separaten Repository
 
@@ -43,5 +51,7 @@ Die fachliche Ausgabe bleibt unabhängig vom Anbieter: Beide liefern denselben E
 
 ```sh
 cargo run -p druckwandel-native --bin druckwandel-recognize -- quelle.pdf
-cargo test -p druckwandel-native --locked --test recognition
+cargo test -p druckwandel-native --locked --test recognition --test learning --test ocr
+python scripts/fetch-ocr.py
+cargo test -p druckwandel-native --locked --test ocr -- --ignored
 ```

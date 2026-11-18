@@ -1,7 +1,4 @@
-use druckwandel_native::{
-    extraction::read_document,
-    recognition::{CONTRACT_VERSION, RecognitionMethod, RecognitionRegistry, RecognitionRequest},
-};
+use druckwandel_native::recognition::{RecognitionMethod, RecognitionRegistry, RecognitionRequest};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,12 +7,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .nth(1)
             .ok_or("Aufruf: druckwandel-recognize quelle.pdf")?,
     );
-    let request = RecognitionRequest {
-        schema_version: CONTRACT_VERSION,
-        document_sha256: format!("{:x}", Sha256::digest(fs::read(&path)?)),
-        source_pdf: path.clone(),
-        pages: read_document(&path)?,
-    };
+    let hash = format!("{:x}", Sha256::digest(fs::read(&path)?));
+    let request = RecognitionRequest::from_pdf(path, &hash)?;
     let result = RecognitionRegistry::default().recognize(RecognitionMethod::Schema, &request)?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())

@@ -17,17 +17,18 @@ impl Platform for Offscreen {
 fn draw(window: &Rc<MinimalSoftwareWindow>, name: &str) -> Vec<Rgb8Pixel> {
     slint::platform::update_timers_and_animations();
     window.request_redraw();
-    let mut pixels = vec![Rgb8Pixel::default(); 1320 * 760];
+    let size = window.window().size();
+    let mut pixels = vec![Rgb8Pixel::default(); (size.width * size.height) as usize];
     assert!(window.draw_if_needed(|renderer| {
-        renderer.render(&mut pixels, 1320);
+        renderer.render(&mut pixels, size.width as usize);
     }));
     if let Some(path) = std::env::var_os("DRUCKWANDEL_UI_REVIEW_DIR") {
         let path = std::path::PathBuf::from(path);
         std::fs::create_dir_all(&path).unwrap();
         let mut encoder = png::Encoder::new(
             std::fs::File::create(path.join(format!("{name}.png"))).unwrap(),
-            1320,
-            760,
+            size.width,
+            size.height,
         );
         encoder.set_color(png::ColorType::Rgb);
         encoder.set_depth(png::BitDepth::Eight);
@@ -61,6 +62,9 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(Offscreen(window.clone()))).unwrap();
     let ui = MainWindow::new().unwrap();
+    ui.global::<FieldRules>()
+        .on_is_blank(|value| value.trim().is_empty());
+    assert_eq!(ui.get_output_format(), 0, "ZUGFeRD must be the default");
     ui.show().unwrap();
     window.set_size(slint::PhysicalSize::new(1320, 760));
     ui.set_appearance(2);
@@ -71,6 +75,21 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
     draw(&window, "settings-dark");
     ui.set_appearance(1);
     draw(&window, "settings-light");
+    assert_eq!(window.window().size(), slint::PhysicalSize::new(1320, 760));
+    click(&window, 530.0, 195.0);
+    assert_eq!(ui.get_settings_tab(), 1);
+    draw(&window, "settings-general");
+    ui.set_settings_tab(2);
+    ui.set_ocr_status("Lokale OCR verfügbar (Tesseract, Deutsch/Englisch).".into());
+    ui.set_learning_profiles(slint::ModelRc::new(slint::VecModel::from(vec![
+        "Standard".into(),
+        "Lieferant A".into(),
+    ])));
+    ui.set_learning_name("Standard".into());
+    draw(&window, "settings-recognition");
+    click(&window, 1120.0, 195.0);
+    assert_eq!(ui.get_settings_tab(), 3);
+    draw(&window, "settings-about");
     click(&window, 1280.0, 40.0);
     assert!(!ui.get_settings_open());
     let bytes = std::env::var_os("DRUCKWANDEL_PREVIEW_PDF")
@@ -95,7 +114,32 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
             frame.height,
         ),
     ));
-    draw(&window, "preview-first-light");
+    let missing = draw(&window, "preview-first-light");
+    ui.set_invoice_number("RE-123".into());
+    let filled = draw(&window, "required-number-filled");
+    let red_pixels = |pixels: &[Rgb8Pixel]| {
+        pixels
+            .iter()
+            .filter(|p| p.r > 150 && p.g < 110 && p.b < 110)
+            .count()
+    };
+    assert!(
+        red_pixels(&missing) > red_pixels(&filled) + 50,
+        "filled required field must lose its red marker"
+    );
+    ui.set_invoice_number("   ".into());
+    let whitespace = draw(&window, "required-whitespace");
+    assert!(
+        red_pixels(&whitespace) > red_pixels(&filled) + 50,
+        "whitespace is still missing"
+    );
+    ui.set_output_format(1);
+    let xrechnung = draw(&window, "xrechnung-required");
+    assert!(
+        red_pixels(&xrechnung) > red_pixels(&whitespace) + 50,
+        "XRechnung must additionally mark the missing buyer reference"
+    );
+    ui.set_output_format(0);
     ui.set_appearance(2);
     draw(&window, "preview-first-dark");
     assert!(
@@ -136,5 +180,55 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
         requested.get() > before,
         "zoom must request a sharper preview"
     );
+    window.set_size(slint::PhysicalSize::new(1920, 1080));
+    draw(&window, "maximized-dark");
+    click(&window, 1880.0, 40.0);
+    assert!(ui.get_settings_open());
+    draw(&window, "maximized-settings");
+    assert_eq!(window.window().size(), slint::PhysicalSize::new(1920, 1080));
+    click(&window, 1880.0, 40.0);
+    assert!(!ui.get_settings_open());
+    window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1.5 });
+    window.set_size(slint::PhysicalSize::new(1920, 1080));
+    draw(&window, "windows-dpi-150");
+    window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
+    window.set_size(slint::PhysicalSize::new(1000, 700));
+    ui.set_preview_zoom(0);
+    draw(&window, "compact-window");
+    window.set_size(slint::PhysicalSize::new(1920, 1080));
+    ui.set_line_name("Montage".into());
+    ui.set_line_quantity("2.5".into());
+    ui.set_line_price("80.00".into());
+    ui.set_line_unit("HUR".into());
+    ui.set_line_tax_category("AE".into());
+    ui.set_line_tax_rate("0".into());
+    ui.set_line_tax_reason("Steuerschuldnerschaft des Leistungsempfängers".into());
+    ui.set_form_tab(1);
+    draw(&window, "invoice-line-tax");
+    ui.set_document_adjustments(slint::ModelRc::new(slint::VecModel::from(vec![
+        AdjustmentData {
+            amount: "10.00".into(),
+            reason: "Rabatt".into(),
+            tax_category: "S".into(),
+            tax_rate: "19".into(),
+            ..Default::default()
+        },
+    ])));
+    ui.set_form_tab(2);
+    let adjustment_pixels = draw(&window, "invoice-adjustments");
+    assert_eq!(
+        red_pixels(&adjustment_pixels),
+        0,
+        "complete adjustment must display its loaded tax rate"
+    );
+    ui.set_references(slint::ModelRc::new(slint::VecModel::from(vec![
+        ReferenceData {
+            number: "RE-ALT-1".into(),
+            date: "2026-07-01".into(),
+            paid: "100.00".into(),
+        },
+    ])));
+    ui.set_document_adjustments(slint::ModelRc::default());
+    draw(&window, "invoice-references");
     ui.hide().unwrap();
 }

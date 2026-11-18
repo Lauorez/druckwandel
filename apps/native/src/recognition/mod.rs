@@ -1,6 +1,6 @@
 //! Local recognition boundary. No model runtime, weights, LoRA, API client or AI
 //! transport is included. A future local adapter implements RecognitionProvider.
-mod schema;
+pub(crate) mod schema;
 use crate::extraction::{DocumentPage, reconstruct_lines};
 use crate::invoice::{Contact, ElectronicAddress, InvoiceInput, InvoiceLine, Tax};
 pub use schema::SchemaRecognizer;
@@ -24,10 +24,23 @@ pub struct RecognitionRequest {
     pub document_sha256: String,
     pub source_pdf: PathBuf,
     pub pages: Vec<DocumentPage>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 impl RecognitionRequest {
     pub fn from_pdf(source_pdf: PathBuf, expected_sha256: &str) -> Result<Self, String> {
+        Self::from_pdf_with_ocr(
+            source_pdf,
+            expected_sha256,
+            &crate::ocr::OcrSettings::default(),
+        )
+    }
+    pub fn from_pdf_with_ocr(
+        source_pdf: PathBuf,
+        expected_sha256: &str,
+        options: &crate::ocr::OcrSettings,
+    ) -> Result<Self, String> {
         use sha2::{Digest, Sha256};
         if std::fs::metadata(&source_pdf)
             .map_err(|e| e.to_string())?
@@ -44,12 +57,13 @@ impl RecognitionRequest {
         if document_sha256 != expected_sha256 {
             return Err("Die Original-PDF wurde außerhalb der Anwendung verändert.".into());
         }
-        let pages = crate::extraction::read_document_bytes(&bytes)?;
+        let (pages, warnings) = crate::ocr::read_pages(&bytes, &document_sha256, options)?;
         Ok(Self {
             schema_version: CONTRACT_VERSION,
             document_sha256,
             source_pdf,
             pages,
+            warnings,
         })
     }
 }
@@ -131,7 +145,7 @@ impl RecognitionRegistry {
             return Err("Unbekannte Version des Erkennungsvertrags.".into());
         }
         let provider=self.providers.iter().find(|provider| provider.method()==method).ok_or("Lokale KI-Erkennung ist noch nicht installiert. Das separate KI-Projekt kann später als lokaler Adapter ergänzt werden.")?;
-        let result = provider.recognize(request)?;
+        let mut result = provider.recognize(request)?;
         if result.schema_version != CONTRACT_VERSION
             || result.method != method
             || result.document_sha256 != request.document_sha256
@@ -160,11 +174,37 @@ impl RecognitionRegistry {
         {
             return Err("Erkennung enthält ungültige Konfidenzen oder Fundstellen.".into());
         }
+        let ocr_ids: std::collections::HashSet<_> = request
+            .pages
+            .iter()
+            .flat_map(|page| &page.tokens)
+            .filter(|token| token.id.contains("-ocr"))
+            .map(|token| token.id.as_str())
+            .collect();
+        for field in result.fields.values_mut() {
+            if field
+                .source_token_ids
+                .iter()
+                .any(|id| ocr_ids.contains(id.as_str()))
+            {
+                field.confidence = field.confidence.min(0.80);
+            }
+        }
+        for line in &mut result.lines {
+            if line
+                .source_token_ids
+                .iter()
+                .any(|id| ocr_ids.contains(id.as_str()))
+            {
+                line.confidence = line.confidence.min(0.75);
+            }
+        }
+        result.warnings.extend(request.warnings.clone());
         Ok(result)
     }
 }
 
-fn field_label(name: &str) -> &str {
+pub fn field_label(name: &str) -> &str {
     match name {
         "invoiceNumber" => "Rechnungsnummer",
         "issueDate" => "Rechnungsdatum",
@@ -348,6 +388,7 @@ mod tests {
             schema_version: 1,
             document_sha256: "test".into(),
             source_pdf: "local.pdf".into(),
+            warnings: vec![],
             pages: vec![],
         };
         assert!(registry.available(RecognitionMethod::Schema));

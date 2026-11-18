@@ -71,3 +71,41 @@ fn oversized_arithmetic_returns_an_error_instead_of_panicking() {
     input.lines[0].net_unit_price = "2".into();
     assert!(druckwandel_native::invoice::calculate(input).is_err());
 }
+
+#[test]
+fn form_details_reject_incomplete_references_units_and_inconsistent_percentages() {
+    use druckwandel_native::invoice::{AllowanceCharge, PrecedingInvoice, validate_en16931};
+    let mut input: InvoiceInput =
+        serde_json::from_str(include_str!("fixtures/export/standard.json")).unwrap();
+    input.lines[0].unit_code.clear();
+    assert!(!validate_en16931(&input).is_empty());
+    input.lines[0].unit_code = "HUR".into();
+    input.final_invoice = true;
+    assert!(!validate_en16931(&input).is_empty());
+    input.preceding_invoices.push(PrecedingInvoice {
+        invoice_number: "ALT".into(),
+        issue_date: Some("2026-02-30".into()),
+        paid_amount: Some("-1".into()),
+    });
+    assert!(!validate_en16931(&input).is_empty());
+    input.preceding_invoices[0].issue_date = Some("2026-02-28".into());
+    input.preceding_invoices[0].paid_amount = Some("20.00".into());
+    let mut adjustment = AllowanceCharge {
+        charge: false,
+        amount: "10.00".into(),
+        reason: Some("Rabatt".into()),
+        reason_code: None,
+        percent: Some("10".into()),
+        base_amount: Some("100.00".into()),
+        tax: input.lines[0].tax.clone(),
+    };
+    input.allowances.push(adjustment.clone());
+    assert!(validate_en16931(&input).is_empty());
+    adjustment.base_amount = Some("50.00".into());
+    input.allowances[0] = adjustment;
+    assert!(!validate_en16931(&input).is_empty());
+    input.allowances[0].amount = "5.00".into();
+    assert!(validate_en16931(&input).is_empty());
+    input.allowances[0].reason = None;
+    assert!(!validate_en16931(&input).is_empty());
+}

@@ -1,6 +1,14 @@
 # Änderungen
 
-## 0.4.0 (in Entwicklung)
+## 0.4.0
+
+- Lokale Tesseract-OCR für textarme und gemischte PDFs, deutscher/englischer Offline-Laufzeit im Windows-Installer, Hintergrund-Erkennung und gespeicherten Fundstellen.
+- Verwaltbare Lernprofile für quellengestützte Feld- und Tabellenzuordnungen mit Deaktivierung, Entfernen und Rückgängig.
+
+- Rechnungsformular um Rechnungsarten, Leistungsdatum, Währung, Mengeneinheiten, Steuerfälle, Rabatte/Zuschläge und mehrere Rechnungsbezüge erweitert; Formular in Rechnung, Positionen und Details gegliedert.
+
+- ZUGFeRD als Standardausgabe, Ausgabeaktionen unter dem Formular und sichtbare Pflichtfeldmarkierungen.
+- Einstellungen mit Reitern für Unternehmensvorlage, Darstellung, Erkennungsmodus und Über-Informationen; maximierter Start und anpassbare Darstellung ohne Größenänderung beim Seitenwechsel.
 
 - Rust/Slint als einzige App auf `main`; bisheriger Stand im gesperrten Branch `legacy/tauri-0.3.5`.
 - PDF-Import, Entwürfe und Schemaerkennung mit Fundstellen in Rust.

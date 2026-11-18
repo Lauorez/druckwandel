@@ -38,3 +38,7 @@ resources/validators/verapdf/
 resources/validators/checksums.json
 installer/windows/payload/
 __pycache__/
+resources/ocr/*.exe
+resources/ocr/*.dll
+resources/ocr/tessdata/
+resources/ocr/doc/

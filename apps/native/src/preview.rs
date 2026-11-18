@@ -27,6 +27,18 @@ pub struct PreviewFrame {
 
 pub struct PreviewDocument(Pdf);
 impl PreviewDocument {
+    pub fn page_count(&self) -> usize {
+        self.0.pages().len()
+    }
+    pub fn page_dimensions(&self, index: usize) -> Result<(f64, f64), String> {
+        let page = self
+            .0
+            .pages()
+            .get(index)
+            .ok_or("Diese PDF-Seite existiert nicht.")?;
+        let (width, height) = page.render_dimensions();
+        Ok((width as f64, height as f64))
+    }
     pub fn from_bytes(bytes: Vec<u8>, expected_hash: &str) -> Result<Self, String> {
         if bytes.len() as u64 > MAX_PDF_BYTES {
             return Err("PDF überschreitet 100 MB.".into());

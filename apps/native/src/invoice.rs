@@ -434,7 +434,10 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
         errors.push("Mindestens eine Position ist erforderlich.".into());
     }
     for (index, line) in input.lines.iter().enumerate() {
-        if line.id.trim().is_empty() || line.name.trim().is_empty() {
+        if line.id.trim().is_empty()
+            || line.name.trim().is_empty()
+            || line.unit_code.trim().is_empty()
+        {
             errors.push(format!("Position {} ist unvollständig.", index + 1));
         }
         if decimal(&line.quantity).map_or(true, |value| value <= Decimal::ZERO) {
@@ -457,8 +460,34 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
     if (input.final_invoice || input.prepayment_invoice) && input.invoice_type != "380" {
         errors.push("Anzahlung und Schlussrechnung müssen Rechnungstyp 380 verwenden.".into());
     }
-    if ["381", "384"].contains(&input.invoice_type.as_str()) && preceding(input).is_empty() {
+    if (["381", "384"].contains(&input.invoice_type.as_str()) || input.final_invoice)
+        && preceding(input).is_empty()
+    {
         errors.push("Bezug zur Ursprungsrechnung fehlt.".into());
+    }
+    let references = if input.preceding_invoices.is_empty() {
+        input.preceding_invoice.iter().collect::<Vec<_>>()
+    } else {
+        input.preceding_invoices.iter().collect::<Vec<_>>()
+    };
+    for reference in references {
+        if reference.invoice_number.trim().is_empty() {
+            errors.push("Rechnungsnummer eines Rechnungsbezugs fehlt.".into());
+        }
+        if reference
+            .issue_date
+            .as_deref()
+            .is_some_and(|date| !valid_date(date))
+        {
+            errors.push("Datum eines Rechnungsbezugs ist ungültig.".into());
+        }
+        if reference
+            .paid_amount
+            .as_deref()
+            .is_some_and(|amount| decimal(amount).map_or(true, |v| v < Decimal::ZERO))
+        {
+            errors.push("Gezahlter Betrag eines Rechnungsbezugs ist ungültig.".into());
+        }
     }
     if let Some(amount) = &input.prepaid_amount
         && decimal(amount).map_or(true, |value| value < Decimal::ZERO)
@@ -469,10 +498,43 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
 }
 
 fn validate_adjustment(item: &AllowanceCharge, errors: &mut Vec<String>) {
+    if item.reason.as_deref().is_none_or(|s| s.trim().is_empty())
+        && item
+            .reason_code
+            .as_deref()
+            .is_none_or(|s| s.trim().is_empty())
+    {
+        errors.push("Rabatt oder Zuschlag benötigt eine Begründung oder einen Grundcode.".into());
+    }
     if decimal(&item.amount).map_or(true, |value| value <= Decimal::ZERO || value.scale() > 2) {
         errors.push("Zu- oder Abschlag benötigt einen positiven Betrag mit höchstens zwei Nachkommastellen.".into());
     }
     validate_tax(&item.tax, errors);
+    if let Some(percent) = &item.percent {
+        let expected = (|| {
+            let percent = decimal(percent).ok()?;
+            let base = decimal(item.base_amount.as_deref()?).ok()?;
+            if percent <= Decimal::ZERO || base <= Decimal::ZERO {
+                return None;
+            }
+            let amount = base.checked_mul(percent)?.checked_div(Decimal::from(100))?;
+            Some(money(amount))
+        })();
+        if expected.is_none()
+            || expected.as_deref() != decimal(&item.amount).ok().map(money).as_deref()
+        {
+            errors.push(
+                "Prozent und Basisbetrag des Rabatts/Zuschlags müssen zum Nettobetrag passen."
+                    .into(),
+            );
+        }
+    } else if item
+        .base_amount
+        .as_deref()
+        .is_some_and(|base| decimal(base).map_or(true, |v| v <= Decimal::ZERO))
+    {
+        errors.push("Basisbetrag des Rabatts/Zuschlags ist ungültig.".into());
+    }
 }
 
 fn validate_tax(tax: &Tax, errors: &mut Vec<String>) {

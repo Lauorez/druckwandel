@@ -6,6 +6,7 @@ fn fixture() -> RecognitionRequest {
         schema_version: CONTRACT_VERSION,
         document_sha256: "fixture".into(),
         source_pdf: path.clone(),
+        warnings: vec![],
         pages: read_document(&path).unwrap(),
     }
 }

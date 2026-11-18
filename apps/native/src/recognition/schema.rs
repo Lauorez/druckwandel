@@ -8,7 +8,7 @@ pub struct SchemaRecognizer;
 fn re(pattern: &str) -> Regex {
     Regex::new(pattern).expect("static recognition pattern")
 }
-fn decimal(value: &str) -> Option<String> {
+pub(crate) fn decimal(value: &str) -> Option<String> {
     let compact = value.trim().replace(['€', '%', ' '], "");
     let normalized = if compact.contains(',') {
         compact.replace('.', "").replace(',', ".")
@@ -29,7 +29,7 @@ fn money(value: &str) -> Option<String> {
             )
         })
 }
-fn date(value: &str) -> Option<String> {
+pub(crate) fn date(value: &str) -> Option<String> {
     if let Some(c) = re(r"\b(\d{4})-(\d{2})-(\d{2})\b").captures(value) {
         return NaiveDate::from_ymd_opt(c[1].parse().ok()?, c[2].parse().ok()?, c[3].parse().ok()?)
             .map(|date| date.to_string());

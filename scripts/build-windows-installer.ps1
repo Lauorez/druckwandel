@@ -25,6 +25,7 @@ if (-not $SkipChecks) {
     Invoke-Checked 'cargo' @('fmt','--all','--','--check')
     Invoke-Checked 'cargo' @('clippy','--all-targets','--locked','--','-D','warnings')
     Invoke-Checked 'cargo' @('test','--locked')
+    Invoke-Checked 'cargo' @('test','--locked','--test','ocr','--','--ignored')
     Invoke-Checked 'cargo' @('test','--locked','--test','external_validators','--','--ignored')
 }
 if (-not $SkipBuild) {Invoke-Checked 'cargo' @('build','--release','--bin','druckwandel-native','--locked')}
@@ -38,6 +39,11 @@ $resourceTarget = Join-Path $payload 'resources'
 New-Item -ItemType Directory -Force $resourceTarget | Out-Null
 if (Test-Path (Join-Path $resourceTarget 'validators')) {Remove-Item (Join-Path $resourceTarget 'validators') -Recurse -Force}
 Copy-Item $validatorRoot $resourceTarget -Recurse -Force
+$ocrRoot = Join-Path $workspace 'resources\ocr'
+foreach ($file in @('tesseract.exe','tessdata/deu.traineddata','tessdata/eng.traineddata','doc/LICENSE')) {
+    if (-not (Test-Path (Join-Path $ocrRoot $file) -PathType Leaf)) {throw "OCR-Paket fehlt: $file. Zuerst python scripts/fetch-ocr.py ausführen."}
+}
+Copy-Item $ocrRoot $resourceTarget -Recurse -Force
 Copy-Item 'apps/native/assets/icon.ico' $payload -Force
 foreach ($file in @('LICENSE','THIRD-PARTY-NOTICES.md')) {Copy-Item $file $payload -Force}
 foreach ($file in @('InstallPrinter.ps1','RemovePrinter.ps1','AssertSessionAccount.ps1')) {

@@ -1,20 +1,129 @@
-import { AboutSlint, Button, ComboBox, LineEdit, Palette, ScrollView, TabWidget, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, Button, CheckBox, ComboBox, LineEdit, Palette, ScrollView, TabWidget, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export global OutputState {
     in-out property <bool> can-email: false;
     in-out property <bool> busy: false;
 }
 
+export global FieldRules {
+    pure callback is-blank(string) -> bool;
+}
+
+global UiMetrics {
+    in-out property <float> scale: 1;
+}
+
 component LabeledField inherits HorizontalBox {
+    callback edited();
     in property <string> label;
+    in property <bool> required: false;
+    private property <bool> missing: root.required && FieldRules.is-blank(root.value);
     in-out property <string> value <=> input.text;
+    padding: 0px;
+    vertical-stretch: 0;
     spacing: 8px;
-    Text { text: root.label; width: 150px; vertical-alignment: center; }
-    input := LineEdit {
-        horizontal-stretch: 1;
-        enabled: !OutputState.busy;
-        edited => { OutputState.can-email = false; }
+    Text {
+        text: root.label + (root.required ? " *" : "");
+        color: root.missing ? #d54444 : Palette.foreground;
+        width: 155px * UiMetrics.scale; vertical-alignment: center;
     }
+    Rectangle {
+        horizontal-stretch: 1; min-height: 36px * UiMetrics.scale;
+        border-width: root.missing ? 2px : 0px;
+        border-color: #d54444; border-radius: 5px;
+        background: transparent;
+        input := LineEdit {
+            x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px;
+            accessible-label: root.label + (root.missing ? ", Pflichtfeld fehlt" : "");
+            enabled: !OutputState.busy;
+            edited => { OutputState.can-email = false; root.edited(); }
+        }
+    }
+}
+
+
+export struct AdjustmentData {
+    charge: bool, amount: string, reason: string, reason-code: string,
+    percent: string, base-amount: string, tax-category: string, tax-rate: string,
+    tax-reason: string, tax-reason-code: string,
+}
+export struct LearningRuleData { id: string, label: string, enabled: bool }
+export struct ReferenceData { number: string, date: string, paid: string }
+
+component TaxFields inherits VerticalBox {
+    callback edited();
+    in-out property <string> category;
+    in-out property <string> rate;
+    in-out property <string> reason;
+    in-out property <string> reason-code;
+    padding: 0px; spacing: 8px;
+    ComboBox {
+        model: ["S – Regelbesteuerung", "Z – Nullsteuersatz", "E – Steuerbefreit", "AE – Reverse Charge", "K – Innergemeinschaftlich"];
+        current-index: root.category == "S" ? 0 : root.category == "Z" ? 1 : root.category == "E" ? 2 : root.category == "AE" ? 3 : root.category == "K" ? 4 : -1;
+        enabled: !OutputState.busy;
+        selected => {
+            root.category = self.current-index == 0 ? "S" : self.current-index == 1 ? "Z" : self.current-index == 2 ? "E" : self.current-index == 3 ? "AE" : "K";
+            if root.category != "S" { root.rate = "0"; }
+            if root.category == "S" && root.rate == "0" { root.rate = ""; }
+            if root.category == "S" || root.category == "Z" { root.reason = ""; root.reason-code = ""; }
+            OutputState.can-email = false; root.edited();
+        }
+    }
+    LabeledField { label: "USt-Satz %"; value <=> root.rate; edited => { root.edited(); } required: true; }
+    if root.category == "E" || root.category == "AE" || root.category == "K" : VerticalBox {
+        padding: 0px; spacing: 8px;
+        LabeledField { label: "Steuerbefreiung"; value <=> root.reason; edited => { root.edited(); } required: true; }
+        LabeledField { label: "Befreiungscode"; value <=> root.reason-code; edited => { root.edited(); } }
+    }
+}
+
+component AdjustmentEditor inherits Rectangle {
+    in-out property <AdjustmentData> item;
+    in property <bool> line-level: false;
+    callback edited(AdjustmentData);
+    callback remove();
+    vertical-stretch: 0;
+    background: Palette.background; border-radius: 6px;
+    border-color: Palette.border; border-width: 1px;
+    VerticalBox {
+        padding: 10px; spacing: 8px;
+        HorizontalBox {
+            padding: 0px;
+            ComboBox {
+                horizontal-stretch: 1;
+                model: ["Rabatt / Abschlag", "Zuschlag"];
+                current-index: root.item.charge ? 1 : 0;
+                enabled: !OutputState.busy;
+                selected => { root.item.charge = self.current-index == 1; OutputState.can-email = false; root.edited(root.item); }
+            }
+            Button { text: "Entfernen"; enabled: !OutputState.busy; clicked => { root.remove(); } }
+        }
+        LabeledField { label: "Nettobetrag"; value <=> root.item.amount; edited => { root.edited(root.item); } required: true; }
+        LabeledField { label: "Begründung"; value <=> root.item.reason; edited => { root.edited(root.item); } required: FieldRules.is-blank(root.item.reason-code); }
+        LabeledField { label: "Grundcode"; value <=> root.item.reason-code; edited => { root.edited(root.item); } }
+        LabeledField { label: "Prozent (optional)"; value <=> root.item.percent; edited => { root.edited(root.item); } }
+        LabeledField { label: "Basisbetrag"; value <=> root.item.base-amount; edited => { root.edited(root.item); } }
+        if !root.line-level : TaxFields {
+            category: root.item.tax-category; rate: root.item.tax-rate;
+            reason: root.item.tax-reason; reason-code: root.item.tax-reason-code;
+            edited => {
+                root.item.tax-category = self.category; root.item.tax-rate = self.rate;
+                root.item.tax-reason = self.reason; root.item.tax-reason-code = self.reason-code;
+                root.edited(root.item);
+            }
+        }
+    }
+}
+
+component ReferenceEditor inherits VerticalBox {
+    in-out property <ReferenceData> item;
+    callback edited(ReferenceData);
+    callback remove();
+    padding: 0px; spacing: 8px;
+    LabeledField { label: "Rechnungsnummer"; value <=> root.item.number; required: true; edited => { root.edited(root.item); } }
+    LabeledField { label: "Rechnungsdatum"; value <=> root.item.date; edited => { root.edited(root.item); } }
+    LabeledField { label: "Gezahlter Betrag"; value <=> root.item.paid; edited => { root.edited(root.item); } }
+    Button { text: "Bezug entfernen"; enabled: !OutputState.busy; clicked => { root.remove(); } }
 }
 
 export component MainWindow inherits Window {
@@ -28,10 +137,12 @@ export component MainWindow inherits Window {
     title: "Druckwandel";
     preferred-width: 1320px;
     preferred-height: 760px;
+    default-font-size: 14px * min(1.25, max(1, self.width / 1440px));
+    changed width => { UiMetrics.scale = min(1.25, max(1, self.width / 1440px)); }
     background: Palette.background;
     icon: @image-url("../assets/app-icon.svg");
-    min-width: 1200px;
-    min-height: 650px;
+    min-width: 900px;
+    min-height: 600px;
 
     in property <[string]> documents;
     in property <[string]> line-labels;
@@ -43,9 +154,73 @@ export component MainWindow inherits Window {
     in property <bool> source-has-xml;
     in property <string> recognition-text;
     in-out property <int> recognition-method: 0;
+    in-out property <bool> recognition-running: false;
+    in-out property <bool> ocr-enabled: true;
+    in-out property <int> ocr-language: 0;
+    in property <string> ocr-status;
+    callback ocr-changed();
+    callback start-recognition(bool);
+    callback learn-corrections();
+    in property <[string]> learning-profiles;
+    in-out property <int> learning-profile-index: 0;
+    in-out property <string> learning-name;
+    in property <[LearningRuleData]> learning-rules;
+    in property <bool> learning-can-undo;
+    callback select-learning-profile();
+    callback create-learning-profile();
+    callback rename-learning-profile();
+    callback delete-learning-profile();
+    callback clear-learning-profile();
+    callback undo-learning-profile();
+    callback toggle-learning-rule(string);
+    callback remove-learning-rule(string);
+    callback recognition-method-changed();
+    changed recognition-method => { root.recognition-method-changed(); }
+    in-out property <string> company-name;
+    in-out property <string> company-street;
+    in-out property <string> company-postal;
+    in-out property <string> company-city;
+    in-out property <string> company-country;
+    in-out property <string> company-vat;
+    in-out property <string> company-tax-number;
+    in-out property <string> company-endpoint;
+    in-out property <string> company-contact-name;
+    in-out property <string> company-contact-phone;
+    in-out property <string> company-contact-email;
+    in-out property <string> company-iban;
+    in property <string> settings-status;
+    callback save-settings();
+    callback apply-company();
     in-out property <int> output-format: 0;
     callback recognize();
     in property <string> status-text;
+    in-out property <int> form-tab: 0;
+    in-out property <int> invoice-kind: 0;
+    in-out property <int> invoice-phase: 0;
+    in-out property <string> service-date;
+    in-out property <string> currency;
+    in-out property <string> prepaid-amount;
+    in-out property <string> payment-terms;
+    in-out property <string> payment-bic;
+    in-out property <string> payment-account;
+    in-out property <string> payment-reference;
+    in-out property <string> payment-means;
+    in-out property <string> invoice-notes;
+    in-out property <string> buyer-vat;
+    in-out property <string> line-unit;
+    in-out property <string> line-description;
+    in-out property <string> line-tax-category;
+    in-out property <string> line-tax-reason;
+    in-out property <string> line-tax-reason-code;
+    in-out property <[AdjustmentData]> document-adjustments;
+    in-out property <[AdjustmentData]> line-adjustments;
+    in-out property <[ReferenceData]> references;
+    callback update-adjustment(bool, int, AdjustmentData);
+    callback update-reference(int, ReferenceData);
+    callback add-adjustment(bool);
+    callback remove-adjustment(bool, int);
+    callback add-reference();
+    callback remove-reference(int);
     in-out property <string> invoice-number;
     in-out property <string> issue-date;
     in-out property <string> due-date;
@@ -56,6 +231,7 @@ export component MainWindow inherits Window {
     in-out property <string> seller-city;
     in-out property <string> seller-country;
     in-out property <string> seller-vat;
+    in-out property <string> seller-tax-number;
     in-out property <string> seller-endpoint;
     in-out property <string> seller-contact-name;
     in-out property <string> seller-contact-phone;
@@ -71,8 +247,10 @@ export component MainWindow inherits Window {
     in-out property <string> line-price;
     in-out property <string> line-tax-rate;
     in-out property <string> payment-iban;
+    in property <bool> iban-required: true;
     private property <bool> show-settings: false;
     out property <bool> settings-open: root.show-settings;
+    in-out property <int> settings-tab: 0;
     in property <image> preview-image;
     in property <float> preview-aspect: 1.414;
     in-out property <int> preview-page: 0;
@@ -109,9 +287,6 @@ export component MainWindow inherits Window {
             Image { source: @image-url("../assets/app-icon.svg"); width: 40px; height: 40px; image-fit: contain; }
             Rectangle { horizontal-stretch: 1; background: transparent; }
 
-            Button { text: "Entwurf speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-draft(); } }
-            Button { text: "Prüfen und speichern"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.save-xml(); } }
-            Button { text: "Per E-Mail senden"; enabled: OutputState.can-email && !OutputState.busy; clicked => { root.send-email(); } }
             Button {
                 icon: @image-url("../assets/settings.svg");
                 icon-size: 20px;
@@ -123,33 +298,116 @@ export component MainWindow inherits Window {
             }
         }
 
+        Rectangle {
+        vertical-stretch: 1;
+        min-width: 0px; min-height: 0px;
+        preferred-width: 0px; preferred-height: 0px;
         if root.show-settings : Rectangle {
+            width: parent.width; height: parent.height;
             background: Palette.alternate-background;
             border-radius: 8px;
-            vertical-stretch: 1;
             VerticalBox {
                 padding: 24px;
                 spacing: 16px;
-                alignment: start;
                 HorizontalBox {
                     Text { text: "Einstellungen"; font-size: 22px; font-weight: 600; horizontal-stretch: 1; }
                     Button { text: "Zurück zur Rechnung"; clicked => { root.show-settings = false; } }
                 }
-                HorizontalBox {
-                    Text { text: "Darstellung"; vertical-alignment: center; }
-                    ComboBox { width: 180px; model: ["System", "Hell", "Dunkel"]; current-index <=> root.appearance; }
+                TabWidget {
+                    current-index <=> root.settings-tab;
+                    vertical-stretch: 1;
+                    Tab {
+                        title: "Unternehmen";
+                        ScrollView {
+                            VerticalBox {
+                                padding: 16px; spacing: 10px; alignment: start;
+                                Text { text: "Rechnungssteller"; font-size: 20px; font-weight: 600; }
+                                Text { text: "Die Vorlage ergänzt fehlende Angaben in neuen Entwürfen. Bestehende Rechnungen bleiben erhalten."; wrap: word-wrap; }
+                                LabeledField { label: "Unternehmen"; value <=> root.company-name; }
+                                LabeledField { label: "Straße"; value <=> root.company-street; }
+                                LabeledField { label: "PLZ"; value <=> root.company-postal; }
+                                LabeledField { label: "Ort"; value <=> root.company-city; }
+                                LabeledField { label: "Land (ISO)"; value <=> root.company-country; }
+                                LabeledField { label: "USt-ID"; value <=> root.company-vat; }
+                                LabeledField { label: "Steuernummer"; value <=> root.company-tax-number; }
+                                LabeledField { label: "E-Adresse"; value <=> root.company-endpoint; }
+                                LabeledField { label: "Kontakt"; value <=> root.company-contact-name; }
+                                LabeledField { label: "Telefon"; value <=> root.company-contact-phone; }
+                                LabeledField { label: "E-Mail"; value <=> root.company-contact-email; }
+                                LabeledField { label: "IBAN"; value <=> root.company-iban; }
+                            }
+                        }
+                    }
+                    Tab {
+                        title: "Allgemein";
+                        VerticalBox {
+                            padding: 16px; spacing: 16px; alignment: start;
+                            Text { text: "Darstellung"; font-size: 18px; font-weight: 600; }
+                            ComboBox { max-width: 320px; model: ["System", "Hell", "Dunkel"]; current-index <=> root.appearance; }
+                            Text { text: "Die Darstellung wird automatisch gespeichert."; wrap: word-wrap; }
+                        }
+                    }
+                    Tab {
+                        title: "Erkennung";
+                        ScrollView {
+                            VerticalBox { padding: 16px; spacing: 12px; alignment: start;
+                            Text { text: "Erkennungsmodus"; font-size: 18px; font-weight: 600; }
+                            ComboBox { max-width: 420px; model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
+                            Text { text: "Die Auswahl gilt für neue Importe und die erneute Erkennung. Der lokale KI-Adapter ist noch nicht installiert."; wrap: word-wrap; }
+                            Text { text: "Erkennungsmodus und OCR-Einstellungen werden automatisch gespeichert."; wrap: word-wrap; }
+
+                                Text { text: "Scans / OCR"; font-size: 18px; font-weight: 600; }
+                                CheckBox { text: "Textarme PDF-Seiten automatisch lokal erkennen"; checked <=> root.ocr-enabled; enabled: !OutputState.busy; toggled => { root.ocr-changed(); } }
+                                ComboBox { model: ["Deutsch + Englisch", "Deutsch", "Englisch"]; current-index <=> root.ocr-language; enabled: !OutputState.busy; selected => { root.ocr-changed(); } }
+                                Text { text: root.ocr-status; wrap: word-wrap; }
+                                Text { text: "OCR ergänzt PDF-Text bei Scans. Das Original bleibt unverändert. Zahlen und Positionen bitte am Beleg prüfen."; wrap: word-wrap; }
+                                Text { text: "Lernprofile"; font-size: 18px; font-weight: 600; }
+                                ComboBox { model: root.learning-profiles; current-index <=> root.learning-profile-index; enabled: !OutputState.busy; selected => { root.select-learning-profile(); } }
+                                LabeledField { label: "Profilname"; value <=> root.learning-name; }
+                                HorizontalBox { padding: 0px;
+                                    Button { text: "Neues Profil"; enabled: !OutputState.busy; clicked => { root.create-learning-profile(); } }
+                                    Button { text: "Umbenennen"; enabled: !OutputState.busy; clicked => { root.rename-learning-profile(); } }
+                                    Button { text: "Profil löschen"; enabled: !OutputState.busy && root.learning-profiles.length > 1; clicked => { root.delete-learning-profile(); } }
+                                }
+                                Text { text: "Nach dem Korrigieren unter Erkennung auf ‚Aus Korrekturen lernen‘ klicken. Das Profil lernt Fundstellen und Tabellenspalten für ähnliche Belege, keine festen Rechnungsnummern oder Datumswerte."; wrap: word-wrap; }
+                                HorizontalBox { padding: 0px;
+                                    Button { text: "Regeln leeren"; enabled: !OutputState.busy && root.learning-rules.length > 0; clicked => { root.clear-learning-profile(); } }
+                                    Button { text: "Rückgängig"; enabled: !OutputState.busy && root.learning-can-undo; clicked => { root.undo-learning-profile(); } }
+                                }
+                                if root.learning-rules.length == 0 : Text { text: "In diesem Profil sind noch keine Fundstellen gelernt."; }
+                                for rule in root.learning-rules : HorizontalBox {
+                                    padding: 0px;
+                                    Text { text: rule.label + (rule.enabled ? "" : " · deaktiviert"); wrap: word-wrap; horizontal-stretch: 1; }
+                                    Button { text: rule.enabled ? "Deaktivieren" : "Aktivieren"; enabled: !OutputState.busy; clicked => { root.toggle-learning-rule(rule.id); } }
+                                    Button { text: "Entfernen"; enabled: !OutputState.busy; clicked => { root.remove-learning-rule(rule.id); } }
+                                }
+                            }
+                        }
+                    }
+                    Tab {
+                        title: "Über";
+                        VerticalBox {
+                            padding: 16px; spacing: 16px; alignment: start;
+                            Text { text: "Über Druckwandel"; font-size: 20px; font-weight: 600; }
+                            Text { text: "Version 0.4.0 (in Entwicklung)"; }
+                            AboutSlint { max-width: 420px; max-height: 220px; }
+                        }
+                    }
+                }
+                if root.settings-tab == 0 : HorizontalBox {
+                    Button { text: "Unternehmensdaten speichern"; enabled: !OutputState.busy; clicked => { root.save-settings(); } }
+                    Button { text: "In aktuelle Rechnung übernehmen"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.apply-company(); } }
                     Rectangle { horizontal-stretch: 1; background: transparent; }
                 }
-                Text { text: "Über Druckwandel"; font-size: 18px; font-weight: 600; }
-                Text { text: "Version 0.4.0 (in Entwicklung)"; }
-                AboutSlint { max-width: 420px; max-height: 220px; }
+                Text { text: root.settings-status; wrap: word-wrap; }
             }
         }
 
         if !root.show-settings : HorizontalBox {
+            width: parent.width; height: parent.height;
             spacing: 16px;
             Rectangle {
-                width: 220px;
+                width: max(160px, min(240px, root.width * 0.16));
                 background: Palette.alternate-background;
                 border-radius: 8px;
                 VerticalBox {
@@ -185,7 +443,7 @@ export component MainWindow inherits Window {
                 }
             }
             if root.selected-name != "" : Rectangle {
-                width: 500px;
+                min-width: 240px;
                 horizontal-stretch: 1;
                 background: Palette.alternate-background;
                 border-radius: 8px;
@@ -228,7 +486,6 @@ export component MainWindow inherits Window {
                                         }
                                     }
                                 }
-                                Button { text: "Im PDF-Programm öffnen"; clicked => { root.open-source(); } }
                             }
                         }
                         Tab {
@@ -239,7 +496,7 @@ export component MainWindow inherits Window {
                                     text: "ZUGFeRD-XML vorhanden. Der aktuelle Import übernimmt nur PDF-Textvorschläge, noch nicht die eingebetteten Rechnungsdaten.";
                                     wrap: word-wrap;
                                 }
-                                ComboBox { model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
+                                Button { text: "Aus Korrekturen lernen"; enabled: !OutputState.busy; clicked => { root.learn-corrections(); } }
                                 Button { text: "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
                                 TextEdit { text: root.recognition-text; read-only: true; vertical-stretch: 1; }
                                 Button { text: root.show-pdf-text ? "PDF-Text ausblenden" : "PDF-Text anzeigen"; clicked => { root.show-pdf-text = !root.show-pdf-text; } }
@@ -250,37 +507,77 @@ export component MainWindow inherits Window {
                 }
             }
             if root.selected-name != "" : Rectangle {
+                min-width: 340px;
                 background: Palette.alternate-background;
                 border-radius: 8px;
                 horizontal-stretch: 1;
-                ScrollView {
-                    VerticalBox {
-                        padding: 16px;
-                        spacing: 8px;
-                        ComboBox { model: ["XRechnung (XML)", "ZUGFeRD (PDF)"]; current-index <=> root.output-format; enabled: !OutputState.busy; selected => { OutputState.can-email = false; } }
+                VerticalBox {
+                padding: 12px; spacing: 10px;
+                TabWidget {
+                    current-index <=> root.form-tab;
+                    vertical-stretch: 1;
+                    Tab { title: "Rechnung";
+                        ScrollView {
+                            VerticalBox { padding: 16px; spacing: 8px; alignment: start;
                         Text { text: "Rechnungsdaten"; font-size: 20px; font-weight: 600; }
-                        LabeledField { label: "Rechnungsnummer"; value <=> root.invoice-number; }
-                        LabeledField { label: "Rechnungsdatum"; value <=> root.issue-date; }
+                        LabeledField { label: "Rechnungsnummer"; value <=> root.invoice-number; required: true; }
+                        LabeledField { label: "Rechnungsdatum"; value <=> root.issue-date; required: true; }
                         LabeledField { label: "Fälligkeit"; value <=> root.due-date; }
-                        LabeledField { label: "Leitweg-ID/Referenz"; value <=> root.buyer-reference; }
+                        LabeledField { label: "Leitweg-ID/Referenz"; value <=> root.buyer-reference; required: root.output-format == 1; }
+
+                        LabeledField { label: "Leistungsdatum"; value <=> root.service-date; }
+                        Text { text: "Datumsangaben: JJJJ-MM-TT"; wrap: word-wrap; }
+                        LabeledField { label: "Währung (ISO)"; value <=> root.currency; required: true; }
+                        Text { text: "Rechnungsart"; font-weight: 600; }
+                        ComboBox {
+                            model: ["Rechnung (380)", "Gutschrift (381)", "Korrekturrechnung (384)", "Teilrechnung (326)"];
+                            current-index <=> root.invoice-kind; enabled: !OutputState.busy;
+                            selected => { if root.invoice-kind != 0 { root.invoice-phase = 0; } OutputState.can-email = false; }
+                        }
+                        ComboBox {
+                            model: ["Keine Anzahlung / Schlussrechnung", "Anzahlungsrechnung", "Schlussrechnung"];
+                            current-index <=> root.invoice-phase; enabled: !OutputState.busy;
+                            selected => { if root.invoice-phase != 0 { root.invoice-kind = 0; } OutputState.can-email = false; }
+                        }
+                        LabeledField { label: "Bereits gezahlt"; value <=> root.prepaid-amount; }
+                        Text { text: "Ohne Gesamtbetrag werden die Zahlungen aus den Rechnungsbezügen verwendet. Bezüge und Rabatte stehen unter Details."; wrap: word-wrap; }
                         Text { text: "Absender"; font-size: 16px; font-weight: 600; }
-                        LabeledField { label: "Name"; value <=> root.seller-name; }
-                        LabeledField { label: "Straße"; value <=> root.seller-street; }
-                        LabeledField { label: "PLZ"; value <=> root.seller-postal; }
-                        LabeledField { label: "Ort"; value <=> root.seller-city; }
-                        LabeledField { label: "Land (ISO)"; value <=> root.seller-country; }
-                        LabeledField { label: "USt-ID"; value <=> root.seller-vat; }
-                        LabeledField { label: "E-Adresse"; value <=> root.seller-endpoint; }
-                        LabeledField { label: "Kontakt"; value <=> root.seller-contact-name; }
-                        LabeledField { label: "Telefon"; value <=> root.seller-contact-phone; }
-                        LabeledField { label: "E-Mail"; value <=> root.seller-contact-email; }
+                        LabeledField { label: "Name"; value <=> root.seller-name; required: true; }
+                        LabeledField { label: "Straße"; value <=> root.seller-street; required: true; }
+                        LabeledField { label: "PLZ"; value <=> root.seller-postal; required: true; }
+                        LabeledField { label: "Ort"; value <=> root.seller-city; required: true; }
+                        LabeledField { label: "Land (ISO)"; value <=> root.seller-country; required: true; }
+                        LabeledField { label: "USt-ID"; value <=> root.seller-vat; required: FieldRules.is-blank(root.seller-tax-number); }
+                        LabeledField { label: "Steuernummer"; value <=> root.seller-tax-number; }
+                        LabeledField { label: "E-Adresse"; value <=> root.seller-endpoint; required: root.output-format == 1; }
+                        LabeledField { label: "Kontakt"; value <=> root.seller-contact-name; required: root.output-format == 1; }
+                        LabeledField { label: "Telefon"; value <=> root.seller-contact-phone; required: root.output-format == 1; }
+                        LabeledField { label: "E-Mail"; value <=> root.seller-contact-email; required: root.output-format == 1; }
                         Text { text: "Empfänger"; font-size: 16px; font-weight: 600; }
-                        LabeledField { label: "Name"; value <=> root.buyer-name; }
-                        LabeledField { label: "Straße"; value <=> root.buyer-street; }
-                        LabeledField { label: "PLZ"; value <=> root.buyer-postal; }
-                        LabeledField { label: "Ort"; value <=> root.buyer-city; }
-                        LabeledField { label: "Land (ISO)"; value <=> root.buyer-country; }
-                        LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; }
+                        LabeledField { label: "Name"; value <=> root.buyer-name; required: true; }
+                        LabeledField { label: "Straße"; value <=> root.buyer-street; required: true; }
+                        LabeledField { label: "PLZ"; value <=> root.buyer-postal; required: true; }
+                        LabeledField { label: "Ort"; value <=> root.buyer-city; required: true; }
+                        LabeledField { label: "Land (ISO)"; value <=> root.buyer-country; required: true; }
+                        LabeledField { label: "USt-ID"; value <=> root.buyer-vat; }
+                        LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; required: root.output-format == 1; }
+                        Text { text: "Zahlung"; font-size: 16px; font-weight: 600; }
+                        LabeledField { label: "IBAN"; value <=> root.payment-iban; required: root.payment-means == "58" || root.payment-means == "59"; }
+                        LabeledField { label: "Zahlungsart (Code)"; value <=> root.payment-means; required: true; }
+                        Text { text: "58 = SEPA-Überweisung, 30 = Überweisung, 10 = Barzahlung"; wrap: word-wrap; }
+                        LabeledField { label: "BIC"; value <=> root.payment-bic; }
+                        LabeledField { label: "Kontoinhaber"; value <=> root.payment-account; }
+                        LabeledField { label: "Verwendungszweck"; value <=> root.payment-reference; }
+                        LabeledField { label: "Zahlungsbedingungen"; value <=> root.payment-terms; }
+                        Text { text: "Rechnungshinweise (ein Hinweis je Zeile)"; }
+                        TextEdit { text <=> root.invoice-notes; min-height: 90px; enabled: !OutputState.busy; edited => { OutputState.can-email = false; } }
+
+                            }
+                        }
+                    }
+                    Tab { title: "Positionen";
+                        ScrollView {
+                            VerticalBox { padding: 16px; spacing: 8px; alignment: start;
                         HorizontalBox {
                             spacing: 8px;
                             Text { text: "Positionen"; font-size: 16px; font-weight: 600; horizontal-stretch: 1; }
@@ -294,19 +591,72 @@ export component MainWindow inherits Window {
                                 enabled: !OutputState.busy; clicked => { root.select-line(index); }
                             }
                         }
-                        LabeledField { label: "Bezeichnung"; value <=> root.line-name; }
-                        LabeledField { label: "Menge"; value <=> root.line-quantity; }
-                        LabeledField { label: "Nettopreis"; value <=> root.line-price; }
-                        LabeledField { label: "USt-Satz %"; value <=> root.line-tax-rate; }
-                        Text { text: "Zahlung"; font-size: 16px; font-weight: 600; }
-                        LabeledField { label: "IBAN"; value <=> root.payment-iban; }
+                        LabeledField { label: "Bezeichnung"; value <=> root.line-name; required: true; }
+                        LabeledField { label: "Menge"; value <=> root.line-quantity; required: true; }
+                        LabeledField { label: "Nettopreis"; value <=> root.line-price; required: true; }
+                        LabeledField { label: "Einheit (Code)"; value <=> root.line-unit; required: true; }
+                        Text { text: "C62 = Stück, HUR = Stunde, MTR = Meter, KGM = Kilogramm"; wrap: word-wrap; }
+                        LabeledField { label: "Beschreibung"; value <=> root.line-description; }
+                        TaxFields { category <=> root.line-tax-category; rate <=> root.line-tax-rate; reason <=> root.line-tax-reason; reason-code <=> root.line-tax-reason-code; }
+                        Text { text: "Rabatte / Zuschläge dieser Position"; font-size: 16px; font-weight: 600; }
+                        Text { text: "Der Nettobetrag gilt für die gesamte Position. Prozent und Basisbetrag beschreiben den Betrag; sie ersetzen ihn nicht."; wrap: word-wrap; }
+                        for adjustment[index] in root.line-adjustments : AdjustmentEditor {
+                            item: adjustment; line-level: true;
+                            edited(value) => { root.update-adjustment(true, index, value); }
+                            remove => { root.remove-adjustment(true, index); }
+                        }
+                        Button { text: "Rabatt / Zuschlag hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-adjustment(true); } }
+
+
+                            }
+                        }
                     }
+                    Tab { title: "Details";
+                        ScrollView {
+                            VerticalBox { padding: 16px; spacing: 8px; alignment: start;
+
+                        Text { text: "Rabatte / Zuschläge der Rechnung"; font-size: 18px; font-weight: 600; }
+                        Text { text: "Nettobeträge in der Rechnungswährung. Prozent und Basisbetrag sind optionale Angaben zum eingegebenen Betrag."; wrap: word-wrap; }
+                        for adjustment[index] in root.document-adjustments : AdjustmentEditor {
+                            item: adjustment;
+                            edited(value) => { root.update-adjustment(false, index, value); }
+                            remove => { root.remove-adjustment(false, index); }
+                        }
+                        Button { text: "Rabatt / Zuschlag hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-adjustment(false); } }
+                        Text { text: "Bezüge auf frühere Rechnungen"; font-size: 18px; font-weight: 600; }
+                        if (root.invoice-kind == 1 || root.invoice-kind == 2 || root.invoice-phase == 2) && root.references.length == 0 : Text {
+                            text: "Bitte mindestens einen Bezug zur Ursprungsrechnung hinzufügen."; color: #d54444; wrap: word-wrap;
+                        }
+                        for reference[index] in root.references : ReferenceEditor {
+                            item: reference;
+                            edited(value) => { root.update-reference(index, value); }
+                            remove => { root.remove-reference(index); }
+                        }
+                        Button { text: "Rechnungsbezug hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-reference(); } }
+
+                            }
+                        }
+                    }
+                }
+                Text { text: "* Pflichtfeld · rot markierte Felder bitte ausfüllen"; wrap: word-wrap; }
+                ComboBox { model: ["ZUGFeRD (PDF)", "XRechnung (XML)"]; current-index <=> root.output-format; enabled: !OutputState.busy; selected => { OutputState.can-email = false; } }
+                HorizontalBox {
+                    spacing: 8px;
+                    Button { text: "Entwurf speichern"; enabled: !OutputState.busy; clicked => { root.save-draft(); } }
+                    Button { text: "Prüfen und speichern"; enabled: !OutputState.busy; clicked => { root.save-xml(); } }
+                }
+                HorizontalBox {
+                    spacing: 8px;
+                    Button { text: "PDF öffnen"; enabled: !OutputState.busy; clicked => { root.open-source(); } }
+                    Button { text: "Per E-Mail senden"; enabled: OutputState.can-email && !OutputState.busy; clicked => { root.send-email(); } }
+                }
                 }
             }
         }
+        }
 
         Text {
-            text: root.status-text;
+            text: root.recognition-running ? "Lokale Erkennung / Lernen läuft …" : root.status-text;
             color: Palette.foreground;
             wrap: word-wrap;
         }

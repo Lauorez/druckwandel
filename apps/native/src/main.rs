@@ -1,12 +1,10 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-use druckwandel_native::extraction::extract_pages;
 use druckwandel_native::invoice::{Contact, ElectronicAddress, InvoiceInput, InvoiceLine};
 use druckwandel_native::output::{SavedOutput, save_xrechnung, save_zugferd};
 use druckwandel_native::print_inbox::{self, PrintJob};
-use druckwandel_native::recognition::{
-    RecognitionMethod, RecognitionRequest, application_registry,
-};
+use druckwandel_native::recognition::{RecognitionMethod, application_registry};
+use druckwandel_native::settings::{CompanyProfile, Settings};
 use druckwandel_native::validation::ValidatorBundle;
 use druckwandel_native::workspace::{Document, Workspace};
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, VecModel};
@@ -15,6 +13,70 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 slint::include_modules!();
+mod extended_form;
+#[cfg(test)]
+mod form_tests;
+mod recognition_ui;
+
+fn set_company_form(window: &MainWindow, company: &CompanyProfile) {
+    window.set_company_name(company.name.clone().into());
+    window.set_company_street(company.street.clone().into());
+    window.set_company_postal(company.postal.clone().into());
+    window.set_company_city(company.city.clone().into());
+    window.set_company_country(company.country.clone().into());
+    window.set_company_vat(company.vat.clone().into());
+    window.set_company_tax_number(company.tax_number.clone().into());
+    window.set_company_endpoint(company.endpoint.clone().into());
+    window.set_company_contact_name(company.contact_name.clone().into());
+    window.set_company_contact_phone(company.contact_phone.clone().into());
+    window.set_company_contact_email(company.contact_email.clone().into());
+    window.set_company_iban(company.iban.clone().into());
+}
+
+fn collect_company_form(window: &MainWindow) -> CompanyProfile {
+    CompanyProfile {
+        name: window.get_company_name().to_string().trim().to_owned(),
+        street: window.get_company_street().to_string().trim().to_owned(),
+        postal: window.get_company_postal().to_string().trim().to_owned(),
+        city: window.get_company_city().to_string().trim().to_owned(),
+        country: window.get_company_country().to_string().trim().to_owned(),
+        vat: window.get_company_vat().to_string().trim().to_owned(),
+        tax_number: window
+            .get_company_tax_number()
+            .to_string()
+            .trim()
+            .to_owned(),
+        endpoint: window.get_company_endpoint().to_string().trim().to_owned(),
+        contact_name: window
+            .get_company_contact_name()
+            .to_string()
+            .trim()
+            .to_owned(),
+        contact_phone: window
+            .get_company_contact_phone()
+            .to_string()
+            .trim()
+            .to_owned(),
+        contact_email: window
+            .get_company_contact_email()
+            .to_string()
+            .trim()
+            .to_owned(),
+        iban: window.get_company_iban().to_string().trim().to_owned(),
+    }
+}
+
+fn selected_recognition(window: &MainWindow) -> RecognitionMethod {
+    if window.get_recognition_method() == 1 {
+        RecognitionMethod::LocalAi
+    } else {
+        RecognitionMethod::Schema
+    }
+}
+
+fn saved_company(store: &Workspace) -> Result<CompanyProfile, String> {
+    Ok(Settings::load(store.root())?.company)
+}
 
 fn optional(value: String) -> Option<String> {
     if value.trim().is_empty() {
@@ -32,6 +94,7 @@ fn endpoint(value: String) -> Option<ElectronicAddress> {
 }
 
 fn set_line_form(window: &MainWindow, line: Option<&InvoiceLine>) {
+    extended_form::set_line(window, line);
     window.set_line_name(line.map(|x| x.name.clone()).unwrap_or_default().into());
     window.set_line_quantity(line.map(|x| x.quantity.clone()).unwrap_or_default().into());
     window.set_line_price(
@@ -66,6 +129,7 @@ fn refresh_line_labels(window: &MainWindow, invoice: &InvoiceInput) {
 }
 
 fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
+    extended_form::set_fields(window, invoice);
     window.set_invoice_number(invoice.invoice_number.clone().into());
     window.set_issue_date(invoice.issue_date.clone().into());
     window.set_due_date(invoice.due_date.clone().unwrap_or_default().into());
@@ -76,6 +140,15 @@ fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
     window.set_seller_city(invoice.seller.address.city.clone().into());
     window.set_seller_country(invoice.seller.address.country_code.clone().into());
     window.set_seller_vat(invoice.seller.vat_id.clone().unwrap_or_default().into());
+    window.set_seller_tax_number(
+        invoice
+            .seller
+            .tax_registration_id
+            .clone()
+            .unwrap_or_default()
+            .into(),
+    );
+    window.set_iban_required(["58", "59"].contains(&invoice.payment.means_code.as_str()));
     window.set_seller_endpoint(
         invoice
             .seller
@@ -133,6 +206,7 @@ fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
 }
 
 fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput {
+    extended_form::collect_fields(window, &mut invoice);
     invoice.invoice_number = window.get_invoice_number().to_string();
     invoice.issue_date = window.get_issue_date().to_string();
     invoice.due_date = optional(window.get_due_date().to_string());
@@ -143,6 +217,7 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.seller.address.city = window.get_seller_city().to_string();
     invoice.seller.address.country_code = window.get_seller_country().to_string();
     invoice.seller.vat_id = optional(window.get_seller_vat().to_string());
+    invoice.seller.tax_registration_id = optional(window.get_seller_tax_number().to_string());
     invoice.seller.electronic_address = endpoint(window.get_seller_endpoint().to_string());
     invoice.seller.contact = Some(Contact {
         name: optional(window.get_seller_contact_name().to_string()),
@@ -156,6 +231,7 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.buyer.address.country_code = window.get_buyer_country().to_string();
     invoice.buyer.electronic_address = endpoint(window.get_buyer_endpoint().to_string());
     if let Some(line) = invoice.lines.get_mut(window.get_selected_line() as usize) {
+        extended_form::collect_line(window, line);
         line.name = window.get_line_name().to_string();
         line.quantity = window.get_line_quantity().to_string();
         line.net_unit_price = window.get_line_price().to_string();
@@ -172,39 +248,28 @@ fn open_document(
     current_id: &RefCell<Option<String>>,
     current_draft: &RefCell<InvoiceInput>,
 ) -> Result<(), String> {
-    let mut recognition_error = None;
-    if !store.has_invoice(&document.id)? {
-        let recognized = RecognitionRequest::from_pdf(document.path.clone(), &document.sha256)
-            .and_then(|request| {
-                application_registry().recognize(RecognitionMethod::Schema, &request)
-            });
-        match recognized {
-            Ok(result) => {
-                store.save_invoice(&document.id, &result.invoice_draft())?;
-                store.save_recognition(&document.id, &result)?;
-            }
-            Err(error) => {
-                // A text parser failure must not prevent visual review or manual entry.
-                store.save_invoice(&document.id, &InvoiceInput::blank())?;
-                recognition_error = Some(format!(
-                    "Texterkennung fehlgeschlagen: {error}\nDie PDF-Vorschau und manuelle Erfassung sind weiterhin verfügbar."
-                ));
-            }
-        }
+    let initial = !store.has_invoice(&document.id)?;
+    if initial {
+        let mut invoice = InvoiceInput::blank();
+        saved_company(store)?.fill_missing(&mut invoice);
+        store.save_invoice(&document.id, &invoice)?;
     }
     let invoice = store.load_invoice(&document.id)?;
     window.set_recognition_text(
         store
             .load_recognition(&document.id)?
             .map(|result| result.review_text())
-            .or(recognition_error)
             .unwrap_or_default()
             .into(),
     );
     set_form(window, &invoice);
     *current_id.borrow_mut() = Some(document.id.clone());
     *current_draft.borrow_mut() = invoice;
-    show_document(window, document)
+    show_document(window, store, document)?;
+    if initial {
+        window.invoke_start_recognition(true);
+    }
+    Ok(())
 }
 
 fn save_current(
@@ -222,7 +287,11 @@ fn save_current(
     Ok(())
 }
 
-fn show_document(window: &MainWindow, document: &Document) -> Result<(), String> {
+fn show_document(
+    window: &MainWindow,
+    store: &Workspace,
+    document: &Document,
+) -> Result<(), String> {
     window.set_selected_name(document.name.clone().into());
     window.set_selected_path(document.path.to_string_lossy().into_owned().into());
     window.set_selected_hash(document.sha256.clone().into());
@@ -232,15 +301,13 @@ fn show_document(window: &MainWindow, document: &Document) -> Result<(), String>
             .and_then(|bytes| druckwandel_native::hybrid_pdf::extract_invoice_xml(&bytes).ok())
             .is_some(),
     );
-    window.set_source_text("".into());
-    let pages = extract_pages(&document.path)?;
-    let no_text = pages.iter().all(|page| page.trim().is_empty());
-    window.set_source_text(pages.join("\n\n--- Seite ---\n\n").into());
-    if no_text {
-        return Err(
-            "Die PDF enthält keinen lesbaren Text. Eine manuelle Erfassung wird benötigt.".into(),
-        );
-    }
+    window.set_source_text(
+        store
+            .load_recognition_source(&document.id)?
+            .map(|request| recognition_ui::source_text(&request))
+            .unwrap_or_else(|| "Erkennung starten, um PDF-Text und Fundstellen zu laden.".into())
+            .into(),
+    );
     Ok(())
 }
 
@@ -331,12 +398,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let (output_sender, output_receiver) =
         std::sync::mpsc::channel::<Result<SavedOutput, String>>();
-    let appearance_path = root.join("appearance.json");
-    let appearance = std::fs::read(&appearance_path)
-        .ok()
-        .and_then(|data| serde_json::from_slice::<i32>(&data).ok())
-        .filter(|value| (0..=2).contains(value))
-        .unwrap_or(0);
+    let settings_result = Settings::load(&root);
+    let settings_error = settings_result.as_ref().err().cloned();
+    let settings = Rc::new(RefCell::new(settings_result.unwrap_or_default()));
+    let appearance = settings.borrow().appearance;
     let initial_theme = match appearance {
         1 => Some(slint::winit_030::winit::window::Theme::Light),
         2 => Some(slint::winit_030::winit::window::Theme::Dark),
@@ -345,7 +410,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     slint::BackendSelector::new()
         .backend_name("winit".into())
         .with_winit_window_attributes_hook(move |attributes| {
-            let attributes = attributes.with_transparent(false).with_theme(initial_theme);
+            let attributes = attributes
+                .with_transparent(false)
+                .with_theme(initial_theme)
+                .with_maximized(true);
             #[cfg(target_os = "macos")]
             {
                 use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
@@ -360,7 +428,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .select()?;
     let window = MainWindow::new()?;
+    extended_form::wire_collections(&window);
+    window
+        .global::<FieldRules>()
+        .on_is_blank(|value| value.trim().is_empty());
     window.set_appearance(appearance);
+    window.set_recognition_method(settings.borrow().recognition_method);
+    set_company_form(&window, &settings.borrow().company);
+    if let Some(error) = settings_error {
+        window.set_settings_status(error.into());
+    }
+    let preferences = Rc::clone(&settings);
+    let settings_root = root.clone();
     let weak = window.as_weak();
     window.on_appearance_changed(move || {
         let Some(window) = weak.upgrade() else { return };
@@ -373,10 +452,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window
             .window()
             .with_winit_window(|native| native.set_theme(theme));
-        if let Err(error) = std::fs::write(&appearance_path, window.get_appearance().to_string()) {
-            window.set_status_text(
-                format!("Darstellung konnte nicht gespeichert werden: {error}").into(),
+        preferences.borrow_mut().appearance = window.get_appearance();
+        if let Err(error) = preferences.borrow().save(&settings_root) {
+            window.set_settings_status(
+                format!("Einstellungen konnten nicht gespeichert werden: {error}").into(),
             );
+        }
+    });
+    let weak = window.as_weak();
+    let preferences = Rc::clone(&settings);
+    let settings_root = root.clone();
+    window.on_recognition_method_changed(move || {
+        let Some(window) = weak.upgrade() else { return };
+        preferences.borrow_mut().recognition_method = window.get_recognition_method();
+        if let Err(error) = preferences.borrow().save(&settings_root) {
+            window.set_settings_status(
+                format!("Einstellungen konnten nicht gespeichert werden: {error}").into(),
+            );
+        }
+    });
+    let weak = window.as_weak();
+    let preferences = Rc::clone(&settings);
+    let settings_root = root.clone();
+    window.on_save_settings(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let mut updated = preferences.borrow().clone();
+        updated.company = collect_company_form(&window);
+        match updated.save(&settings_root) {
+            Ok(()) => {
+                *preferences.borrow_mut() = updated;
+                window.set_settings_status("Unternehmensdaten gespeichert. Neue Entwürfe verwenden die Vorlage für fehlende Angaben.".into());
+            }
+            Err(error) => window.set_settings_status(format!("Speichern fehlgeschlagen: {error}").into()),
         }
     });
     let preview = Rc::new(druckwandel_native::preview::PreviewWorker::new()?);
@@ -443,7 +550,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let current_id = Rc::new(RefCell::new(None::<String>));
     let current_draft = Rc::new(RefCell::new(InvoiceInput::blank()));
     let saved_output = Rc::new(RefCell::new(None::<SavedOutput>));
+    let _recognition_ui = recognition_ui::wire(
+        &window,
+        &workspace,
+        &current_id,
+        &current_draft,
+        &saved_output,
+        &settings,
+    );
     window.set_status_text("PDF importieren oder gespeicherten Entwurf auswählen.".into());
+
+    let weak = window.as_weak();
+    let store = Rc::clone(&workspace);
+    let selected = Rc::clone(&current_id);
+    let draft = Rc::clone(&current_draft);
+    let saved = Rc::clone(&saved_output);
+    let preferences = Rc::clone(&settings);
+    window.on_apply_company(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let Some(id) = selected.borrow().clone() else {
+            return;
+        };
+        let mut invoice = collect_form(&window, draft.borrow().clone());
+        let company = &preferences.borrow().company;
+        if company.name.trim().is_empty() {
+            window.set_settings_status(
+                "Bitte zuerst Unternehmensdaten mit einem Namen speichern.".into(),
+            );
+            return;
+        }
+        invoice.seller = company.party();
+        invoice.payment.iban = optional(company.iban.clone());
+        match store.save_invoice(&id, &invoice) {
+            Ok(()) => {
+                set_form(&window, &invoice);
+                *draft.borrow_mut() = invoice;
+                *saved.borrow_mut() = None;
+                window.global::<OutputState>().set_can_email(false);
+                window.set_settings_status(
+                    "Gespeicherte Unternehmensdaten in die aktuelle Rechnung übernommen.".into(),
+                );
+            }
+            Err(error) => window.set_settings_status(error.into()),
+        }
+    });
 
     let weak = window.as_weak();
     window.on_open_source(move || {
@@ -615,35 +765,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = Rc::clone(&workspace);
     let selected = Rc::clone(&current_id);
     let draft = Rc::clone(&current_draft);
-    let saved = Rc::clone(&saved_output);
-    window.on_recognize(move || {
-        let Some(window)=weak.upgrade() else {return};
-        let Some(id)=selected.borrow().clone() else {return};
-        let method=if window.get_recognition_method()==1 {RecognitionMethod::LocalAi} else {RecognitionMethod::Schema};
-        let result=(|| {
-            let registry=application_registry();
-            // Check availability before reading a PDF or touching the existing draft.
-            if !registry.available(method) {return Err("Lokale KI-Erkennung ist noch nicht installiert. Der lokale Adapter aus dem separaten KI-Projekt kann später ergänzt werden.".to_string());}
-            let request=RecognitionRequest::from_pdf(PathBuf::from(window.get_selected_path().as_str()),window.get_selected_hash().as_str())?;
-            registry.recognize(method,&request)
-        })();
-        match result {
-            Ok(result)=>{
-                let mut invoice=collect_form(&window,draft.borrow().clone());
-                // Re-running recognition fills missing values only. Existing corrections remain.
-                druckwandel_native::recognition::fill_missing(&mut invoice,&result);
-                if let Err(error)=store.save_invoice(&id,&invoice).and_then(|_|store.save_recognition(&id,&result)) {window.set_status_text(error.into());return;}
-                set_form(&window,&invoice);*draft.borrow_mut()=invoice;*saved.borrow_mut()=None;window.global::<OutputState>().set_can_email(false);
-                window.set_recognition_text(result.review_text().into());window.set_status_text("Erkennungsvorschläge übernommen. Bitte Fundstellen und Rechnungsdaten prüfen.".into());
-            },
-            Err(error)=>window.set_status_text(error.into()),
-        }
-    });
-
-    let weak = window.as_weak();
-    let store = Rc::clone(&workspace);
-    let selected = Rc::clone(&current_id);
-    let draft = Rc::clone(&current_draft);
     window.on_save_draft(move || {
         let Some(window) = weak.upgrade() else { return };
         let Some(id) = selected.borrow().clone() else {
@@ -680,7 +801,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return;
         }
         *draft.borrow_mut() = invoice.clone();
-        let zugferd = window.get_output_format() == 1;
+        let zugferd = window.get_output_format() == 0;
+        let errors = if zugferd {
+            druckwandel_native::invoice::validate_en16931(&invoice)
+        } else {
+            druckwandel_native::invoice::validate(&invoice)
+        };
+        if !errors.is_empty() {
+            window.set_status_text(
+                format!(
+                    "Bitte Rechnungsdaten vervollständigen: {}",
+                    errors.join(" ")
+                )
+                .into(),
+            );
+            return;
+        }
         let extension = if zugferd { "pdf" } else { "xml" };
         let Some(path) = rfd::FileDialog::new()
             .add_filter(if zugferd { "ZUGFeRD" } else { "XRechnung" }, &[extension])
@@ -826,6 +962,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
     );
+    window.show()?;
+    window.window().set_maximized(true);
     window.run()?;
     Ok(())
 }

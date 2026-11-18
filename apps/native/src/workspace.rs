@@ -23,6 +23,10 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     pub fn new(root: PathBuf) -> Result<Self, String> {
         fs::create_dir_all(root.join("documents")).map_err(|e| e.to_string())?;
         let workspace = Self { root };
@@ -53,6 +57,10 @@ impl Workspace {
                document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE
              );
              CREATE TABLE IF NOT EXISTS recognition_results (
+               document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+               data TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS recognition_sources (
                document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
                data TEXT NOT NULL
              );
@@ -124,6 +132,37 @@ impl Workspace {
         }
         self.database()?.execute("INSERT INTO recognition_results(document_id,data) VALUES (?1,?2) ON CONFLICT(document_id) DO UPDATE SET data=excluded.data",params![document_id,data]).map_err(|e|e.to_string())?;
         Ok(())
+    }
+
+    pub fn save_recognition_source(
+        &self,
+        id: &str,
+        request: &crate::recognition::RecognitionRequest,
+    ) -> Result<(), String> {
+        let data = serde_json::to_string(request).map_err(|e| e.to_string())?;
+        if data.len() > 30 * 1024 * 1024 {
+            return Err("Fundstellen überschreiten die Speichergrenze.".into());
+        }
+        self.database()?.execute("INSERT INTO recognition_sources(document_id,data) VALUES (?1,?2) ON CONFLICT(document_id) DO UPDATE SET data=excluded.data", params![id,data]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn load_recognition_source(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::recognition::RecognitionRequest>, String> {
+        let result = self.database()?.query_row(
+            "SELECT data FROM recognition_sources WHERE document_id=?1",
+            [id],
+            |row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(data) => serde_json::from_str(&data)
+                .map(Some)
+                .map_err(|e| e.to_string()),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     pub fn load_recognition(&self, document_id: &str) -> Result<Option<RecognitionResult>, String> {

@@ -15,6 +15,10 @@ Der Quellcode dieses Repositorys steht unter der [MIT-Lizenz](LICENSE). Die folg
 
 Wer einen eigenen Installer mit diesen Werkzeugen verteilt, muss die jeweiligen Lizenzbedingungen einhalten.
 
+## OCR
+
+Das private Windows-OCR-Paket wird durch `scripts/fetch-ocr.py` mit festgelegten SHA-256-Prüfsummen bezogen. Es enthält den [Tesseract-Windows-Build von UB Mannheim](https://github.com/UB-Mannheim/tesseract), dessen Laufzeitbibliotheken und deutsche/englische Modelle aus [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0). Tesseract und die Sprachmodelle stehen unter Apache-2.0. Die mitgelieferten Dokumente und Lizenztexte stehen im installierten `resources/ocr/doc/`; die Laufzeitbibliotheken behalten ihre eigenen Lizenzbedingungen. Versions- und Bezugsangaben stehen in `resources/ocr/manifest.json` und `resources/ocr/README.md`.
+
 ## Assets
 
 Die Platzhalter-Assets unter `printer/src/CompanionApp/Assets` stammen aus [microsoft/print-oem-samples](https://github.com/microsoft/print-oem-samples) (MIT, Copyright (c) Microsoft Corporation). Der vollständige Lizenztext steht in [printer/THIRD-PARTY-NOTICES.md](printer/THIRD-PARTY-NOTICES.md).

@@ -40,6 +40,11 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy -p druckwandel-native --all-targets --locked -- -D warnings
       - run: cargo test -p druckwandel-native --locked
+      - name: Lokale Windows-OCR bereitstellen und Scans prüfen
+        if: runner.os == 'Windows'
+        run: |
+          python scripts/fetch-ocr.py
+          cargo test -p druckwandel-native --locked --test ocr -- --ignored
       - name: Offline-Prüfer laden
         run: python scripts/fetch-validators.py
       - name: XML- und PDF-Ausgaben unabhängig prüfen

@@ -1,6 +1,6 @@
 [package]
 name = "druckwandel-native"
-version = "0.4.0-dev"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT"
@@ -17,6 +17,7 @@ hayro = "=0.8.0"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 lopdf = { version = "=0.38.0", default-features = false }
 pdf-extract = "=0.10.0"
+png = "0.18"
 regex = "1"
 rfd = "0.15"
 robius-share = "=0.3.0"
@@ -35,4 +36,3 @@ slint-build = "=1.16.0"
 
 [dev-dependencies]
 slint = { version = "=1.16.0", default-features = false, features = ["renderer-software"] }
-png = "0.18"

@@ -3,7 +3,7 @@
 
 Desktop-Anwendung in **Rust und Slint** für Windows und macOS. PDF-Rechnungen übernehmen, erkannte Daten prüfen, XRechnung oder ZUGFeRD erzeugen, speichern und per Systemfreigabe an ein Mailprogramm übergeben.
 
-`main` enthält ausschließlich die neue Anwendung. Der bisherige Stand ist im gesperrten Branch [legacy/tauri-0.3.5](https://github.com/Lauorez/druckwandel/tree/legacy/tauri-0.3.5) eingefroren. Die veröffentlichten 0.3.x-Downloads gehören zu diesem alten Stand. Die neue Version 0.4.0 ist noch in Entwicklung.
+Version 0.4.0 ist die erste Veröffentlichung der neuen Rust-/Slint-Anwendung. Die 0.3.x-Downloads gehören zur bisherigen Tauri-Anwendung. Ihr Quellcode liegt im Branch [legacy/tauri-0.3.5](https://github.com/Lauorez/druckwandel/tree/legacy/tauri-0.3.5).
 
 ## Umfang
 
@@ -17,7 +17,7 @@ Desktop-Anwendung in **Rust und Slint** für Windows und macOS. PDF-Rechnungen �
 
 Archiv, Buchungsexport, DATEV-Belegpakete und Backup-Oberfläche sind entfernt. Ein späterer DATEV-Belegupload ist im [Produktplan](docs/planning/slint-rust-umstieg.md) beschrieben.
 
-Die eingebettete PDF-Vorschau rendert lokal in Rust mit Seitenwechsel und Zoom. Darstellung und Über-Informationen stehen in den Einstellungen (Zahnrad). OCR, Lernprofile und vollständige Bedienelemente für alle Sonderfälle sind noch nicht portiert. Die Fachkern-Regressionen enthalten die elf bisherigen Exportfälle. Automatische Erkennung liefert Vorschläge; sachliche Richtigkeit und Übereinstimmung mit dem Beleg müssen geprüft werden.
+Die eingebettete PDF-Vorschau rendert lokal in Rust mit Seitenwechsel und Zoom. Unternehmensvorlage, Darstellung und Erkennungsmodus stehen in den Einstellungen (Zahnrad). Das Rechnungsformular unterstützt die bisherigen elf Exportfälle einschließlich Steuerbefreiung, Rabatten/Zuschlägen, Rechnungsbezügen sowie Anzahlungs- und Schlussrechnung. Lokale OCR für Scans und verwaltbare Lernprofile ergänzen die Erkennung. Automatische Erkennung liefert Vorschläge; sachliche Richtigkeit und Übereinstimmung mit dem Beleg müssen geprüft werden.
 
 ## Entwicklung
 
@@ -48,6 +48,7 @@ Lokal:
 
 ```powershell
 python scripts/fetch-validators.py
+python scripts/fetch-ocr.py
 ./scripts/build-windows-installer.ps1 -PrinterPackagePath <Printer.msix> -PrinterDependencyPath <WindowsAppRuntime.msix> -PrinterCertificatePath <PrinterCertificate.cer>
 ```
 
