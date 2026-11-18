@@ -3,6 +3,25 @@
 use flate2::{Decompress, FlushDecompress, Status};
 use lopdf::{Document, Stream, dictionary};
 
+pub(crate) fn load_document(bytes: &[u8]) -> Result<Document, String> {
+    #[cfg(windows)]
+    {
+        // The recursive parser can exhaust the default Windows stack before it
+        // reaches its nesting limit, especially in debug builds.
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(8 * 1024 * 1024)
+                .spawn_scoped(scope, || Document::load_mem(bytes))
+                .map_err(|error| error.to_string())?
+                .join()
+                .map_err(|_| "Die PDF konnte nicht gelesen werden.".to_owned())?
+                .map_err(|error| error.to_string())
+        })
+    }
+    #[cfg(not(windows))]
+    Document::load_mem(bytes).map_err(|error| error.to_string())
+}
+
 fn whitespace(byte: u8) -> bool {
     matches!(byte, 0 | 9 | 10 | 12 | 13 | 32)
 }

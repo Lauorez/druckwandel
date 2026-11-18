@@ -160,7 +160,7 @@ pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
     if bytes.len() > 100 * 1024 * 1024 {
         return Err("PDF überschreitet 100 MB.".into());
     }
-    let mut doc = lopdf::Document::load_mem(bytes).map_err(|e| e.to_string())?;
+    let mut doc = crate::pdf_compat::load_document(bytes)?;
     if doc.is_encrypted() {
         return Err("Verschlüsselte PDF wird nicht unterstützt.".into());
     }

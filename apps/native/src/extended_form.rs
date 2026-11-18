@@ -9,6 +9,51 @@ fn text(value: &Option<String>) -> slint::SharedString {
     value.clone().unwrap_or_default().into()
 }
 
+fn decimal_text(value: &str) -> String {
+    let value = value.trim();
+    match value.split_once(',') {
+        Some((integer, fraction)) if !value.contains('.') && !fraction.contains(',') => {
+            format!("{integer}.{fraction}")
+        }
+        _ => value.into(),
+    }
+}
+
+pub fn normalize_decimals(invoice: &mut InvoiceInput) {
+    for line in &mut invoice.lines {
+        line.quantity = decimal_text(&line.quantity);
+        line.net_unit_price = decimal_text(&line.net_unit_price);
+        line.tax.rate = decimal_text(&line.tax.rate);
+    }
+    for item in invoice.allowances.iter_mut().chain(
+        invoice
+            .lines
+            .iter_mut()
+            .flat_map(|line| &mut line.allowances),
+    ) {
+        item.amount = decimal_text(&item.amount);
+        item.tax.rate = decimal_text(&item.tax.rate);
+        item.percent = item
+            .percent
+            .take()
+            .and_then(|value| optional(decimal_text(&value)));
+        item.base_amount = item
+            .base_amount
+            .take()
+            .and_then(|value| optional(decimal_text(&value)));
+    }
+    for reference in &mut invoice.preceding_invoices {
+        reference.paid_amount = reference
+            .paid_amount
+            .take()
+            .and_then(|value| optional(decimal_text(&value)));
+    }
+    invoice.prepaid_amount = invoice
+        .prepaid_amount
+        .take()
+        .and_then(|value| optional(decimal_text(&value)));
+}
+
 fn adjustment_data(item: &AllowanceCharge) -> AdjustmentData {
     AdjustmentData {
         charge: item.charge,
@@ -149,9 +194,13 @@ pub fn set_line(ui: &MainWindow, line: Option<&InvoiceLine>) {
 }
 
 pub fn collect_line(ui: &MainWindow, line: &mut InvoiceLine) {
+    line.name = ui.get_line_name().to_string();
+    line.quantity = ui.get_line_quantity().to_string();
+    line.net_unit_price = ui.get_line_price().to_string();
     line.unit_code = ui.get_line_unit().trim().to_uppercase();
     line.description = optional(ui.get_line_description().to_string());
     line.tax.category_code = ui.get_line_tax_category().to_string();
+    line.tax.rate = ui.get_line_tax_rate().to_string();
     line.tax.exemption_reason = optional(ui.get_line_tax_reason().to_string());
     line.tax.exemption_reason_code = optional(ui.get_line_tax_reason_code().to_string());
     line.allowances = adjustments(ui.get_line_adjustments());

@@ -1,4 +1,5 @@
-import { AboutSlint, Button, CheckBox, ComboBox, LineEdit, Palette, ScrollView, TabWidget, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, CheckBox, ComboBox, LineEdit, Palette, ScrollView, TabWidget, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { ActionButton } from "action-button.slint";
 
 export global OutputState {
     in-out property <bool> can-email: false;
@@ -7,10 +8,6 @@ export global OutputState {
 
 export global FieldRules {
     pure callback is-blank(string) -> bool;
-}
-
-global UiMetrics {
-    in-out property <float> scale: 1;
 }
 
 component LabeledField inherits HorizontalBox {
@@ -25,10 +22,10 @@ component LabeledField inherits HorizontalBox {
     Text {
         text: root.label + (root.required ? " *" : "");
         color: root.missing ? #d54444 : Palette.foreground;
-        width: 155px * UiMetrics.scale; vertical-alignment: center;
+        width: 155px; vertical-alignment: center;
     }
     Rectangle {
-        horizontal-stretch: 1; min-height: 36px * UiMetrics.scale;
+        horizontal-stretch: 1; min-height: 36px;
         border-width: root.missing ? 2px : 0px;
         border-color: #d54444; border-radius: 5px;
         background: transparent;
@@ -49,6 +46,7 @@ export struct AdjustmentData {
 }
 export struct LearningRuleData { id: string, label: string, enabled: bool }
 export struct ReferenceData { number: string, date: string, paid: string }
+export struct DraftEntry { id: string, name: string }
 
 component TaxFields inherits VerticalBox {
     callback edited();
@@ -96,7 +94,7 @@ component AdjustmentEditor inherits Rectangle {
                 enabled: !OutputState.busy;
                 selected => { root.item.charge = self.current-index == 1; OutputState.can-email = false; root.edited(root.item); }
             }
-            Button { text: "Entfernen"; enabled: !OutputState.busy; clicked => { root.remove(); } }
+            ActionButton { text: "Entfernen"; enabled: !OutputState.busy; clicked => { root.remove(); } }
         }
         LabeledField { label: "Nettobetrag"; value <=> root.item.amount; edited => { root.edited(root.item); } required: true; }
         LabeledField { label: "Begründung"; value <=> root.item.reason; edited => { root.edited(root.item); } required: FieldRules.is-blank(root.item.reason-code); }
@@ -123,7 +121,7 @@ component ReferenceEditor inherits VerticalBox {
     LabeledField { label: "Rechnungsnummer"; value <=> root.item.number; required: true; edited => { root.edited(root.item); } }
     LabeledField { label: "Rechnungsdatum"; value <=> root.item.date; edited => { root.edited(root.item); } }
     LabeledField { label: "Gezahlter Betrag"; value <=> root.item.paid; edited => { root.edited(root.item); } }
-    Button { text: "Bezug entfernen"; enabled: !OutputState.busy; clicked => { root.remove(); } }
+    ActionButton { text: "Bezug entfernen"; enabled: !OutputState.busy; clicked => { root.remove(); } }
 }
 
 export component MainWindow inherits Window {
@@ -137,16 +135,18 @@ export component MainWindow inherits Window {
     title: "Druckwandel";
     preferred-width: 1320px;
     preferred-height: 760px;
-    default-font-size: 14px * min(1.25, max(1, self.width / 1440px));
-    changed width => { UiMetrics.scale = min(1.25, max(1, self.width / 1440px)); }
+    default-font-size: 14px;
     background: Palette.background;
     icon: @image-url("../assets/app-icon.svg");
     min-width: 900px;
     min-height: 600px;
 
-    in property <[string]> documents;
+    in property <[DraftEntry]> documents;
+    in property <string> selected-document-id;
     in property <[string]> line-labels;
     in-out property <int> selected-line: 0;
+    private property <int> line-picker-index: 0;
+    changed selected-line => { root.line-picker-index = root.selected-line; }
     in property <string> selected-name;
     in property <string> selected-path;
     in property <string> selected-hash;
@@ -194,6 +194,9 @@ export component MainWindow inherits Window {
     in-out property <int> output-format: 0;
     callback recognize();
     in property <string> status-text;
+    in property <string> app-version;
+    in-out property <string> export-issue;
+    in-out property <bool> export-review-required: false;
     in-out property <int> form-tab: 0;
     in-out property <int> invoice-kind: 0;
     in-out property <int> invoice-phase: 0;
@@ -272,7 +275,7 @@ export component MainWindow inherits Window {
     callback import-print-job();
     callback select-document(int);
     callback save-draft();
-    callback save-xml();
+    callback save-output(bool);
     callback send-email();
     callback select-line(int);
     callback add-line();
@@ -287,10 +290,8 @@ export component MainWindow inherits Window {
             Image { source: @image-url("../assets/app-icon.svg"); width: 40px; height: 40px; image-fit: contain; }
             Rectangle { horizontal-stretch: 1; background: transparent; }
 
-            Button {
+            ActionButton {
                 icon: @image-url("../assets/settings.svg");
-                icon-size: 20px;
-                colorize-icon: true;
                 height: 40px;
                 accessible-label: "Einstellungen";
                 width: 40px;
@@ -311,7 +312,7 @@ export component MainWindow inherits Window {
                 spacing: 16px;
                 HorizontalBox {
                     Text { text: "Einstellungen"; font-size: 22px; font-weight: 600; horizontal-stretch: 1; }
-                    Button { text: "Zurück zur Rechnung"; clicked => { root.show-settings = false; } }
+                    ActionButton { text: "Zurück zur Rechnung"; clicked => { root.show-settings = false; } }
                 }
                 TabWidget {
                     current-index <=> root.settings-tab;
@@ -365,21 +366,21 @@ export component MainWindow inherits Window {
                                 ComboBox { model: root.learning-profiles; current-index <=> root.learning-profile-index; enabled: !OutputState.busy; selected => { root.select-learning-profile(); } }
                                 LabeledField { label: "Profilname"; value <=> root.learning-name; }
                                 HorizontalBox { padding: 0px;
-                                    Button { text: "Neues Profil"; enabled: !OutputState.busy; clicked => { root.create-learning-profile(); } }
-                                    Button { text: "Umbenennen"; enabled: !OutputState.busy; clicked => { root.rename-learning-profile(); } }
-                                    Button { text: "Profil löschen"; enabled: !OutputState.busy && root.learning-profiles.length > 1; clicked => { root.delete-learning-profile(); } }
+                                    ActionButton { text: "Neues Profil"; enabled: !OutputState.busy; clicked => { root.create-learning-profile(); } }
+                                    ActionButton { text: "Umbenennen"; enabled: !OutputState.busy; clicked => { root.rename-learning-profile(); } }
+                                    ActionButton { text: "Profil löschen"; enabled: !OutputState.busy && root.learning-profiles.length > 1; clicked => { root.delete-learning-profile(); } }
                                 }
                                 Text { text: "Nach dem Korrigieren unter Erkennung auf ‚Aus Korrekturen lernen‘ klicken. Das Profil lernt Fundstellen und Tabellenspalten für ähnliche Belege, keine festen Rechnungsnummern oder Datumswerte."; wrap: word-wrap; }
                                 HorizontalBox { padding: 0px;
-                                    Button { text: "Regeln leeren"; enabled: !OutputState.busy && root.learning-rules.length > 0; clicked => { root.clear-learning-profile(); } }
-                                    Button { text: "Rückgängig"; enabled: !OutputState.busy && root.learning-can-undo; clicked => { root.undo-learning-profile(); } }
+                                    ActionButton { text: "Regeln leeren"; enabled: !OutputState.busy && root.learning-rules.length > 0; clicked => { root.clear-learning-profile(); } }
+                                    ActionButton { text: "Rückgängig"; enabled: !OutputState.busy && root.learning-can-undo; clicked => { root.undo-learning-profile(); } }
                                 }
                                 if root.learning-rules.length == 0 : Text { text: "In diesem Profil sind noch keine Fundstellen gelernt."; }
                                 for rule in root.learning-rules : HorizontalBox {
                                     padding: 0px;
                                     Text { text: rule.label + (rule.enabled ? "" : " · deaktiviert"); wrap: word-wrap; horizontal-stretch: 1; }
-                                    Button { text: rule.enabled ? "Deaktivieren" : "Aktivieren"; enabled: !OutputState.busy; clicked => { root.toggle-learning-rule(rule.id); } }
-                                    Button { text: "Entfernen"; enabled: !OutputState.busy; clicked => { root.remove-learning-rule(rule.id); } }
+                                    ActionButton { text: rule.enabled ? "Deaktivieren" : "Aktivieren"; enabled: !OutputState.busy; clicked => { root.toggle-learning-rule(rule.id); } }
+                                    ActionButton { text: "Entfernen"; enabled: !OutputState.busy; clicked => { root.remove-learning-rule(rule.id); } }
                                 }
                             }
                         }
@@ -389,14 +390,14 @@ export component MainWindow inherits Window {
                         VerticalBox {
                             padding: 16px; spacing: 16px; alignment: start;
                             Text { text: "Über Druckwandel"; font-size: 20px; font-weight: 600; }
-                            Text { text: "Version 0.4.0 (in Entwicklung)"; }
+                            Text { text: "Version " + root.app-version; }
                             AboutSlint { max-width: 420px; max-height: 220px; }
                         }
                     }
                 }
                 if root.settings-tab == 0 : HorizontalBox {
-                    Button { text: "Unternehmensdaten speichern"; enabled: !OutputState.busy; clicked => { root.save-settings(); } }
-                    Button { text: "In aktuelle Rechnung übernehmen"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.apply-company(); } }
+                    ActionButton { text: "Unternehmensdaten speichern"; primary: true; enabled: !OutputState.busy; clicked => { root.save-settings(); } }
+                    ActionButton { text: "In aktuelle Rechnung übernehmen"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.apply-company(); } }
                     Rectangle { horizontal-stretch: 1; background: transparent; }
                 }
                 Text { text: root.settings-status; wrap: word-wrap; }
@@ -413,16 +414,19 @@ export component MainWindow inherits Window {
                 VerticalBox {
                     padding: 12px;
                     spacing: 8px;
-                    Button { text: "Neue PDF öffnen"; enabled: !OutputState.busy; clicked => { root.import-pdf(); } }
-                    Button { text: "Druckeingang"; enabled: !OutputState.busy; clicked => { root.import-print-job(); } }
+                    ActionButton { text: "Neue PDF öffnen"; primary: true; enabled: !OutputState.busy; clicked => { root.import-pdf(); } }
+                    ActionButton { text: "Druckeingang"; enabled: !OutputState.busy; clicked => { root.import-print-job(); } }
                     Text { text: "Entwürfe"; font-size: 18px; font-weight: 600; }
                     ScrollView {
                         vertical-stretch: 1;
                         VerticalBox {
+                            padding: 0px;
                             alignment: start;
                             spacing: 4px;
-                            for document[index] in root.documents : Button {
-                                text: document;
+                            for document[index] in root.documents : ActionButton {
+                                text: document.name;
+                                primary: document.id == root.selected-document-id;
+                                selected: document.id == root.selected-document-id;
                                 height: 36px;
                                 enabled: !OutputState.busy; clicked => { root.select-document(index); }
                             }
@@ -458,10 +462,17 @@ export component MainWindow inherits Window {
                             VerticalBox {
                                 spacing: 8px;
                                 HorizontalBox {
-                                    Button { text: "‹"; accessible-label: "Vorherige Seite"; enabled: root.preview-page > 0; clicked => { root.preview-page -= 1; } }
-                                    Text { text: root.preview-page-count > 0 ? "Seite " + (root.preview-page + 1) + " / " + root.preview-page-count : "PDF"; vertical-alignment: center; }
-                                    Button { text: "›"; accessible-label: "Nächste Seite"; enabled: root.preview-page + 1 < root.preview-page-count; clicked => { root.preview-page += 1; } }
-                                    ComboBox { model: ["Seitenbreite", "125 %", "150 %", "200 %"]; current-index <=> root.preview-zoom; }
+                                    padding: 0px;
+                                    spacing: 4px;
+                                    ActionButton { text: "‹"; accessible-label: "Vorherige Seite"; enabled: root.preview-page > 0; clicked => { root.preview-page -= 1; } }
+                                    Text {
+                                        text: root.preview-page-count > 0 ? (root.preview-page + 1) + " / " + root.preview-page-count : "PDF";
+                                        accessible-label: root.preview-page-count > 0 ? "Seite " + self.text : self.text;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    ActionButton { text: "›"; accessible-label: "Nächste Seite"; enabled: root.preview-page + 1 < root.preview-page-count; clicked => { root.preview-page += 1; } }
+                                    ComboBox { min-width: 112px; model: ["Seitenbreite", "125 %", "150 %", "200 %"]; current-index <=> root.preview-zoom; }
                                 }
                                 if root.preview-loading : Text { text: "Seite wird gerendert …"; }
                                 if root.preview-error != "" : Text { text: root.preview-error; wrap: word-wrap; }
@@ -496,10 +507,10 @@ export component MainWindow inherits Window {
                                     text: "ZUGFeRD-XML vorhanden. Der aktuelle Import übernimmt nur PDF-Textvorschläge, noch nicht die eingebetteten Rechnungsdaten.";
                                     wrap: word-wrap;
                                 }
-                                Button { text: "Aus Korrekturen lernen"; enabled: !OutputState.busy; clicked => { root.learn-corrections(); } }
-                                Button { text: "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
+                                ActionButton { text: "Aus Korrekturen lernen"; enabled: !OutputState.busy; clicked => { root.learn-corrections(); } }
+                                ActionButton { text: "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
                                 TextEdit { text: root.recognition-text; read-only: true; vertical-stretch: 1; }
-                                Button { text: root.show-pdf-text ? "PDF-Text ausblenden" : "PDF-Text anzeigen"; clicked => { root.show-pdf-text = !root.show-pdf-text; } }
+                                ActionButton { text: root.show-pdf-text ? "PDF-Text ausblenden" : "PDF-Text anzeigen"; clicked => { root.show-pdf-text = !root.show-pdf-text; } }
                                 if root.show-pdf-text : TextEdit { text: root.source-text; read-only: true; vertical-stretch: 1; }
                             }
                         }
@@ -513,7 +524,13 @@ export component MainWindow inherits Window {
                 horizontal-stretch: 1;
                 VerticalBox {
                 padding: 12px; spacing: 10px;
+                GridLayout {
+                vertical-stretch: 1;
+                min-height: 0px;
+                preferred-height: 0px;
                 TabWidget {
+                    row: 0; col: 0;
+                    visible: root.export-issue == "";
                     current-index <=> root.form-tab;
                     vertical-stretch: 1;
                     Tab { title: "Rechnung";
@@ -562,7 +579,7 @@ export component MainWindow inherits Window {
                         LabeledField { label: "USt-ID"; value <=> root.buyer-vat; }
                         LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; required: root.output-format == 1; }
                         Text { text: "Zahlung"; font-size: 16px; font-weight: 600; }
-                        LabeledField { label: "IBAN"; value <=> root.payment-iban; required: root.payment-means == "58" || root.payment-means == "59"; }
+                        LabeledField { label: "IBAN"; value <=> root.payment-iban; required: root.payment-means == "30" || root.payment-means == "58" || root.payment-means == "59"; }
                         LabeledField { label: "Zahlungsart (Code)"; value <=> root.payment-means; required: true; }
                         Text { text: "58 = SEPA-Überweisung, 30 = Überweisung, 10 = Barzahlung"; wrap: word-wrap; }
                         LabeledField { label: "BIC"; value <=> root.payment-bic; }
@@ -579,17 +596,17 @@ export component MainWindow inherits Window {
                         ScrollView {
                             VerticalBox { padding: 16px; spacing: 8px; alignment: start;
                         HorizontalBox {
+                            padding: 0px;
                             spacing: 8px;
-                            Text { text: "Positionen"; font-size: 16px; font-weight: 600; horizontal-stretch: 1; }
-                            Button { text: "+"; enabled: root.selected-name != "" && !OutputState.busy; clicked => { root.add-line(); } }
-                            Button { text: "−"; enabled: root.selected-name != "" && root.line-labels.length > 1 && !OutputState.busy; clicked => { root.remove-line(); } }
-                        }
-                        HorizontalBox {
-                            spacing: 4px;
-                            for line[index] in root.line-labels : Button {
-                                text: line;
-                                enabled: !OutputState.busy; clicked => { root.select-line(index); }
+                            ComboBox {
+                                accessible-label: "Rechnungsposition auswählen";
+                                model: root.line-labels;
+                                current-index <=> root.line-picker-index;
+                                enabled: !OutputState.busy;
+                                selected => { root.select-line(self.current-index); }
                             }
+                            ActionButton { text: "+"; accessible-label: "Position hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-line(); } }
+                            ActionButton { text: "−"; accessible-label: "Aktuelle Position entfernen"; enabled: root.line-labels.length > 1 && !OutputState.busy; clicked => { root.remove-line(); } }
                         }
                         LabeledField { label: "Bezeichnung"; value <=> root.line-name; required: true; }
                         LabeledField { label: "Menge"; value <=> root.line-quantity; required: true; }
@@ -605,7 +622,7 @@ export component MainWindow inherits Window {
                             edited(value) => { root.update-adjustment(true, index, value); }
                             remove => { root.remove-adjustment(true, index); }
                         }
-                        Button { text: "Rabatt / Zuschlag hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-adjustment(true); } }
+                        ActionButton { text: "Rabatt / Zuschlag hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-adjustment(true); } }
 
 
                             }
@@ -622,7 +639,7 @@ export component MainWindow inherits Window {
                             edited(value) => { root.update-adjustment(false, index, value); }
                             remove => { root.remove-adjustment(false, index); }
                         }
-                        Button { text: "Rabatt / Zuschlag hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-adjustment(false); } }
+                        ActionButton { text: "Rabatt / Zuschlag hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-adjustment(false); } }
                         Text { text: "Bezüge auf frühere Rechnungen"; font-size: 18px; font-weight: 600; }
                         if (root.invoice-kind == 1 || root.invoice-kind == 2 || root.invoice-phase == 2) && root.references.length == 0 : Text {
                             text: "Bitte mindestens einen Bezug zur Ursprungsrechnung hinzufügen."; color: #d54444; wrap: word-wrap;
@@ -632,23 +649,56 @@ export component MainWindow inherits Window {
                             edited(value) => { root.update-reference(index, value); }
                             remove => { root.remove-reference(index); }
                         }
-                        Button { text: "Rechnungsbezug hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-reference(); } }
+                        ActionButton { text: "Rechnungsbezug hinzufügen"; enabled: !OutputState.busy; clicked => { root.add-reference(); } }
 
                             }
                         }
                     }
                 }
+                if root.export-issue != "" : Rectangle {
+                    row: 0; col: 0;
+                    background: Palette.background;
+                    border-color: Palette.border;
+                    border-width: 1px;
+                    border-radius: 6px;
+                    VerticalBox {
+                        padding: 8px; spacing: 8px;
+                        HorizontalBox {
+                            padding: 0px;
+                            Text { text: "Ausgabe prüfen"; font-size: 16px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                            ActionButton {
+                                text: "Zum Formular";
+                                clicked => { root.export-issue = ""; root.export-review-required = false; }
+                            }
+                        }
+                        ScrollView {
+                            vertical-stretch: 1;
+                            VerticalBox {
+                                padding: 4px;
+                                Text { text: root.export-issue; wrap: word-wrap; }
+                            }
+                        }
+                        if root.export-review-required : ActionButton {
+                            text: "Abweichung geprüft – weiter";
+                            primary: true;
+                            clicked => { root.save-output(true); }
+                        }
+                    }
+                }
+                }
                 Text { text: "* Pflichtfeld · rot markierte Felder bitte ausfüllen"; wrap: word-wrap; }
                 ComboBox { model: ["ZUGFeRD (PDF)", "XRechnung (XML)"]; current-index <=> root.output-format; enabled: !OutputState.busy; selected => { OutputState.can-email = false; } }
                 HorizontalBox {
+                    padding: 0px;
                     spacing: 8px;
-                    Button { text: "Entwurf speichern"; enabled: !OutputState.busy; clicked => { root.save-draft(); } }
-                    Button { text: "Prüfen und speichern"; enabled: !OutputState.busy; clicked => { root.save-xml(); } }
+                    ActionButton { text: "Entwurf speichern"; enabled: !OutputState.busy; clicked => { root.save-draft(); } }
+                    ActionButton { text: "Prüfen und speichern"; primary: true; enabled: !OutputState.busy; clicked => { root.save-output(false); } }
                 }
                 HorizontalBox {
+                    padding: 0px;
                     spacing: 8px;
-                    Button { text: "PDF öffnen"; enabled: !OutputState.busy; clicked => { root.open-source(); } }
-                    Button { text: "Per E-Mail senden"; enabled: OutputState.can-email && !OutputState.busy; clicked => { root.send-email(); } }
+                    ActionButton { text: "PDF öffnen"; enabled: !OutputState.busy; clicked => { root.open-source(); } }
+                    ActionButton { text: "Per E-Mail senden"; enabled: OutputState.can-email && !OutputState.busy; clicked => { root.send-email(); } }
                 }
                 }
             }

@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.4.1
+
+- Der Windows-Installer bietet eine optionale Desktopverknüpfung.
+- Schnellere Navigation zwischen geöffneten Entwürfen und Rechnungspositionen sowie klarere Hinweise beim Export.
+- Das Rechnungsformular akzeptiert Dezimalkommas. Ausgabedateinamen und Speicherorte werden vor dem Export geprüft.
+- Die Audit-Korrekturen verbessern die Prüfung von PDF-Originalen und Ausgabeformaten sowie die Sicherheit beim Import und Speichern.
+
 ## 0.4.0
 
 - Lokale Tesseract-OCR für textarme und gemischte PDFs, deutscher/englischer Offline-Laufzeit im Windows-Installer, Hintergrund-Erkennung und gespeicherten Fundstellen.

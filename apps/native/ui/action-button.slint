@@ -1,0 +1,87 @@
+import { Palette } from "std-widgets.slint";
+
+export component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    in property <bool> selected: false;
+    callback clicked();
+
+    private property <brush> content-color: root.enabled ? #ffffff : Palette.foreground.transparentize(0.45);
+
+    min-width: max(32px, content.min-width);
+    min-height: max(32px, content.min-height);
+    preferred-width: max(self.min-width, content.preferred-width);
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 6px;
+    border-width: root.selected ? 2px : 1px;
+    border-color: !root.enabled ? Palette.border : root.selected ? #90d5a8 : #5e9b76;
+    background: !root.enabled ? Palette.control-background
+        : pointer.pressed ? #15432d
+        : pointer.has-hover ? #26724b
+        : root.primary ? #176640 : #345e48;
+
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled { root.clicked(); }
+    }
+
+    content := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        alignment: center;
+
+        if root.icon.width > 0 : Image {
+            source: root.icon;
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            image-fit: contain;
+            colorize: root.content-color;
+        }
+
+        if root.text != "" : Text {
+            text: root.text;
+            color: root.content-color;
+            font-weight: root.primary ? 600 : 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+    }
+
+    pointer := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+
+    keyboard := FocusScope {
+        width: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    if keyboard.has-focus && root.enabled : Rectangle {
+        x: 3px;
+        y: 3px;
+        width: parent.width - 6px;
+        height: parent.height - 6px;
+        border-radius: 4px;
+        border-width: 2px;
+        border-color: #ffffff;
+    }
+}

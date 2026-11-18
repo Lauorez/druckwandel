@@ -15,6 +15,43 @@ impl Platform for Offscreen {
 }
 
 #[test]
+fn export_destinations_protect_originals_and_validate_extensions() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Workspace::new(temp.path().join("profile")).unwrap();
+    assert_eq!(
+        suggested_output_name(" RE:2026/01 ", true),
+        "Rechnung-RE-2026-01-ZUGFeRD.pdf"
+    );
+    let destination = temp.path().join("Ausgabe");
+    let expected = destination.with_extension("pdf");
+    assert_eq!(
+        export_path(destination.clone(), "pdf", &store).unwrap(),
+        expected
+    );
+    std::fs::write(&expected, b"existing file").unwrap();
+    assert!(export_path(destination, "pdf", &store).is_err());
+    assert_eq!(
+        export_path(expected.clone(), "pdf", &store).unwrap(),
+        expected
+    );
+    assert!(export_path(expected, "xml", &store).is_err());
+    assert!(export_path(store.root().join("documents/geschuetzt.pdf"), "pdf", &store).is_err());
+}
+
+#[test]
+fn export_preflight_reports_missing_format_specific_fields() {
+    let mut invoice: InvoiceInput =
+        serde_json::from_str(include_str!("../tests/fixtures/export/standard.json")).unwrap();
+    assert!(desktop_export_errors(&invoice, false).is_empty());
+    invoice.buyer.electronic_address = None;
+    assert!(desktop_export_errors(&invoice, true).is_empty());
+    assert_eq!(
+        desktop_export_errors(&invoice, false),
+        ["E-Adresse des Empfängers fehlt."]
+    );
+}
+
+#[test]
 fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() {
     let surface = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(Offscreen(surface))).unwrap();
@@ -65,6 +102,7 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
         invoice_number: "ALT".into(),
         ..Default::default()
     });
+    input.lines[1].net_unit_price = "12,345".into();
     set_form(&ui, &input);
     ui.global::<OutputState>().set_can_email(true);
     ui.invoke_remove_reference(0);
@@ -76,7 +114,7 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
         ReferenceData {
             number: "NEU".into(),
             date: "2026-07-01".into(),
-            paid: "20.00".into(),
+            paid: "20,00".into(),
         },
     );
     ui.invoke_add_reference();
@@ -93,7 +131,7 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
     ui.get_document_adjustments().set_row_data(
         0,
         AdjustmentData {
-            amount: "5.00".into(),
+            amount: "5,00".into(),
             reason: "Rabatt".into(),
             tax_category: "S".into(),
             tax_rate: "19".into(),
@@ -104,7 +142,7 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
     ui.get_line_adjustments().set_row_data(
         0,
         AdjustmentData {
-            amount: "2.00".into(),
+            amount: "2,00".into(),
             reason: "Positionsrabatt".into(),
             tax_category: "S".into(),
             tax_rate: "19".into(),
@@ -114,6 +152,8 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
     ui.set_service_date("2026-08-18".into());
     ui.set_currency("CHF".into());
     ui.set_line_unit("HUR".into());
+    ui.set_line_price("80,50".into());
+    ui.set_line_tax_rate("18,5".into());
     let edited = collect_form(&ui, input);
     let workspace = tempfile::tempdir().unwrap();
     let store = Workspace::new(workspace.path().join("data")).unwrap();
@@ -123,12 +163,18 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
                 .join("tests/fixtures/source-invoice.pdf"),
         )
         .unwrap();
+    assert!(read_verified_pdf(&document.path, &document.sha256).is_ok());
+    assert!(read_verified_pdf(&document.path, "different hash").is_err());
     store.save_invoice(&document.id, &edited).unwrap();
     let saved = store.load_invoice(&document.id).unwrap();
     assert_eq!(saved.currency, "CHF");
     assert_eq!(saved.service_date.as_deref(), Some("2026-08-18"));
     assert_eq!(saved.lines[0].unit_code, "HUR");
+    assert_eq!(saved.lines[0].net_unit_price, "80.50");
+    assert_eq!(saved.lines[1].net_unit_price, "12.345");
+    assert_eq!(saved.lines[0].tax.rate, "18.5");
     assert_eq!(saved.lines[0].allowances.len(), 1);
+    assert_eq!(saved.lines[0].allowances[0].tax.rate, "18.5");
     assert_eq!(saved.allowances.len(), 1);
     assert_eq!(saved.preceding_invoices.len(), 2);
     assert!(saved.preceding_invoice.is_none());
@@ -200,6 +246,21 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
         .unwrap();
     assert_eq!(source.document_sha256, document.sha256);
     assert!(!source.pages[0].tokens.is_empty());
+    let recognition = store.load_recognition(&document.id).unwrap().unwrap();
+    let mut recognized_invoice = recognition.invoice_draft();
+    let totals = druckwandel_native::invoice::calculate(recognized_invoice.clone())
+        .unwrap()
+        .totals;
+    assert!(
+        recognized_total_differences(&totals, &recognition)
+            .iter()
+            .any(|difference| difference.contains("237,04") && difference.contains("237,05"))
+    );
+    recognized_invoice.lines[1].net_unit_price = "12.345".into();
+    let totals = druckwandel_native::invoice::calculate(recognized_invoice)
+        .unwrap()
+        .totals;
+    assert!(recognized_total_differences(&totals, &recognition).is_empty());
     ui.invoke_learn_corrections();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while ui.get_recognition_running() && std::time::Instant::now() < deadline {

@@ -1,10 +1,12 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 use druckwandel_native::file_io::read_verified_pdf;
-use druckwandel_native::invoice::{Contact, ElectronicAddress, InvoiceInput, InvoiceLine};
+use druckwandel_native::invoice::{
+    Contact, ElectronicAddress, InvoiceInput, InvoiceLine, InvoiceTotals,
+};
 use druckwandel_native::output::{SavedOutput, save_xrechnung, save_zugferd};
 use druckwandel_native::print_inbox::{self, PrintJob};
-use druckwandel_native::recognition::{RecognitionMethod, application_registry};
+use druckwandel_native::recognition::{RecognitionMethod, RecognitionResult, application_registry};
 use druckwandel_native::settings::{CompanyProfile, Settings};
 use druckwandel_native::validation::ValidatorBundle;
 use druckwandel_native::workspace::{Document, Workspace};
@@ -125,7 +127,7 @@ fn refresh_line_labels(window: &MainWindow, invoice: &InvoiceInput) {
                     format!(
                         "{}: {}",
                         index + 1,
-                        name.chars().take(12).collect::<String>()
+                        name.chars().take(22).collect::<String>()
                     )
                     .into()
                 }
@@ -247,12 +249,9 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     );
     if let Some(line) = invoice.lines.get_mut(window.get_selected_line() as usize) {
         extended_form::collect_line(window, line);
-        line.name = window.get_line_name().to_string();
-        line.quantity = window.get_line_quantity().to_string();
-        line.net_unit_price = window.get_line_price().to_string();
-        line.tax.rate = window.get_line_tax_rate().to_string();
     }
     invoice.payment.iban = optional(window.get_payment_iban().to_string());
+    extended_form::normalize_decimals(&mut invoice);
     invoice
 }
 
@@ -263,6 +262,10 @@ fn open_document(
     current_id: &RefCell<Option<String>>,
     current_draft: &RefCell<InvoiceInput>,
 ) -> Result<(), String> {
+    let source_has_xml = {
+        let bytes = read_verified_pdf(&document.path, &document.sha256)?;
+        druckwandel_native::hybrid_pdf::extract_invoice_xml(&bytes).is_ok()
+    };
     let initial = !store.has_invoice(&document.id)?;
     if initial {
         let mut invoice = InvoiceInput::blank();
@@ -270,6 +273,10 @@ fn open_document(
         store.save_invoice(&document.id, &invoice)?;
     }
     let invoice = store.load_invoice(&document.id)?;
+    let source_text = store
+        .load_recognition_source(&document.id)?
+        .map(|request| recognition_ui::source_text(&request))
+        .unwrap_or_else(|| "Erkennung starten, um PDF-Text und Fundstellen zu laden.".into());
     window.set_recognition_text(
         store
             .load_recognition(&document.id)?
@@ -278,9 +285,11 @@ fn open_document(
             .into(),
     );
     set_form(window, &invoice);
+    window.set_export_issue("".into());
+    window.set_export_review_required(false);
     *current_id.borrow_mut() = Some(document.id.clone());
     *current_draft.borrow_mut() = invoice;
-    show_document(window, store, document)?;
+    show_document(window, document, source_text, source_has_xml);
     if initial {
         window.invoke_start_recognition(true);
     }
@@ -304,30 +313,28 @@ fn save_current(
 
 fn show_document(
     window: &MainWindow,
-    store: &Workspace,
     document: &Document,
-) -> Result<(), String> {
+    source_text: String,
+    source_has_xml: bool,
+) {
+    window.set_selected_document_id(document.id.clone().into());
     window.set_selected_name(document.name.clone().into());
     window.set_selected_path(document.path.to_string_lossy().into_owned().into());
     window.set_selected_hash(document.sha256.clone().into());
-    window.set_source_has_xml(false);
-    window.set_source_text("".into());
-    let bytes = read_verified_pdf(&document.path, &document.sha256)?;
-    window.set_source_has_xml(druckwandel_native::hybrid_pdf::extract_invoice_xml(&bytes).is_ok());
-    window.set_source_text(
-        store
-            .load_recognition_source(&document.id)?
-            .map(|request| recognition_ui::source_text(&request))
-            .unwrap_or_else(|| "Erkennung starten, um PDF-Text und Fundstellen zu laden.".into())
-            .into(),
-    );
-    Ok(())
+    window.set_source_has_xml(source_has_xml);
+    window.set_source_text(source_text.into());
 }
 
 fn refresh(window: &MainWindow, workspace: &Workspace) -> Result<Vec<Document>, String> {
     let documents = workspace.list()?;
-    let names: Vec<SharedString> = documents.iter().map(|d| d.name.clone().into()).collect();
-    window.set_documents(ModelRc::new(VecModel::from(names)));
+    let entries = documents
+        .iter()
+        .map(|document| DraftEntry {
+            id: document.id.clone().into(),
+            name: document.name.clone().into(),
+        })
+        .collect::<Vec<_>>();
+    window.set_documents(ModelRc::new(VecModel::from(entries)));
     Ok(documents)
 }
 
@@ -388,11 +395,171 @@ fn receive_argument(
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let root = dirs::data_local_dir()
+fn workspace_root() -> Result<PathBuf, &'static str> {
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os("DRUCKWANDEL_DEV_WORKSPACE") {
+        let path = PathBuf::from(path);
+        return path
+            .is_absolute()
+            .then_some(path)
+            .ok_or("Testdatenordner muss absolut sein.");
+    }
+    Ok(dirs::data_local_dir()
         .ok_or("Kein lokaler Datenordner verfügbar")?
         .join("Druckwandel")
-        .join("native");
+        .join("native"))
+}
+
+fn suggested_output_name(invoice_number: &str, zugferd: bool) -> String {
+    let stem: String = invoice_number
+        .trim()
+        .replace(
+            |ch: char| ch.is_control() || "/\\:\"*?<>|".contains(ch),
+            "-",
+        )
+        .chars()
+        .take(100)
+        .collect();
+    let stem = stem.trim_matches([' ', '.']);
+    let format = if zugferd {
+        "ZUGFeRD.pdf"
+    } else {
+        "XRechnung.xml"
+    };
+    format!("Rechnung-{stem}-{format}")
+}
+
+fn export_path(path: PathBuf, extension: &str, store: &Workspace) -> Result<PathBuf, String> {
+    let path = match path.extension() {
+        None => {
+            let with_extension = path.with_extension(extension);
+            if with_extension.exists() {
+                return Err(format!(
+                    "Die Datei existiert bereits. Bitte den vollständigen Dateinamen mit .{extension} auswählen, um sie zu ersetzen."
+                ));
+            }
+            with_extension
+        }
+        Some(value) if value.eq_ignore_ascii_case(extension) => path,
+        _ => {
+            return Err(format!(
+                "Die Ausgabe muss als .{extension} gespeichert werden."
+            ));
+        }
+    };
+    let originals = store
+        .root()
+        .join("documents")
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    let parent = path.parent().ok_or("Ungültiger Speicherort.")?;
+    let parent = parent
+        .canonicalize()
+        .map_err(|e| format!("Zielordner nicht erreichbar: {e}"))?;
+    if parent.starts_with(&originals)
+        || path
+            .canonicalize()
+            .is_ok_and(|target| target.starts_with(&originals))
+    {
+        return Err(
+            "Bitte einen Speicherort außerhalb des internen Ordners für Original-PDFs wählen."
+                .into(),
+        );
+    }
+    Ok(path)
+}
+
+fn show_export_issue(window: &MainWindow, message: String) {
+    window.set_export_review_required(false);
+    window.set_status_text("Ausgabe wurde nicht gespeichert.".into());
+    window.set_export_issue(message.into());
+}
+
+fn desktop_export_errors(invoice: &InvoiceInput, zugferd: bool) -> Vec<String> {
+    use druckwandel_native::invoice::{validate, validate_en16931};
+    let mut errors = if zugferd {
+        validate_en16931(invoice)
+    } else {
+        validate(invoice)
+    };
+    let contact = invoice.seller.contact.as_ref();
+    if !zugferd {
+        for (value, label) in [
+            (
+                invoice
+                    .seller
+                    .electronic_address
+                    .as_ref()
+                    .map(|address| address.value.as_str()),
+                "E-Adresse des Absenders",
+            ),
+            (
+                invoice
+                    .buyer
+                    .electronic_address
+                    .as_ref()
+                    .map(|address| address.value.as_str()),
+                "E-Adresse des Empfängers",
+            ),
+            (
+                contact.and_then(|contact| contact.name.as_deref()),
+                "Ansprechpartner des Absenders",
+            ),
+            (
+                contact.and_then(|contact| contact.phone.as_deref()),
+                "Telefon des Absenders",
+            ),
+            (
+                contact.and_then(|contact| contact.email.as_deref()),
+                "E-Mail-Adresse des Absenders",
+            ),
+        ] {
+            if value.is_none_or(|value| value.trim().is_empty()) {
+                errors.push(format!("{label} fehlt."));
+            }
+        }
+    }
+    if invoice.payment.means_code.trim().is_empty() {
+        errors.push("Zahlungsart fehlt.".into());
+    }
+    if matches!(invoice.payment.means_code.trim(), "30" | "58" | "59")
+        && invoice
+            .payment
+            .iban
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        errors.push("IBAN für die gewählte Zahlungsart fehlt.".into());
+    }
+    errors
+}
+
+fn recognized_total_differences(
+    totals: &InvoiceTotals,
+    recognition: &RecognitionResult,
+) -> Vec<String> {
+    [
+        ("lineNet", "Netto", totals.tax_exclusive.as_str()),
+        ("taxInclusive", "Brutto", totals.tax_inclusive.as_str()),
+    ]
+    .into_iter()
+    .filter_map(|(key, label, calculated)| {
+        let source = recognition.fields.get(key)?;
+        let expected = source.value.parse::<rust_decimal::Decimal>().ok()?;
+        let actual = calculated.parse::<rust_decimal::Decimal>().ok()?;
+        (expected != actual).then(|| {
+            format!(
+                "{label}: Beleg {} · Formular {}",
+                source.value.replace('.', ","),
+                calculated.replace('.', ","),
+            )
+        })
+    })
+    .collect()
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let root = workspace_root()?;
     let workspace = Rc::new(Workspace::new(root.clone())?);
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let instance_file = std::fs::OpenOptions::new()
@@ -441,6 +608,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .select()?;
     let window = MainWindow::new()?;
+    window.set_app_version(env!("CARGO_PKG_VERSION").into());
     extended_form::wire_collections(&window);
     window
         .global::<FieldRules>()
@@ -707,15 +875,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saved = Rc::clone(&saved_output);
     window.on_select_document(move |index| {
         let Some(window) = weak.upgrade() else { return };
+        let Some(document) = selection_list.borrow().get(index as usize).cloned() else {
+            return;
+        };
+        if selected.borrow().as_ref() == Some(&document.id) {
+            return;
+        }
         if let Err(error) = save_current(&window, &store, &selected, &draft) {
             window.set_status_text(
                 format!("Entwurf konnte nicht gespeichert werden: {error}").into(),
             );
             return;
         }
-        let Some(document) = selection_list.borrow().get(index as usize).cloned() else {
-            return;
-        };
         *saved.borrow_mut() = None;
         window.global::<OutputState>().set_can_email(false);
         match open_document(&window, &store, &document, &selected, &draft) {
@@ -801,11 +972,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let selected = Rc::clone(&current_id);
     let draft = Rc::clone(&current_draft);
     let saved = Rc::clone(&saved_output);
-    window.on_save_xml(move || {
+    window.on_save_output(move |reviewed| {
         let Some(window) = weak.upgrade() else { return };
+        let reviewed = reviewed && window.get_export_review_required();
         let Some(id) = selected.borrow().clone() else {
             return;
         };
+        window.set_export_issue("".into());
+        window.set_export_review_required(false);
         let invoice = collect_form(&window, draft.borrow().clone());
         if let Err(error) = store.save_invoice(&id, &invoice) {
             window.set_status_text(
@@ -815,37 +989,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         *draft.borrow_mut() = invoice.clone();
         let zugferd = window.get_output_format() == 0;
-        let errors = if zugferd {
-            druckwandel_native::invoice::validate_en16931(&invoice)
-        } else {
-            druckwandel_native::invoice::validate(&invoice)
-        };
+        let errors = desktop_export_errors(&invoice, zugferd);
         if !errors.is_empty() {
-            window.set_status_text(
-                format!(
-                    "Bitte Rechnungsdaten vervollständigen: {}",
-                    errors.join(" ")
-                )
-                .into(),
+            show_export_issue(
+                &window,
+                format!("Bitte die Rechnungsdaten prüfen und ergänzen.\n\n• {}", errors.join("\n• ")),
             );
             return;
+        }
+        if !reviewed {
+            let differences = (|| {
+                let calculated = druckwandel_native::invoice::calculate(invoice.clone())?;
+                Ok::<_, String>(store
+                    .load_recognition(&id)?
+                    .map(|recognition| recognized_total_differences(&calculated.totals, &recognition))
+                    .unwrap_or_default())
+            })();
+            match differences {
+                Ok(differences) if !differences.is_empty() => {
+                    show_export_issue(
+                        &window,
+                        format!(
+                            "Die berechneten Summen weichen von den erkannten Belegwerten ab. Bitte Einzelpreise, Mengen und Steuern mit der PDF vergleichen.\n\n{}",
+                            differences.join("\n\n")
+                        ),
+                    );
+                    window.set_export_review_required(true);
+                    return;
+                }
+                Err(error) => {
+                    show_export_issue(&window, error);
+                    return;
+                }
+                Ok(_) => {}
+            }
         }
         let extension = if zugferd { "pdf" } else { "xml" };
         let Some(path) = rfd::FileDialog::new()
             .add_filter(if zugferd { "ZUGFeRD" } else { "XRechnung" }, &[extension])
-            .set_file_name(format!(
-                "{}.{}",
-                invoice.invoice_number.trim().replace(['/', '\\'], "-"),
-                extension
-            ))
+            .set_file_name(suggested_output_name(&invoice.invoice_number, zugferd))
             .save_file()
         else {
             return;
         };
+        let path = match export_path(path, extension, &store) {
+            Ok(path) => path,
+            Err(error) => {
+                show_export_issue(&window, error);
+                return;
+            }
+        };
         let source = PathBuf::from(window.get_selected_path().as_str());
         let source_hash = window.get_selected_hash().to_string();
         if let Err(error) = druckwandel_native::output::ensure_distinct_paths(&source, &path) {
-            window.set_status_text(error.into());
+            show_export_issue(&window, error);
             return;
         }
         window.set_status_text("Ausgabe wird erzeugt und unabhängig geprüft ...".into());
@@ -859,7 +1056,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // and preview checks do not cover subsequent external edits.
                 let bytes = read_verified_pdf(&source, &source_hash)?;
                 if zugferd {
-                    save_zugferd(invoice, &bytes, &path, &bundle)
+                    save_zugferd(invoice, &bytes, &path, &bundle).map_err(|error| {
+                        format!("{error}\n\nAlternativ kann die Rechnung als XRechnung (XML) ausgegeben werden.")
+                    })
                 } else {
                     save_xrechnung(invoice, &path, &bundle)
                 }
@@ -952,9 +1151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         *saved.borrow_mut() = Some(output);
                         window.global::<OutputState>().set_can_email(true);
                     }
-                    Err(error) => window.set_status_text(
-                        format!("Ausgabe wurde nicht gespeichert: {error}").into(),
-                    ),
+                    Err(error) => show_export_issue(&window, error),
                 }
             }
             if !window.global::<OutputState>().get_busy() {

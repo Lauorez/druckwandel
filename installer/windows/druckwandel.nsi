@@ -1,7 +1,8 @@
-Unicode true
+﻿Unicode true
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
+!include "Sections.nsh"
 !include "x64.nsh"
 Name "Druckwandel"
 OutFile "${OUTPUT}"
@@ -11,6 +12,8 @@ RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_COMPONENTSPAGE_NODESC
+!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -46,9 +49,11 @@ Function .onInit
     Abort
   ${EndIf}
 !endif
+  Call RestoreDesktopShortcutSelection
 FunctionEnd
 
 Section "Druckwandel" SEC_APP
+  SectionIn RO
   SetRegView 64
   ; Replace a previous installer before writing new files. /UPDATE retains the
   ; installed printer. The immutable legacy branch contains the old implementation.
@@ -114,6 +119,22 @@ Section "Druckwandel" SEC_APP
   CreateShortcut "$SMPROGRAMS\Druckwandel.lnk" "$INSTDIR\Druckwandel.exe"
 SectionEnd
 
+Section /o "Desktopverknüpfung erstellen" SEC_DESKTOP
+  ClearErrors
+  CreateShortcut "$DESKTOP\Druckwandel.lnk" "$INSTDIR\Druckwandel.exe"
+  ${IfNot} ${Errors}
+    WriteRegDWORD HKCU "Software\Druckwandel" "DesktopShortcut" 1
+  ${EndIf}
+SectionEnd
+
+Function RestoreDesktopShortcutSelection
+  ReadRegDWORD $0 HKCU "Software\Druckwandel" "DesktopShortcut"
+  ${If} $0 == 1
+  ${AndIf} ${FileExists} "$DESKTOP\Druckwandel.lnk"
+    !insertmacro SelectSection ${SEC_DESKTOP}
+  ${EndIf}
+FunctionEnd
+
 Function un.onInit
   SetRegView 64
   SetShellVarContext current
@@ -155,6 +176,12 @@ Section "Uninstall"
   DeleteRegKey HKLM "Software\Druckwandel"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel"
   Delete "$SMPROGRAMS\Druckwandel.lnk"
+  ReadRegDWORD $0 HKCU "Software\Druckwandel" "DesktopShortcut"
+  ${If} $0 == 1
+    Delete "$DESKTOP\Druckwandel.lnk"
+    DeleteRegValue HKCU "Software\Druckwandel" "DesktopShortcut"
+    DeleteRegKey /ifempty HKCU "Software\Druckwandel"
+  ${EndIf}
   Delete "$INSTDIR\Druckwandel.exe"
   Delete "$INSTDIR\icon.ico"
   Delete "$INSTDIR\LICENSE"

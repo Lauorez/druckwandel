@@ -67,8 +67,31 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
     assert_eq!(ui.get_output_format(), 0, "ZUGFeRD must be the default");
     ui.show().unwrap();
     window.set_size(slint::PhysicalSize::new(1320, 760));
+    ui.set_status_text("Bereit zum Öffnen einer Rechnung.".into());
     ui.set_appearance(2);
-    draw(&window, "start-dark");
+    let start_dark = draw(&window, "start-dark");
+    window.set_size(slint::PhysicalSize::new(1920, 760));
+    let start_wide = draw(&window, "start-wide-dark");
+    for y in 710..760 {
+        assert!(
+            start_dark[y * 1320 + 20..y * 1320 + 320] == start_wide[y * 1920 + 20..y * 1920 + 320],
+            "resizing across 1440 px must keep the status text at the same size"
+        );
+    }
+    window.set_size(slint::PhysicalSize::new(1320, 760));
+    ui.set_appearance(1);
+    let start_light = draw(&window, "start-light");
+    for pixels in [&start_dark, &start_light] {
+        let green_pixels = (110..144)
+            .flat_map(|y| &pixels[y * 1320 + 33..y * 1320 + 200])
+            .filter(|p| p.g > p.r.saturating_add(35) && p.g > p.b.saturating_add(15))
+            .count();
+        assert!(
+            green_pixels > 500,
+            "the import button must stand out in green"
+        );
+    }
+    ui.set_appearance(2);
     // The only icon button at the far right of the 1320 px toolbar.
     click(&window, 1280.0, 40.0);
     assert!(ui.get_settings_open(), "gear must open settings");
@@ -192,7 +215,7 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
     window.set_size(slint::PhysicalSize::new(1920, 1080));
     draw(&window, "windows-dpi-150");
     window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
-    window.set_size(slint::PhysicalSize::new(1000, 700));
+    window.set_size(slint::PhysicalSize::new(900, 600));
     ui.set_preview_zoom(0);
     draw(&window, "compact-window");
     window.set_size(slint::PhysicalSize::new(1920, 1080));

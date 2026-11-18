@@ -82,7 +82,7 @@ fn filename(spec: &Dictionary) -> Result<String, String> {
 }
 
 pub fn extract_invoice_xml(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let doc = Document::load_mem(bytes).map_err(|e| e.to_string())?;
+    let doc = crate::pdf_compat::load_document(bytes)?;
     for object in doc.objects.values() {
         if let Ok(spec) = object.as_dict()
             && filename(spec).is_ok_and(|name| name.eq_ignore_ascii_case("factur-x.xml"))
@@ -103,8 +103,8 @@ pub fn prepare_hybrid_pdf(source: &[u8], cii: &[u8]) -> Result<Vec<u8>, String> 
     if source.len() > 100 * 1024 * 1024 {
         return Err("Die PDF überschreitet 100 MB.".into());
     }
-    let mut doc =
-        Document::load_mem(source).map_err(|e| format!("PDF kann nicht gelesen werden: {e}"))?;
+    let mut doc = crate::pdf_compat::load_document(source)
+        .map_err(|error| format!("PDF kann nicht gelesen werden: {error}"))?;
     if doc.is_encrypted() {
         return Err("Verschlüsselte PDFs können nicht übernommen werden.".into());
     }
@@ -255,7 +255,7 @@ pub fn prepare_hybrid_pdf(source: &[u8], cii: &[u8]) -> Result<Vec<u8>, String> 
     doc.version = "1.7".into();
     let mut output = Vec::new();
     doc.save_to(&mut output).map_err(|e| e.to_string())?;
-    let reopened = Document::load_mem(&output).map_err(|e| e.to_string())?;
+    let reopened = crate::pdf_compat::load_document(&output)?;
     if reopened.get_pages().len() != pages || extract_invoice_xml(&output)? != cii {
         return Err("Seitenzahl oder eingebettete Rechnungsdaten wurden verändert.".into());
     }

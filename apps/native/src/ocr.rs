@@ -76,7 +76,7 @@ pub fn read_pages(
     settings: &OcrSettings,
 ) -> Result<(Vec<DocumentPage>, Vec<String>), String> {
     // Keep the encrypted-document contract even when the text parser fails.
-    let doc = lopdf::Document::load_mem(bytes).map_err(|e| e.to_string())?;
+    let doc = crate::pdf_compat::load_document(bytes)?;
     if doc.is_encrypted() {
         return Err("Verschlüsselte PDF wird nicht unterstützt.".into());
     }
