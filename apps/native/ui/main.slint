@@ -253,6 +253,7 @@ export component MainWindow inherits Window {
     in property <bool> iban-required: true;
     private property <bool> show-settings: false;
     out property <bool> settings-open: root.show-settings;
+    out property <bool> sidebar-open: true;
     in-out property <int> settings-tab: 0;
     in property <image> preview-image;
     in property <float> preview-aspect: 1.414;
@@ -288,6 +289,10 @@ export component MainWindow inherits Window {
         HorizontalBox {
             spacing: 16px;
             Image { source: @image-url("../assets/app-icon.svg"); width: 40px; height: 40px; image-fit: contain; }
+            if !root.show-settings : ActionButton {
+                text: root.sidebar-open ? "Seitenleiste ausblenden" : "Seitenleiste einblenden";
+                clicked => { root.sidebar-open = !root.sidebar-open; }
+            }
             Rectangle { horizontal-stretch: 1; background: transparent; }
 
             ActionButton {
@@ -407,7 +412,7 @@ export component MainWindow inherits Window {
         if !root.show-settings : HorizontalBox {
             width: parent.width; height: parent.height;
             spacing: 16px;
-            Rectangle {
+            if root.sidebar-open : Rectangle {
                 width: max(160px, min(240px, root.width * 0.16));
                 background: Palette.alternate-background;
                 border-radius: 8px;
@@ -443,7 +448,7 @@ export component MainWindow inherits Window {
                     alignment: center;
                     spacing: 18px;
                     Text { text: "Rechnung öffnen und prüfen"; font-size: 24px; font-weight: 600; }
-                    Text { text: "1. Links eine neue PDF öffnen oder einen Entwurf auswählen.\n2. Erkannte Rechnungsdaten mit dem Original vergleichen.\n3. Ausgabe prüfen, speichern und per E-Mail teilen."; wrap: word-wrap; }
+                    Text { text: "1. In der Seitenleiste eine PDF öffnen oder einen Entwurf auswählen.\n2. Erkannte Rechnungsdaten mit dem Original vergleichen.\n3. Ausgabe prüfen, speichern und per E-Mail teilen."; wrap: word-wrap; }
                 }
             }
             if root.selected-name != "" : Rectangle {

@@ -3,6 +3,7 @@
 ## 0.4.1
 
 - Der Windows-Installer bietet eine optionale Desktopverknüpfung.
+- Die Seitenleiste lässt sich über die Kopfzeile ein- und ausblenden.
 - Schnellere Navigation zwischen geöffneten Entwürfen und Rechnungspositionen sowie klarere Hinweise beim Export.
 - Das Rechnungsformular akzeptiert Dezimalkommas. Ausgabedateinamen und Speicherorte werden vor dem Export geprüft.
 - Die Audit-Korrekturen verbessern die Prüfung von PDF-Originalen und Ausgabeformaten sowie die Sicherheit beim Import und Speichern.

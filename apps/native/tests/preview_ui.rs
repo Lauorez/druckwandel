@@ -92,6 +92,12 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
         );
     }
     ui.set_appearance(2);
+    assert!(ui.get_sidebar_open());
+    click(&window, 155.0, 42.0);
+    assert!(!ui.get_sidebar_open(), "toolbar must collapse the sidebar");
+    draw(&window, "sidebar-collapsed");
+    click(&window, 155.0, 42.0);
+    assert!(ui.get_sidebar_open(), "toolbar must reopen the sidebar");
     // The only icon button at the far right of the 1320 px toolbar.
     click(&window, 1280.0, 40.0);
     assert!(ui.get_settings_open(), "gear must open settings");
