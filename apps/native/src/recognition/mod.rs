@@ -1,8 +1,12 @@
-//! Local recognition boundary. No model runtime, weights, LoRA, API client or AI
-//! transport is included. A future local adapter implements RecognitionProvider.
+//! Recognition boundary for local schema recognition, a future local AI adapter,
+//! and optional opt-in W System cloud recognition.
 pub(crate) mod schema;
+pub mod wsystem;
 use crate::extraction::{DocumentPage, reconstruct_lines};
-use crate::invoice::{Contact, ElectronicAddress, InvoiceInput, InvoiceLine, Tax};
+use crate::invoice::{
+    AllowanceCharge, Contact, ElectronicAddress, InvoiceInput, InvoiceLine, PrecedingInvoice, Tax,
+    preceding,
+};
 pub use schema::SchemaRecognizer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -15,6 +19,8 @@ pub const CONTRACT_VERSION: u32 = 1;
 pub enum RecognitionMethod {
     Schema,
     LocalAi,
+    #[serde(rename = "wsystem")]
+    WSystem,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -99,6 +105,10 @@ pub struct RecognitionResult {
     pub fields: BTreeMap<String, FieldProposal>,
     pub lines: Vec<LineProposal>,
     pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowances: Vec<AllowanceCharge>,
 }
 
 pub trait RecognitionProvider: Send + Sync {
@@ -145,7 +155,15 @@ impl RecognitionRegistry {
         if request.schema_version != CONTRACT_VERSION {
             return Err("Unbekannte Version des Erkennungsvertrags.".into());
         }
-        let provider=self.providers.iter().find(|provider| provider.method()==method).ok_or("Lokale KI-Erkennung ist noch nicht installiert. Das separate KI-Projekt kann später als lokaler Adapter ergänzt werden.")?;
+        let provider = self
+            .providers
+            .iter()
+            .find(|provider| provider.method() == method)
+            .ok_or(match method {
+                RecognitionMethod::LocalAi => "Lokale KI-Erkennung ist noch nicht installiert. Das separate KI-Projekt kann später als lokaler Adapter ergänzt werden.",
+                RecognitionMethod::WSystem => "W-System-Erkennung ist nicht eingerichtet. Bitte unter Einstellungen → Erkennung API-Schlüssel speichern und Übermittlung freigeben.",
+                RecognitionMethod::Schema => "Schemaerkennung ist nicht registriert.",
+            })?;
         let mut result = provider.recognize(request)?;
         if result.schema_version != CONTRACT_VERSION
             || result.method != method
@@ -208,29 +226,42 @@ impl RecognitionRegistry {
 pub fn field_label(name: &str) -> &str {
     match name {
         "invoiceNumber" => "Rechnungsnummer",
+        "invoiceType" => "Rechnungsart",
         "issueDate" => "Rechnungsdatum",
         "dueDate" => "Fälligkeit",
         "serviceDate" => "Leistungsdatum",
         "buyerReference" => "Bestellnummer / Leitweg-ID",
         "currency" => "Währung",
+        "precedingInvoiceNumber" => "Ursprungsrechnung",
+        "precedingInvoiceDate" => "Datum Ursprungsrechnung",
+        "prepaidAmount" => "Bereits gezahlt",
         "sellerName" => "Absender",
         "sellerAddressLine1" => "Absender: Straße",
+        "sellerAddressLine2" => "Absender: Adresszusatz",
         "sellerPostalCode" => "Absender: PLZ",
         "sellerCity" => "Absender: Ort",
         "sellerCountryCode" => "Absender: Land",
         "sellerVatId" => "Absender: USt-ID",
+        "sellerTaxNumber" => "Absender: Steuernummer",
+        "sellerEndpoint" => "Absender: E-Adresse",
         "sellerContact" => "Ansprechpartner",
         "sellerPhone" => "Telefon",
         "sellerEmail" => "E-Mail",
         "buyerName" => "Empfänger",
         "buyerAddressLine1" => "Empfänger: Straße",
+        "buyerAddressLine2" => "Empfänger: Adresszusatz",
         "buyerPostalCode" => "Empfänger: PLZ",
         "buyerCity" => "Empfänger: Ort",
         "buyerCountryCode" => "Empfänger: Land",
         "buyerVatId" => "Empfänger: USt-ID",
+        "buyerEmail" => "Empfänger: E-Mail",
+        "buyerEndpoint" => "Empfänger: E-Adresse",
         "iban" => "IBAN",
         "bic" => "BIC",
         "paymentTerms" => "Zahlungsbedingungen",
+        "paymentMeans" => "Zahlungsart",
+        "paymentAccountName" => "Kontoinhaber",
+        "paymentReference" => "Verwendungszweck",
         "lineNet" => "Netto",
         "taxTotal" => "Umsatzsteuer",
         "taxInclusive" => "Brutto",
@@ -241,7 +272,16 @@ pub fn field_label(name: &str) -> &str {
 
 impl RecognitionResult {
     pub fn review_text(&self) -> String {
-        let mut text = String::from("Erkennungsvorschläge – bitte mit dem Beleg vergleichen.\n");
+        let mut text = if self.method == RecognitionMethod::WSystem {
+            String::from(
+                "Erkennungsvorschläge (W System Cloud) – bitte vollständig mit dem Beleg vergleichen.\n",
+            )
+        } else {
+            String::from("Erkennungsvorschläge – bitte mit dem Beleg vergleichen.\n")
+        };
+        if let Some(request_id) = self.request_id.as_deref().filter(|s| !s.trim().is_empty()) {
+            text += &format!("W System Request-ID: {request_id}\n");
+        }
         for (name, field) in &self.fields {
             let name = field_label(name);
             text += &format!(
@@ -260,6 +300,19 @@ impl RecognitionResult {
                 line.source_text
             );
         }
+        for adjustment in &self.allowances {
+            let kind = if adjustment.charge {
+                "Zuschlag"
+            } else {
+                "Rabatt / Abschlag"
+            };
+            let reason = adjustment
+                .reason
+                .as_deref()
+                .or(adjustment.reason_code.as_deref())
+                .unwrap_or("ohne Begründung");
+            text += &format!("\n{kind}: {} ({reason})\n", adjustment.amount);
+        }
         for warning in &self.warnings {
             text += &format!("\nHinweis: {warning}\n");
         }
@@ -276,6 +329,11 @@ impl RecognitionResult {
         };
         let opt = |name: &str| self.fields.get(name).map(|field| field.value.clone());
         invoice.invoice_number = value("invoiceNumber");
+        if let Some(kind) = opt("invoiceType")
+            && ["380", "381", "384", "326"].contains(&kind.as_str())
+        {
+            invoice.invoice_type = kind;
+        }
         invoice.issue_date = value("issueDate");
         invoice.due_date = opt("dueDate");
         invoice.service_date = opt("serviceDate");
@@ -283,17 +341,20 @@ impl RecognitionResult {
         if let Some(currency) = opt("currency") {
             invoice.currency = currency;
         }
+        invoice.prepaid_amount = opt("prepaidAmount");
         for (prefix, party) in [
             ("seller", &mut invoice.seller),
             ("buyer", &mut invoice.buyer),
         ] {
             party.name = value(&format!("{prefix}Name"));
             party.address.line1 = value(&format!("{prefix}AddressLine1"));
+            party.address.line2 = opt(&format!("{prefix}AddressLine2"));
             party.address.postal_code = value(&format!("{prefix}PostalCode"));
             party.address.city = value(&format!("{prefix}City"));
             party.address.country_code = value(&format!("{prefix}CountryCode"));
             party.vat_id = opt(&format!("{prefix}VatId"));
         }
+        invoice.seller.tax_registration_id = opt("sellerTaxNumber");
         let seller_contact = Contact {
             name: opt("sellerContact"),
             phone: opt("sellerPhone"),
@@ -303,15 +364,44 @@ impl RecognitionResult {
             || seller_contact.phone.is_some()
             || seller_contact.email.is_some())
         .then_some(seller_contact);
-        if let Some(email) = opt("sellerEmail") {
+        if let Some(endpoint) = opt("sellerEndpoint") {
+            invoice.seller.electronic_address = crate::settings::electronic_address(endpoint);
+        } else if let Some(email) = opt("sellerEmail") {
             invoice.seller.electronic_address = Some(ElectronicAddress {
                 value: email,
                 scheme_id: "EM".into(),
             });
         }
+        if let Some(endpoint) = opt("buyerEndpoint") {
+            invoice.buyer.electronic_address = crate::settings::electronic_address(endpoint);
+        } else if let Some(email) = opt("buyerEmail") {
+            invoice.buyer.electronic_address = Some(ElectronicAddress {
+                value: email,
+                scheme_id: "EM".into(),
+            });
+        }
+        if let Some(means) = opt("paymentMeans")
+            && !means.trim().is_empty()
+        {
+            invoice.payment.means_code = means;
+        }
         invoice.payment.iban = opt("iban");
         invoice.payment.bic = opt("bic");
+        invoice.payment.account_name = opt("paymentAccountName");
+        invoice.payment.payment_reference = opt("paymentReference");
         invoice.payment.terms = opt("paymentTerms");
+        if let Some(number) = opt("precedingInvoiceNumber")
+            && !number.trim().is_empty()
+        {
+            invoice.preceding_invoices.push(PrecedingInvoice {
+                invoice_number: number,
+                issue_date: opt("precedingInvoiceDate"),
+                paid_amount: None,
+            });
+        }
+        if !self.allowances.is_empty() {
+            invoice.allowances = self.allowances.clone();
+        }
         if !self.lines.is_empty() {
             invoice.lines = self.lines.iter().map(|item| item.line.clone()).collect();
         }
@@ -348,10 +438,16 @@ pub fn fill_missing(invoice: &mut InvoiceInput, result: &RecognitionResult) {
         }
     }
     text(&mut invoice.invoice_number, proposal.invoice_number);
+    if (invoice.invoice_type.trim().is_empty() || invoice.invoice_type == "380")
+        && proposal.invoice_type != "380"
+    {
+        invoice.invoice_type = proposal.invoice_type;
+    }
     text(&mut invoice.issue_date, proposal.issue_date);
     text(&mut invoice.currency, proposal.currency);
     optional(&mut invoice.due_date, proposal.due_date);
     optional(&mut invoice.service_date, proposal.service_date);
+    optional(&mut invoice.prepaid_amount, proposal.prepaid_amount);
     text(&mut invoice.buyer_reference, proposal.buyer_reference);
     for (target, source) in [
         (&mut invoice.seller, proposal.seller),
@@ -359,6 +455,7 @@ pub fn fill_missing(invoice: &mut InvoiceInput, result: &RecognitionResult) {
     ] {
         text(&mut target.name, source.name);
         text(&mut target.address.line1, source.address.line1);
+        optional(&mut target.address.line2, source.address.line2);
         text(&mut target.address.postal_code, source.address.postal_code);
         text(&mut target.address.city, source.address.city);
         text(
@@ -366,6 +463,7 @@ pub fn fill_missing(invoice: &mut InvoiceInput, result: &RecognitionResult) {
             source.address.country_code,
         );
         optional(&mut target.vat_id, source.vat_id);
+        optional(&mut target.tax_registration_id, source.tax_registration_id);
         if target.electronic_address.is_none() {
             target.electronic_address = source.electronic_address;
         }
@@ -376,9 +474,28 @@ pub fn fill_missing(invoice: &mut InvoiceInput, result: &RecognitionResult) {
             optional(&mut target.phone, source.phone);
         }
     }
+    if (invoice.payment.means_code.trim().is_empty() || invoice.payment.means_code == "58")
+        && proposal.payment.means_code != "58"
+    {
+        invoice.payment.means_code = proposal.payment.means_code;
+    }
     optional(&mut invoice.payment.iban, proposal.payment.iban);
     optional(&mut invoice.payment.bic, proposal.payment.bic);
+    optional(
+        &mut invoice.payment.account_name,
+        proposal.payment.account_name,
+    );
+    optional(
+        &mut invoice.payment.payment_reference,
+        proposal.payment.payment_reference,
+    );
     optional(&mut invoice.payment.terms, proposal.payment.terms);
+    if preceding(invoice).is_empty() && !proposal.preceding_invoices.is_empty() {
+        invoice.preceding_invoices = proposal.preceding_invoices;
+    }
+    if invoice.allowances.is_empty() && !proposal.allowances.is_empty() {
+        invoice.allowances = proposal.allowances;
+    }
     // A missing description does not make a partially edited line disposable.
     let blank_lines = InvoiceInput::blank().lines;
     if (invoice.lines.is_empty() || invoice.lines == blank_lines) && !result.lines.is_empty() {
@@ -390,7 +507,7 @@ pub fn fill_missing(invoice: &mut InvoiceInput, result: &RecognitionResult) {
 mod tests {
     use super::*;
     #[test]
-    fn ai_is_explicitly_unavailable_without_a_registered_local_adapter() {
+    fn ai_and_wsystem_are_explicitly_unavailable_in_default_registry() {
         let registry = RecognitionRegistry::default();
         let request = RecognitionRequest {
             schema_version: 1,
@@ -401,11 +518,18 @@ mod tests {
         };
         assert!(registry.available(RecognitionMethod::Schema));
         assert!(!registry.available(RecognitionMethod::LocalAi));
+        assert!(!registry.available(RecognitionMethod::WSystem));
         assert!(
             registry
                 .recognize(RecognitionMethod::LocalAi, &request)
                 .unwrap_err()
                 .contains("noch nicht installiert")
+        );
+        assert!(
+            registry
+                .recognize(RecognitionMethod::WSystem, &request)
+                .unwrap_err()
+                .contains("nicht eingerichtet")
         );
     }
 }

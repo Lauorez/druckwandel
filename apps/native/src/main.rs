@@ -74,10 +74,10 @@ fn collect_company_form(window: &MainWindow) -> CompanyProfile {
 }
 
 fn selected_recognition(window: &MainWindow) -> RecognitionMethod {
-    if window.get_recognition_method() == 1 {
-        RecognitionMethod::LocalAi
-    } else {
-        RecognitionMethod::Schema
+    match window.get_recognition_method() {
+        1 => RecognitionMethod::LocalAi,
+        2 => RecognitionMethod::WSystem,
+        _ => RecognitionMethod::Schema,
     }
 }
 

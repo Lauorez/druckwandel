@@ -72,6 +72,8 @@ impl RecognitionProvider for SchemaRecognizer {
             fields: BTreeMap::new(),
             lines: vec![],
             warnings: vec![],
+            request_id: None,
+            allowances: vec![],
         };
         let amount = r"(-?[0-9][0-9. ]*(?:,[0-9]{1,4})|-?[0-9]+(?:\.[0-9]{1,4})?)";
         let rules = [

@@ -386,6 +386,19 @@ export component MainWindow inherits Window {
     in-out property <int> ocr-language: 0;
     in property <string> ocr-status;
     callback ocr-changed();
+    in-out property <bool> wsystem-consent: false;
+    in-out property <bool> wsystem-auto-recognize: false;
+    in-out property <string> wsystem-api-key-input;
+    in property <bool> wsystem-key-saved: false;
+    in property <string> wsystem-key-status;
+    in property <string> wsystem-usage-status;
+    in property <bool> wsystem-usage-checking: false;
+    callback wsystem-settings-changed();
+    callback save-wsystem-key();
+    callback delete-wsystem-key();
+    callback check-wsystem-usage();
+    callback open-wsystem-free-key();
+    callback open-wsystem-dpa();
     callback start-recognition(bool);
     callback learn-corrections();
     in property <[string]> learning-profiles;
@@ -584,9 +597,70 @@ export component MainWindow inherits Window {
                         ScrollView {
                             VerticalBox { padding: 16px; spacing: 12px; alignment: start;
                             Text { text: "Erkennungsmodus"; font-size: 18px; font-weight: 600; }
-                            ComboBox { max-width: 420px; model: ["Schemaerkennung", "Lokale KI (noch nicht installiert)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
-                            Text { text: "Die Auswahl gilt für neue Importe und die erneute Erkennung. Der lokale KI-Adapter ist noch nicht installiert."; wrap: word-wrap; }
-                            Text { text: "Erkennungsmodus und OCR-Einstellungen werden automatisch gespeichert."; wrap: word-wrap; }
+                            ComboBox { max-width: 420px; model: ["Schemaerkennung (lokal)", "Lokale KI (noch nicht installiert)", "W System (Cloud, API-Schlüssel)"]; current-index <=> root.recognition-method; enabled: !OutputState.busy; }
+                            Text { text: "Die Auswahl gilt für neue Importe und die erneute Erkennung. Standardmäßig läuft ausschließlich die lokale Schemaerkennung. W System ist eine optionale Cloud-Erkennung."; wrap: word-wrap; }
+                            Text { text: "Erkennungsmodus, W-System-Optionen und OCR-Einstellungen werden automatisch gespeichert."; wrap: word-wrap; }
+
+                                Text { text: "W System Cloud-Erkennung (optional)"; font-size: 18px; font-weight: 600; }
+                                Rectangle {
+                                    background: Palette.background;
+                                    border-color: Palette.border;
+                                    border-width: 1px;
+                                    border-radius: 6px;
+                                    VerticalBox {
+                                        padding: 12px;
+                                        spacing: 8px;
+                                        Text {
+                                            text: "Datenübermittlung an Drittanbieter: Wenn Sie W System verwenden, wird die gewählte Rechnungs-PDF verschlüsselt (HTTPS) an W System (api.wsystem.dev) übertragen. W System sendet den PDF-Text zur KI-Extraktion an OpenAI als Unterauftragsverarbeiter. Nutzen Sie diese Option nur für Rechnungen, die Sie so verarbeiten dürfen.";
+                                            wrap: word-wrap;
+                                        }
+                                        Text {
+                                            text: "Kosten & Schlüssel: Eigener W-System-API-Schlüssel erforderlich (gespeichert im System-Schlüsselbund, nicht in settings.json). Laut Anbieter 0,15 € je erfolgreicher Rechnung ohne Abo oder Mindestumsatz (monatlich nach Verbrauch, Fehler kostenlos; Druckwandel-Abrechnung laut Anbieter noch im Aufbau). Kostenloser Testschlüssel (3 Extraktionen/Monat) über den Empfehlungslink.";
+                                            wrap: word-wrap;
+                                        }
+                                        HorizontalBox {
+                                            padding: 0px;
+                                            ActionButton { text: "Kostenlosen API-Schlüssel holen"; enabled: !OutputState.busy; clicked => { root.open-wsystem-free-key(); } }
+                                            ActionButton { text: "AVV / Datenschutz (DPA) öffnen"; enabled: !OutputState.busy; clicked => { root.open-wsystem-dpa(); } }
+                                        }
+                                    }
+                                }
+                                CheckBox {
+                                    text: "Ich bin einverstanden, dass Rechnungs-PDFs bei W-System-Erkennung an W System (inkl. OpenAI) übermittelt werden.";
+                                    checked <=> root.wsystem-consent;
+                                    enabled: !OutputState.busy;
+                                    toggled => {
+                                        if !self.checked { root.wsystem-auto-recognize = false; }
+                                        root.wsystem-settings-changed();
+                                    }
+                                }
+                                CheckBox {
+                                    text: "Neue PDFs beim Öffnen automatisch an W System senden (sonst manueller Start im Reiter Erkennung)";
+                                    checked <=> root.wsystem-auto-recognize;
+                                    enabled: !OutputState.busy && root.wsystem-consent;
+                                    toggled => { root.wsystem-settings-changed(); }
+                                }
+                                HorizontalBox {
+                                    padding: 0px;
+                                    spacing: 8px;
+                                    Text { text: "W-System API-Schlüssel"; width: 155px; vertical-alignment: center; }
+                                    LineEdit {
+                                        horizontal-stretch: 1;
+                                        text <=> root.wsystem-api-key-input;
+                                        input-type: InputType.password;
+                                        placeholder-text: root.wsystem-key-saved ? "Neuen Schlüssel eingeben zum Ersetzen" : "wsk_live_…";
+                                        accessible-label: "W-System API-Schlüssel";
+                                        enabled: !OutputState.busy;
+                                    }
+                                }
+                                HorizontalBox {
+                                    padding: 0px;
+                                    ActionButton { text: "Schlüssel speichern"; primary: !root.wsystem-key-saved; enabled: !OutputState.busy && !FieldRules.is-blank(root.wsystem-api-key-input); clicked => { root.save-wsystem-key(); } }
+                                    ActionButton { text: "Schlüssel entfernen"; enabled: !OutputState.busy && root.wsystem-key-saved; clicked => { root.delete-wsystem-key(); } }
+                                    ActionButton { text: root.wsystem-usage-checking ? "Kontingent wird geprüft …" : "Schlüssel & Kontingent prüfen"; enabled: !OutputState.busy && !root.wsystem-usage-checking && root.wsystem-key-saved; clicked => { root.check-wsystem-usage(); } }
+                                }
+                                Text { text: root.wsystem-key-status; wrap: word-wrap; }
+                                if root.wsystem-usage-status != "" : Text { text: root.wsystem-usage-status; wrap: word-wrap; }
 
                                 Text { text: "Scans / OCR"; font-size: 18px; font-weight: 600; }
                                 CheckBox { text: "Textarme PDF-Seiten automatisch lokal erkennen"; checked <=> root.ocr-enabled; enabled: !OutputState.busy; toggled => { root.ocr-changed(); } }
@@ -738,8 +812,27 @@ export component MainWindow inherits Window {
                                     text: "ZUGFeRD-XML vorhanden. Der aktuelle Import übernimmt nur PDF-Textvorschläge, noch nicht die eingebetteten Rechnungsdaten.";
                                     wrap: word-wrap;
                                 }
+                                if root.recognition-method == 2 : Rectangle {
+                                    background: Palette.background;
+                                    border-color: Palette.border;
+                                    border-width: 1px;
+                                    border-radius: 6px;
+                                    VerticalBox {
+                                        padding: 10px;
+                                        spacing: 4px;
+                                        Text {
+                                            text: "Cloud-Erkennung über W System aktiv";
+                                            font-weight: 600;
+                                            wrap: word-wrap;
+                                        }
+                                        Text {
+                                            text: "Beim Start wird diese PDF-Rechnung verschlüsselt an W System (api.wsystem.dev, Unterauftragsverarbeiter OpenAI) übermittelt. Alle erkannten Werte bleiben ein prüfpflichtiger Entwurf.";
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                }
                                 ActionButton { text: "Aus Korrekturen lernen"; enabled: !OutputState.busy; clicked => { root.learn-corrections(); } }
-                                ActionButton { text: "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
+                                ActionButton { text: root.recognition-method == 2 ? "Fehlende Felder über W System erkennen" : "Fehlende Felder erkennen"; enabled: !OutputState.busy; clicked => { root.recognize(); } }
                                 TextEdit { text: root.recognition-text; read-only: true; vertical-stretch: 1; }
                                 ActionButton { text: root.show-pdf-text ? "PDF-Text ausblenden" : "PDF-Text anzeigen"; clicked => { root.show-pdf-text = !root.show-pdf-text; } }
                                 if root.show-pdf-text : TextEdit { text: root.source-text; read-only: true; vertical-stretch: 1; }
@@ -939,7 +1032,11 @@ export component MainWindow inherits Window {
         }
 
         Text {
-            text: root.recognition-running ? "Lokale Erkennung / Lernen läuft …" : root.status-text;
+            text: root.recognition-running
+                ? (root.recognition-method == 2
+                    ? "W System Cloud-Erkennung läuft (PDF wird an W System übermittelt) …"
+                    : "Lokale Erkennung / Lernen läuft …")
+                : root.status-text;
             color: Palette.foreground;
             wrap: word-wrap;
         }

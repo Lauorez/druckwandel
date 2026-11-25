@@ -9,7 +9,7 @@ Version 0.4.0 ist die erste Veröffentlichung der neuen Rust-/Slint-Anwendung. D
 
 - PDF-Import und Windows-Druckeingang mit lokalen SQLite-Entwürfen.
 - Schemaerkennung in Rust: PDF-Text mit Fundstellen, Feldregeln, Adress- und Tabellenerkennung; Vorschläge mit Konfidenz und Warnungen.
-- Auswahl einer später ergänzbaren **lokalen KI-Erkennung**. Das separate KI-Projekt mit kleinem LLM und LoRA-Adapter ist hier weder implementiert noch enthalten; es gibt keinen externen API-Aufruf. [Erkennungsarchitektur](docs/recognition.md).
+- Auswahl einer später ergänzbaren **lokalen KI-Erkennung** (das separate KI-Projekt ist hier nicht enthalten) sowie einer **optionalen Cloud-Erkennung über W System** mit eigenem API-Schlüssel im System-Schlüsselbund und ausdrücklicher Freigabe. Standardmäßig werden keine Rechnungen übertragen. [Erkennungsarchitektur](docs/recognition.md).
 - Bearbeitbare Rechnungsdaten und mehrere Positionen.
 - XRechnung (UBL) und ZUGFeRD/Factur-X EN 16931 (CII in PDF/A-3B), mit unabhängig geprüften Ausgabebytes.
 - „Per E-Mail senden“ erst nach erfolgreichem Speichern; Änderungen sperren die Freigabe erneut. Der Nutzer wählt das Mailziel und versendet selbst.

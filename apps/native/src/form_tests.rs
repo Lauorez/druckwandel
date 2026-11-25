@@ -290,5 +290,125 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
     assert_eq!(ui.get_learning_rules().row_count(), 0);
     ui.invoke_undo_learning_profile();
     assert_eq!(ui.get_learning_rules().row_count(), count);
+
+    // Optional W System cloud recognition UI flow with in-memory secret store and local mock server.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let mock_addr = listener.local_addr().unwrap();
+    let mock_server = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        for (expected_prefix, body, extra_headers) in [
+            (
+                "GET /billing/usage",
+                r#"{"plan":"free","quota":500,"remaining":269}"#,
+                "X-Request-Id: req_ui_usage\r\n",
+            ),
+            (
+                "POST /einvoice/extract?format=xrechnung",
+                r#"{"status":"draft_for_review","fields":[{"path":"invoice_number","value":"RE-CLOUD-99","confidence":0.97,"checks":["found_in_pdf_text"]},{"path":"buyer.name","value":"Cloud Empfänger GmbH","confidence":0.95,"checks":["found_in_pdf_text"]}],"disclaimer":"AI-extracted draft for review."}"#,
+                "X-Request-Id: req_ui_extract\r\nX-Units-Remaining: 189\r\n",
+            ),
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).unwrap();
+            let head = String::from_utf8_lossy(&buf[..n]).into_owned();
+            assert!(
+                head.starts_with(expected_prefix),
+                "unexpected request: {head}"
+            );
+            assert!(
+                head.to_ascii_lowercase()
+                    .contains("x-api-key: wsk_ui_secret")
+            );
+            // Drain remaining body for POST if needed.
+            if let Some(len) = head.lines().find_map(|line| {
+                let (k, v) = line.split_once(':')?;
+                k.eq_ignore_ascii_case("content-length")
+                    .then(|| v.trim().parse::<usize>().ok())
+                    .flatten()
+            }) && let Some(pos) = buf[..n].windows(4).position(|w| w == b"\r\n\r\n")
+            {
+                let mut read_body = n - (pos + 4);
+                let mut discard = [0u8; 4096];
+                while read_body < len {
+                    let m = stream.read(&mut discard).unwrap();
+                    if m == 0 {
+                        break;
+                    }
+                    read_body += m;
+                }
+            }
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{extra_headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(reply.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        }
+    });
+    let memory_secrets =
+        std::sync::Arc::new(druckwandel_native::secrets::MemorySecretStore::default());
+    let wsystem_client = druckwandel_native::recognition::wsystem::WSystemClient::with_base_url(
+        format!("http://{mock_addr}"),
+    )
+    .unwrap();
+    let _wsystem_runtime = recognition_ui::wire_with_wsystem(
+        &ui,
+        &store,
+        &selected,
+        &draft,
+        &output,
+        &preferences,
+        memory_secrets.clone(),
+        wsystem_client,
+    );
+    ui.set_recognition_method(2);
+    assert!(!ui.get_wsystem_key_saved());
+    ui.set_wsystem_api_key_input("wsk_ui_secret".into());
+    ui.invoke_save_wsystem_key();
+    assert!(ui.get_wsystem_key_saved());
+    assert!(
+        ui.get_wsystem_api_key_input().is_empty(),
+        "plaintext key input must be cleared immediately after save"
+    );
+    ui.set_wsystem_consent(true);
+    ui.set_wsystem_auto_recognize(false);
+    ui.invoke_wsystem_settings_changed();
+    let persisted_settings = std::fs::read_to_string(store.root().join("settings.json")).unwrap();
+    assert!(!persisted_settings.contains("wsk_ui_secret"));
+
+    // Usage check runs in background and updates status.
+    ui.invoke_check_wsystem_usage();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while ui.get_wsystem_usage_checking() && std::time::Instant::now() < deadline {
+        slint::platform::update_timers_and_animations();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!ui.get_wsystem_usage_checking());
+    assert!(ui.get_wsystem_usage_status().contains("269 von 500"));
+
+    // Initial open with auto_recognize=false must NOT transmit automatically.
+    ui.invoke_start_recognition(true);
+    assert!(!ui.get_recognition_running());
+    assert!(ui.get_recognition_text().contains("nicht automatisch"));
+
+    // Explicit manual recognition transmits to W System, preserves manual invoice_number, fills buyer_name.
+    ui.set_buyer_name("".into());
+    ui.invoke_recognize();
+    assert!(ui.get_recognition_running());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while ui.get_recognition_running() && std::time::Instant::now() < deadline {
+        slint::platform::update_timers_and_animations();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!ui.get_recognition_running());
+    assert_eq!(ui.get_invoice_number().as_str(), "MANUELL-BEHALTEN");
+    assert_eq!(ui.get_buyer_name().as_str(), "Cloud Empfänger GmbH");
+    assert!(ui.get_recognition_text().contains("req_ui_extract"));
+    assert!(ui.get_wsystem_usage_status().contains("189 Einheiten"));
+    mock_server.join().unwrap();
+
+    ui.invoke_delete_wsystem_key();
+    assert!(!ui.get_wsystem_key_saved());
     ui.hide().unwrap();
 }

@@ -11,7 +11,7 @@ cargo test -p druckwandel-native --locked --test external_validators -- --ignore
 
 Der Anwendungskern übernimmt PDF-Text mit Positionen, Schemaerkennung, Entwürfe, XRechnung, ZUGFeRD und die Offline-Prüfer. Beide Ausgabeformate werden erst nach erfolgreicher Prüfung gespeichert. Der E-Mail-Button gibt ausschließlich die unveränderte, gespeicherte Ausgabe an die Systemfreigabe weiter.
 
-Die [Erkennungsarchitektur](../../docs/recognition.md) beschreibt die vorbereitete Schnittstelle zum späteren separaten lokalen KI-Projekt. Ein KI-Backend oder Modell ist nicht enthalten.
+Die [Erkennungsarchitektur](../../docs/recognition.md) beschreibt die lokale Schemaerkennung, die vorbereitete Schnittstelle zum späteren separaten lokalen KI-Projekt sowie die optionale Cloud-Erkennung über W System (eigener API-Schlüssel im System-Schlüsselbund, ausdrückliche Freigabe). Ein lokales KI-Modell ist nicht enthalten.
 
 Der Windows-Drucker verwendet weiterhin `erechnung-review://print-job/<UUID>`. `installer/windows/druckwandel.nsi` registriert die Slint-EXE. Eine Dateisperre erzwingt eine Instanz je lokalem App-Datenordner; weitere Aufrufe landen in einer lokalen SQLite-Übergabewarteschlange.
 

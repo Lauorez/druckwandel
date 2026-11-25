@@ -9,6 +9,7 @@ pub mod output;
 pub mod print_inbox;
 pub mod protocol;
 pub mod recognition;
+pub mod secrets;
 pub mod settings;
 pub mod ubl;
 pub mod validation;

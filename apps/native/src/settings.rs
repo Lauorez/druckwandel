@@ -10,6 +10,18 @@ pub struct Settings {
     pub recognition_method: i32,
     pub company: CompanyProfile,
     pub ocr: crate::ocr::OcrSettings,
+    pub wsystem: WSystemSettings,
+}
+
+/// Non-secret preferences for optional W System cloud recognition.
+/// The API key itself is stored exclusively in the OS credential store.
+#[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct WSystemSettings {
+    /// Explicit user consent to transmit invoice PDFs to W System (and subprocessor OpenAI).
+    pub consent_accepted: bool,
+    /// Opt-in: automatically transmit newly opened PDFs to W System. Disabled by default.
+    pub auto_recognize: bool,
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -60,7 +72,7 @@ impl Settings {
                 .map_err(|e| format!("Einstellungen sind beschädigt: {e}"))?
         };
         settings.appearance = settings.appearance.clamp(0, 2);
-        settings.recognition_method = settings.recognition_method.clamp(0, 1);
+        settings.recognition_method = settings.recognition_method.clamp(0, 2);
         if !["deu+eng", "deu", "eng"].contains(&settings.ocr.languages.as_str()) {
             settings.ocr.languages = "deu+eng".into();
         }
@@ -174,13 +186,19 @@ mod tests {
         settings.ocr.enabled = false;
         settings.ocr.languages = "eng".into();
         settings.save(root.path()).unwrap();
-        settings.recognition_method = 1;
+        settings.recognition_method = 2;
+        settings.wsystem.consent_accepted = true;
+        settings.wsystem.auto_recognize = false;
         settings.save(root.path()).unwrap();
         let loaded = Settings::load(root.path()).unwrap();
         assert_eq!(loaded.company.name, "Beispiel GmbH");
-        assert_eq!(loaded.recognition_method, 1);
+        assert_eq!(loaded.recognition_method, 2);
+        assert!(loaded.wsystem.consent_accepted);
+        assert!(!loaded.wsystem.auto_recognize);
         assert!(!loaded.ocr.enabled);
         assert_eq!(loaded.ocr.languages, "eng");
+        let raw_json = fs::read_to_string(root.path().join("settings.json")).unwrap();
+        assert!(!raw_json.contains("api_key"));
         fs::write(root.path().join("settings.json"), b"invalid").unwrap();
         assert!(Settings::load(root.path()).is_err());
     }
