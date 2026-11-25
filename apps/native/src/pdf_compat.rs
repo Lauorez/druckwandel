@@ -1,9 +1,13 @@
 //! Compatibility for compressed inline images not supported by lopdf's content
 //! parser. Images have no text tokens, so omit them only from the extraction copy.
 use flate2::{Decompress, FlushDecompress, Status};
-use lopdf::{Document, Stream, dictionary};
 
-pub(crate) fn load_document(bytes: &[u8]) -> Result<Document, String> {
+fn load_with_large_stack<T, E, F>(load: F) -> Result<T, String>
+where
+    T: Send,
+    E: std::fmt::Display + Send,
+    F: FnOnce() -> Result<T, E> + Send,
+{
     #[cfg(windows)]
     {
         // The recursive parser can exhaust the default Windows stack before it
@@ -11,7 +15,7 @@ pub(crate) fn load_document(bytes: &[u8]) -> Result<Document, String> {
         std::thread::scope(|scope| {
             std::thread::Builder::new()
                 .stack_size(8 * 1024 * 1024)
-                .spawn_scoped(scope, || Document::load_mem(bytes))
+                .spawn_scoped(scope, load)
                 .map_err(|error| error.to_string())?
                 .join()
                 .map_err(|_| "Die PDF konnte nicht gelesen werden.".to_owned())?
@@ -19,7 +23,15 @@ pub(crate) fn load_document(bytes: &[u8]) -> Result<Document, String> {
         })
     }
     #[cfg(not(windows))]
-    Document::load_mem(bytes).map_err(|error| error.to_string())
+    load().map_err(|error| error.to_string())
+}
+
+pub(crate) fn load_document(bytes: &[u8]) -> Result<lopdf::Document, String> {
+    load_with_large_stack(|| lopdf::Document::load_mem(bytes))
+}
+
+pub(crate) fn load_extract_document(bytes: &[u8]) -> Result<pdf_extract::Document, String> {
+    load_with_large_stack(|| pdf_extract::Document::load_mem(bytes))
 }
 
 fn whitespace(byte: u8) -> bool {
@@ -151,13 +163,16 @@ fn omit_flate_images(data: &[u8]) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(output))
 }
 
-pub(crate) fn prepare_text_content(doc: &mut Document) -> Result<(), String> {
+pub(crate) fn prepare_text_content(doc: &mut pdf_extract::Document) -> Result<(), String> {
     for (_, page) in doc.get_pages() {
         let content = doc.get_page_content(page).map_err(|e| e.to_string())?;
         if let Some(content) = omit_flate_images(&content)? {
-            let id = doc.add_object(Stream::new(dictionary! {}, content));
+            let id = doc.add_object(pdf_extract::Stream::new(
+                pdf_extract::Dictionary::new(),
+                content,
+            ));
             doc.get_object_mut(page)
-                .and_then(lopdf::Object::as_dict_mut)
+                .and_then(pdf_extract::Object::as_dict_mut)
                 .map_err(|e| e.to_string())?
                 .set("Contents", id);
         }

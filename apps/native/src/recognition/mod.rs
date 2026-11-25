@@ -38,9 +38,8 @@ impl RecognitionRequest {
     }
     /// Recognize a standalone file without a previously recorded import hash.
     pub fn from_file(source_pdf: PathBuf) -> Result<Self, String> {
-        use sha2::{Digest, Sha256};
         let bytes = crate::file_io::read_limited(&source_pdf, crate::file_io::MAX_PDF_BYTES)?;
-        let hash = format!("{:x}", Sha256::digest(&bytes));
+        let hash = crate::file_io::sha256_hex(&bytes);
         Self::from_bytes(source_pdf, bytes, hash, &crate::ocr::OcrSettings::default())
     }
 

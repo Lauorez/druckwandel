@@ -3,7 +3,6 @@ use hayro::{
     PixmapSettings, RenderCache, RenderSettings, hayro_interpret::InterpreterSettings,
     hayro_syntax::Pdf,
 };
-use sha2::{Digest, Sha256};
 use std::{
     path::PathBuf,
     sync::{
@@ -41,7 +40,7 @@ impl PreviewDocument {
         if bytes.len() as u64 > MAX_PDF_BYTES {
             return Err("PDF überschreitet 100 MB.".into());
         }
-        if format!("{:x}", Sha256::digest(&bytes)) != expected_hash {
+        if crate::file_io::sha256_hex(&bytes) != expected_hash {
             return Err("Die Original-PDF wurde außerhalb der Anwendung verändert.".into());
         }
         Pdf::new(bytes)
@@ -215,7 +214,7 @@ mod tests {
     #[test]
     fn renders_invoice_ink_and_rejects_invalid_pages_and_changed_source() {
         let bytes = include_bytes!("../tests/fixtures/source-invoice.pdf").to_vec();
-        let hash = format!("{:x}", Sha256::digest(&bytes));
+        let hash = crate::file_io::sha256_hex(&bytes);
         assert!(PreviewDocument::from_bytes(bytes.clone(), "wrong hash").is_err());
         let pdf = PreviewDocument::from_bytes(bytes, &hash).unwrap();
         assert!(pdf.render(1, 1000).is_err());
@@ -238,7 +237,7 @@ mod tests {
     #[test]
     fn worker_returns_only_latest_request_and_rechecks_changed_files() {
         let bytes = include_bytes!("../tests/fixtures/source-invoice.pdf");
-        let hash = format!("{:x}", Sha256::digest(bytes));
+        let hash = crate::file_io::sha256_hex(bytes);
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("source.pdf");
         std::fs::write(&path, bytes).unwrap();

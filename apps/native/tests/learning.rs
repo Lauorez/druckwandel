@@ -1,13 +1,13 @@
 use druckwandel_native::{
+    file_io::sha256_hex,
     invoice::InvoiceInput,
     learning::ProfileStore,
     recognition::{RecognitionMethod, RecognitionRegistry, RecognitionRequest},
 };
-use sha2::{Digest, Sha256};
 fn fixture() -> (RecognitionRequest, InvoiceInput) {
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/source-invoice.pdf");
-    let hash = format!("{:x}", Sha256::digest(std::fs::read(&path).unwrap()));
+    let hash = sha256_hex(&std::fs::read(&path).unwrap());
     let mut request = RecognitionRequest::from_pdf(path, &hash).unwrap();
     for token in request.pages.iter_mut().flat_map(|p| &mut p.tokens) {
         token.text = token.text.replace("Rechnungsnummer", "Vorgangskennung");

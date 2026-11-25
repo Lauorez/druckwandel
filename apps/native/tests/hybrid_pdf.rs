@@ -23,10 +23,7 @@ fn preserves_page_contents_and_embeds_exact_invoice_once() {
     let result = Document::load_mem(&second).unwrap();
     assert_eq!(source.get_pages().len(), result.get_pages().len());
     for ((_, a), (_, b)) in source.get_pages().iter().zip(result.get_pages().iter()) {
-        assert_eq!(
-            source.get_page_content(*a).unwrap(),
-            result.get_page_content(*b).unwrap()
-        );
+        assert_eq!(source.get_page_content(*a), result.get_page_content(*b));
     }
     let count = result
         .objects
