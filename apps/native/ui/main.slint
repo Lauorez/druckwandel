@@ -10,6 +10,233 @@ export global FieldRules {
     pure callback is-blank(string) -> bool;
 }
 
+global CountryCodes {
+    out property <[string]> labels: [
+        "– Land wählen –",
+        "DE – Deutschland",
+        "AT – Österreich",
+        "CH – Schweiz",
+        "BE – Belgien",
+        "BG – Bulgarien",
+        "DK – Dänemark",
+        "EE – Estland",
+        "FI – Finnland",
+        "FR – Frankreich",
+        "GR – Griechenland",
+        "IE – Irland",
+        "IS – Island",
+        "IT – Italien",
+        "JP – Japan",
+        "CA – Kanada",
+        "HR – Kroatien",
+        "LV – Lettland",
+        "LI – Liechtenstein",
+        "LT – Litauen",
+        "LU – Luxemburg",
+        "MT – Malta",
+        "NL – Niederlande",
+        "NO – Norwegen",
+        "PL – Polen",
+        "PT – Portugal",
+        "RO – Rumänien",
+        "SE – Schweden",
+        "SK – Slowakei",
+        "SI – Slowenien",
+        "ES – Spanien",
+        "CZ – Tschechien",
+        "TR – Türkei",
+        "HU – Ungarn",
+        "US – USA",
+        "GB – Vereinigtes Königreich",
+        "CY – Zypern",
+        "Sonstiges (ISO-Code)",
+    ];
+    out property <int> custom-index: 37;
+
+    public pure function index-of(code: string) -> int {
+        if code == "" { return 0; }
+        if code == "DE" { return 1; }
+        if code == "AT" { return 2; }
+        if code == "CH" { return 3; }
+        if code == "BE" { return 4; }
+        if code == "BG" { return 5; }
+        if code == "DK" { return 6; }
+        if code == "EE" { return 7; }
+        if code == "FI" { return 8; }
+        if code == "FR" { return 9; }
+        if code == "GR" { return 10; }
+        if code == "IE" { return 11; }
+        if code == "IS" { return 12; }
+        if code == "IT" { return 13; }
+        if code == "JP" { return 14; }
+        if code == "CA" { return 15; }
+        if code == "HR" { return 16; }
+        if code == "LV" { return 17; }
+        if code == "LI" { return 18; }
+        if code == "LT" { return 19; }
+        if code == "LU" { return 20; }
+        if code == "MT" { return 21; }
+        if code == "NL" { return 22; }
+        if code == "NO" { return 23; }
+        if code == "PL" { return 24; }
+        if code == "PT" { return 25; }
+        if code == "RO" { return 26; }
+        if code == "SE" { return 27; }
+        if code == "SK" { return 28; }
+        if code == "SI" { return 29; }
+        if code == "ES" { return 30; }
+        if code == "CZ" { return 31; }
+        if code == "TR" { return 32; }
+        if code == "HU" { return 33; }
+        if code == "US" { return 34; }
+        if code == "GB" { return 35; }
+        if code == "CY" { return 36; }
+        return -1;
+    }
+
+    public pure function code-at(index: int) -> string {
+        if index == 1 { return "DE"; }
+        if index == 2 { return "AT"; }
+        if index == 3 { return "CH"; }
+        if index == 4 { return "BE"; }
+        if index == 5 { return "BG"; }
+        if index == 6 { return "DK"; }
+        if index == 7 { return "EE"; }
+        if index == 8 { return "FI"; }
+        if index == 9 { return "FR"; }
+        if index == 10 { return "GR"; }
+        if index == 11 { return "IE"; }
+        if index == 12 { return "IS"; }
+        if index == 13 { return "IT"; }
+        if index == 14 { return "JP"; }
+        if index == 15 { return "CA"; }
+        if index == 16 { return "HR"; }
+        if index == 17 { return "LV"; }
+        if index == 18 { return "LI"; }
+        if index == 19 { return "LT"; }
+        if index == 20 { return "LU"; }
+        if index == 21 { return "MT"; }
+        if index == 22 { return "NL"; }
+        if index == 23 { return "NO"; }
+        if index == 24 { return "PL"; }
+        if index == 25 { return "PT"; }
+        if index == 26 { return "RO"; }
+        if index == 27 { return "SE"; }
+        if index == 28 { return "SK"; }
+        if index == 29 { return "SI"; }
+        if index == 30 { return "ES"; }
+        if index == 31 { return "CZ"; }
+        if index == 32 { return "TR"; }
+        if index == 33 { return "HU"; }
+        if index == 34 { return "US"; }
+        if index == 35 { return "GB"; }
+        if index == 36 { return "CY"; }
+        return "";
+    }
+}
+
+component CountryField inherits VerticalBox {
+    callback edited();
+    in property <string> label: "Land";
+    in property <bool> required: false;
+    in property <bool> invalidates-output: true;
+    in-out property <string> value;
+    private property <bool> custom-selected: false;
+    private property <bool> missing: root.required && FieldRules.is-blank(root.value);
+    private property <int> matched-index: CountryCodes.index-of(root.value);
+    private property <bool> show-custom: root.custom-selected || (root.value != "" && root.matched-index < 0);
+    private property <int> picker-index: root.show-custom ? CountryCodes.custom-index : root.matched-index >= 0 ? root.matched-index : 0;
+
+    changed value => {
+        if CountryCodes.index-of(root.value) >= 0 {
+            root.custom-selected = false;
+        }
+    }
+
+    padding: 0px;
+    vertical-stretch: 0;
+    spacing: 6px;
+
+    HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: root.label + (root.required ? " *" : "");
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing && !root.show-custom ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            ComboBox {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                accessible-label: root.label + (root.missing ? ", Pflichtfeld fehlt" : "");
+                model: CountryCodes.labels;
+                current-index: root.picker-index;
+                enabled: !OutputState.busy;
+                selected => {
+                    if self.current-index == CountryCodes.custom-index {
+                        if CountryCodes.index-of(root.value) > 0 {
+                            root.value = "";
+                        }
+                        root.custom-selected = true;
+                    } else {
+                        root.custom-selected = false;
+                        root.value = CountryCodes.code-at(self.current-index);
+                    }
+                    if root.invalidates-output {
+                        OutputState.can-email = false;
+                    }
+                    root.edited();
+                }
+            }
+        }
+    }
+
+    if root.show-custom : HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: "ISO-Code (2 Buchst.)";
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            LineEdit {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                text <=> root.value;
+                placeholder-text: "z. B. AU, BR, SG";
+                accessible-label: root.label + " ISO-Code";
+                enabled: !OutputState.busy;
+                edited => {
+                    if root.invalidates-output {
+                        OutputState.can-email = false;
+                    }
+                    root.edited();
+                }
+            }
+        }
+    }
+}
+
 component LabeledField inherits HorizontalBox {
     callback edited();
     in property <string> label;
@@ -332,7 +559,7 @@ export component MainWindow inherits Window {
                                 LabeledField { label: "Straße"; value <=> root.company-street; }
                                 LabeledField { label: "PLZ"; value <=> root.company-postal; }
                                 LabeledField { label: "Ort"; value <=> root.company-city; }
-                                LabeledField { label: "Land (ISO)"; value <=> root.company-country; }
+                                CountryField { label: "Land"; value <=> root.company-country; invalidates-output: false; }
                                 LabeledField { label: "USt-ID"; value <=> root.company-vat; }
                                 LabeledField { label: "Steuernummer"; value <=> root.company-tax-number; }
                                 LabeledField { label: "E-Adresse"; value <=> root.company-endpoint; }
@@ -567,7 +794,7 @@ export component MainWindow inherits Window {
                         LabeledField { label: "Straße"; value <=> root.seller-street; required: true; }
                         LabeledField { label: "PLZ"; value <=> root.seller-postal; required: true; }
                         LabeledField { label: "Ort"; value <=> root.seller-city; required: true; }
-                        LabeledField { label: "Land (ISO)"; value <=> root.seller-country; required: true; }
+                        CountryField { label: "Land"; value <=> root.seller-country; required: true; }
                         LabeledField { label: "USt-ID"; value <=> root.seller-vat; required: FieldRules.is-blank(root.seller-tax-number); }
                         LabeledField { label: "Steuernummer"; value <=> root.seller-tax-number; }
                         LabeledField { label: "E-Adresse"; value <=> root.seller-endpoint; required: root.output-format == 1; }
@@ -579,7 +806,7 @@ export component MainWindow inherits Window {
                         LabeledField { label: "Straße"; value <=> root.buyer-street; required: true; }
                         LabeledField { label: "PLZ"; value <=> root.buyer-postal; required: true; }
                         LabeledField { label: "Ort"; value <=> root.buyer-city; required: true; }
-                        LabeledField { label: "Land (ISO)"; value <=> root.buyer-country; required: true; }
+                        CountryField { label: "Land"; value <=> root.buyer-country; required: true; }
                         LabeledField { label: "USt-ID"; value <=> root.buyer-vat; }
                         LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; required: root.output-format == 1; }
                         Text { text: "Zahlung"; font-size: 16px; font-weight: 600; }

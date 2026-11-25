@@ -42,7 +42,11 @@ fn collect_company_form(window: &MainWindow) -> CompanyProfile {
         street: window.get_company_street().to_string().trim().to_owned(),
         postal: window.get_company_postal().to_string().trim().to_owned(),
         city: window.get_company_city().to_string().trim().to_owned(),
-        country: window.get_company_country().to_string().trim().to_owned(),
+        country: window
+            .get_company_country()
+            .to_string()
+            .trim()
+            .to_uppercase(),
         vat: window.get_company_vat().to_string().trim().to_owned(),
         tax_number: window
             .get_company_tax_number()
@@ -222,7 +226,11 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.seller.address.line1 = window.get_seller_street().to_string();
     invoice.seller.address.postal_code = window.get_seller_postal().to_string();
     invoice.seller.address.city = window.get_seller_city().to_string();
-    invoice.seller.address.country_code = window.get_seller_country().to_string();
+    invoice.seller.address.country_code = window
+        .get_seller_country()
+        .to_string()
+        .trim()
+        .to_uppercase();
     invoice.seller.vat_id = optional(window.get_seller_vat().to_string());
     invoice.seller.tax_registration_id = optional(window.get_seller_tax_number().to_string());
     invoice.seller.electronic_address = endpoint(
@@ -241,7 +249,8 @@ fn collect_form(window: &MainWindow, mut invoice: InvoiceInput) -> InvoiceInput 
     invoice.buyer.address.line1 = window.get_buyer_street().to_string();
     invoice.buyer.address.postal_code = window.get_buyer_postal().to_string();
     invoice.buyer.address.city = window.get_buyer_city().to_string();
-    invoice.buyer.address.country_code = window.get_buyer_country().to_string();
+    invoice.buyer.address.country_code =
+        window.get_buyer_country().to_string().trim().to_uppercase();
     invoice.buyer.electronic_address = endpoint(
         window.get_buyer_endpoint().to_string(),
         invoice.buyer.electronic_address.as_ref(),
