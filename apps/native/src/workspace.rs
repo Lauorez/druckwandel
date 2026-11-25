@@ -350,7 +350,7 @@ impl Workspace {
             output.sync_all().map_err(|e| e.to_string())?;
             drop(output);
             fs::rename(&temporary, &path).map_err(|e| e.to_string())?;
-            let sha256 = format!("{:x}", hash.finalize());
+            let sha256 = crate::file_io::encode_hex(hash.finalize().as_slice());
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|e| e.to_string())?

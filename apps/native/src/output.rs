@@ -33,7 +33,7 @@ impl SavedOutput {
             }
             hash.update(&buffer[..count]);
         }
-        let actual = format!("{:x}", hash.finalize());
+        let actual = crate::file_io::encode_hex(hash.finalize().as_slice());
         if actual != self.sha256 {
             return Err("Die gespeicherte Datei wurde verändert.".into());
         }
@@ -115,7 +115,7 @@ fn save_validated(
         fs::rename(&temporary, destination).map_err(|e| e.to_string())?;
         Ok(SavedOutput {
             path: destination.to_owned(),
-            sha256: format!("{:x}", Sha256::digest(bytes)),
+            sha256: crate::file_io::sha256_hex(bytes),
             size: bytes.len() as u64,
         })
     })();

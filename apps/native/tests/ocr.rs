@@ -1,14 +1,14 @@
 use druckwandel_native::{
+    file_io::sha256_hex,
     ocr::{OcrSettings, read_pages},
     preview::PreviewDocument,
     recognition::{RecognitionMethod, RecognitionRegistry, RecognitionRequest},
 };
 use lopdf::{Document, Object, Stream, dictionary};
-use sha2::{Digest, Sha256};
 
 fn mixed_scan() -> Vec<u8> {
     let bytes = include_bytes!("fixtures/source-invoice.pdf").to_vec();
-    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let hash = sha256_hex(&bytes);
     let preview = PreviewDocument::from_bytes(bytes.clone(), &hash).unwrap();
     let (width, height) = preview.page_dimensions(0).unwrap();
     let frame = preview.render(0, 2000).unwrap();
@@ -54,7 +54,7 @@ fn mixed_scan() -> Vec<u8> {
 #[test]
 fn text_pages_do_not_need_ocr_and_disabled_ocr_preserves_native_pages() {
     let bytes = include_bytes!("fixtures/source-invoice.pdf");
-    let hash = format!("{:x}", Sha256::digest(bytes));
+    let hash = sha256_hex(bytes);
     let (pages, warnings) = read_pages(
         bytes,
         &hash,
@@ -67,7 +67,7 @@ fn text_pages_do_not_need_ocr_and_disabled_ocr_preserves_native_pages() {
     assert!(!pages[0].tokens.is_empty());
     assert!(warnings.is_empty());
     let scan = mixed_scan();
-    let hash = format!("{:x}", Sha256::digest(&scan));
+    let hash = sha256_hex(&scan);
     let (pages, warnings) = read_pages(
         &scan,
         &hash,
@@ -87,7 +87,7 @@ fn text_pages_do_not_need_ocr_and_disabled_ocr_preserves_native_pages() {
 #[ignore = "requires the pinned local Tesseract runtime and deu+eng language data"]
 fn mixed_document_recognizes_image_only_page_locally_with_source_coordinates() {
     let scan = mixed_scan();
-    let hash = format!("{:x}", Sha256::digest(&scan));
+    let hash = sha256_hex(&scan);
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gemischte-rechnung.pdf");
     std::fs::write(&path, &scan).unwrap();

@@ -124,8 +124,7 @@ fn settings_gear_and_pdf_preview_work_without_a_desktop_session() {
     let bytes = std::env::var_os("DRUCKWANDEL_PREVIEW_PDF")
         .map(|path| std::fs::read(path).unwrap())
         .unwrap_or_else(|| include_bytes!("fixtures/source-invoice.pdf").to_vec());
-    use sha2::{Digest, Sha256};
-    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let hash = druckwandel_native::file_io::sha256_hex(&bytes);
     let pdf = druckwandel_native::preview::PreviewDocument::from_bytes(bytes, &hash).unwrap();
     let requested = Rc::new(Cell::new(0));
     let count = requested.clone();

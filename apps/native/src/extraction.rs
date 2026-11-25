@@ -160,7 +160,7 @@ pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
     if bytes.len() > 100 * 1024 * 1024 {
         return Err("PDF überschreitet 100 MB.".into());
     }
-    let mut doc = crate::pdf_compat::load_document(bytes)?;
+    let mut doc = crate::pdf_compat::load_extract_document(bytes)?;
     if doc.is_encrypted() {
         return Err("Verschlüsselte PDF wird nicht unterstützt.".into());
     }
@@ -181,11 +181,11 @@ pub fn read_document_bytes(bytes: &[u8]) -> Result<Vec<DocumentPage>, String> {
 // pdf-extract 0.12.1 still assumes calibrated color-space parameters are inline
 // dictionaries. PDF permits indirect dictionaries as well. Resolve just those
 // parameters in the extraction copy; never modify or resave the source PDF.
-fn normalize_color_parameters(doc: &mut lopdf::Document) {
-    use lopdf::Object;
+fn normalize_color_parameters(doc: &mut pdf_extract::Document) {
+    use pdf_extract::Object;
     fn visit(
         value: &mut Object,
-        dictionaries: &std::collections::BTreeMap<lopdf::ObjectId, Object>,
+        dictionaries: &std::collections::BTreeMap<pdf_extract::ObjectId, Object>,
         depth: usize,
     ) {
         if depth > 64 {
