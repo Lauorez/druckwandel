@@ -30,18 +30,14 @@ impl Workspace {
     pub fn new(root: PathBuf) -> Result<Self, String> {
         fs::create_dir_all(root.join("documents")).map_err(|e| e.to_string())?;
         let workspace = Self { root };
-        workspace.database()?;
+        workspace.init_schema()?;
         Ok(workspace)
     }
 
-    fn database(&self) -> Result<Connection, String> {
-        let db =
-            Connection::open(self.root.join("workspace.sqlite3")).map_err(|e| e.to_string())?;
-        db.busy_timeout(std::time::Duration::from_secs(5))
-            .map_err(|e| e.to_string())?;
+    fn init_schema(&self) -> Result<(), String> {
+        let db = self.database()?;
         db.execute_batch(
             "PRAGMA journal_mode=WAL;
-             PRAGMA foreign_keys=ON;
              CREATE TABLE IF NOT EXISTS documents (
                id TEXT PRIMARY KEY,
                name TEXT NOT NULL,
@@ -70,6 +66,16 @@ impl Workspace {
              );",
         )
         .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn database(&self) -> Result<Connection, String> {
+        let db =
+            Connection::open(self.root.join("workspace.sqlite3")).map_err(|e| e.to_string())?;
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| e.to_string())?;
+        db.execute_batch("PRAGMA foreign_keys=ON;")
+            .map_err(|e| e.to_string())?;
         Ok(db)
     }
 
@@ -193,6 +199,14 @@ impl Workspace {
 
     pub fn take_handoffs(&self) -> Result<Vec<Vec<String>>, String> {
         let mut db = self.database()?;
+        let has_rows: bool = db
+            .query_row("SELECT EXISTS(SELECT 1 FROM handoff_queue)", [], |row| {
+                row.get(0)
+            })
+            .map_err(|e| e.to_string())?;
+        if !has_rows {
+            return Ok(Vec::new());
+        }
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(|e| e.to_string())?;
@@ -205,9 +219,11 @@ impl Workspace {
             .map_err(|e| e.to_string())?;
         let mut result = Vec::new();
         for (id, data) in rows {
-            result.push(serde_json::from_str(&data).map_err(|e| e.to_string())?);
             tx.execute("DELETE FROM handoff_queue WHERE id=?1", [id])
                 .map_err(|e| e.to_string())?;
+            if let Ok(arguments) = serde_json::from_str::<Vec<String>>(&data) {
+                result.push(arguments);
+            }
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(result)
@@ -413,6 +429,24 @@ mod tests {
         second.enqueue_handoff(&arguments).unwrap();
         assert_eq!(first.take_handoffs().unwrap(), vec![arguments]);
         assert!(second.take_handoffs().unwrap().is_empty());
+    }
+
+    #[test]
+    fn corrupted_handoff_row_does_not_block_subsequent_handoffs() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(directory.path().to_owned()).unwrap();
+        workspace
+            .database()
+            .unwrap()
+            .execute(
+                "INSERT INTO handoff_queue(arguments) VALUES (?1)",
+                ["{broken json"],
+            )
+            .unwrap();
+        let valid = vec!["invoice.pdf".to_string()];
+        workspace.enqueue_handoff(&valid).unwrap();
+        assert_eq!(workspace.take_handoffs().unwrap(), vec![valid]);
+        assert!(workspace.take_handoffs().unwrap().is_empty());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $workspace = Split-Path -Parent $PSScriptRoot
 $package = Get-ChildItem -Path (Join-Path $workspace 'printer\artifacts\packages') `
@@ -7,7 +7,7 @@ $package = Get-ChildItem -Path (Join-Path $workspace 'printer\artifacts\packages
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
 if (-not $package) {
-    throw 'Kein aktuelles Drucker-MSIX gefunden. Führe zuerst scripts\printer-build.ps1 aus.'
+    throw 'Kein aktuelles Drucker-MSIX gefunden. Führe zuerst printer\scripts\build.ps1 aus.'
 }
 $packagePath = $package.FullName
 $artifactRoot = $package.DirectoryName
@@ -17,20 +17,26 @@ if ($jobs.Count -gt 0) {
     throw "Clean-Reinstall abgebrochen: $($jobs.Count) aktiver Druckjob. Druckjob zuerst abbrechen."
 }
 
-$installedPackages = @(Get-AppxPackage -Name 'ERechnung.VirtualPrinter.PoC')
+$installedPackages = @(
+    Get-AppxPackage -Name 'Druckwandel.VirtualPrinter'
+    Get-AppxPackage -Name 'ERechnung.VirtualPrinter.PoC'
+)
 foreach ($installedPackage in $installedPackages) {
     Remove-AppxPackage -Package $installedPackage.PackageFullName
 }
 
 $deadline = (Get-Date).AddSeconds(30)
 do {
-    $remainingPackage = Get-AppxPackage -Name 'ERechnung.VirtualPrinter.PoC'
+    $remainingPackage = @(
+        Get-AppxPackage -Name 'Druckwandel.VirtualPrinter'
+        Get-AppxPackage -Name 'ERechnung.VirtualPrinter.PoC'
+    )
     $remainingPrinter = Get-Printer -Name 'E-Rechnung' -ErrorAction SilentlyContinue
-    if (-not $remainingPackage -and -not $remainingPrinter) { break }
+    if ($remainingPackage.Count -eq 0 -and -not $remainingPrinter) { break }
     Start-Sleep -Seconds 1
 } while ((Get-Date) -lt $deadline)
 
-if ($remainingPackage -or $remainingPrinter) {
+if ($remainingPackage.Count -gt 0 -or $remainingPrinter) {
     throw 'Alte Paket-/Queue-Registrierung wurde nicht vollständig entfernt. Spooler als Administrator neu starten.'
 }
 
@@ -50,7 +56,7 @@ Add-AppxPackage @installParameters
 
 $deadline = (Get-Date).AddSeconds(30)
 do {
-    $package = Get-AppxPackage -Name 'ERechnung.VirtualPrinter.PoC'
+    $package = Get-AppxPackage -Name 'Druckwandel.VirtualPrinter'
     $printer = Get-Printer -Name 'E-Rechnung' -ErrorAction SilentlyContinue
     $createdEvent = Get-WinEvent -FilterHashtable @{
         LogName = 'Microsoft-Windows-PrintService/Operational'

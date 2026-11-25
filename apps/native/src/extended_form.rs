@@ -12,8 +12,29 @@ fn text(value: &Option<String>) -> slint::SharedString {
 fn decimal_text(value: &str) -> String {
     let value = value.trim();
     match value.split_once(',') {
-        Some((integer, fraction)) if !value.contains('.') && !fraction.contains(',') => {
-            format!("{integer}.{fraction}")
+        Some((integer, fraction)) if !fraction.contains(',') && !fraction.contains('.') => {
+            if integer.contains('.') {
+                let valid_grouping = integer
+                    .trim_start_matches(['+', '-'])
+                    .split('.')
+                    .enumerate()
+                    .all(|(i, part)| {
+                        !part.is_empty()
+                            && part.bytes().all(|b| b.is_ascii_digit())
+                            && if i == 0 {
+                                part.len() <= 3
+                            } else {
+                                part.len() == 3
+                            }
+                    });
+                if valid_grouping {
+                    format!("{}.{fraction}", integer.replace('.', ""))
+                } else {
+                    value.into()
+                }
+            } else {
+                format!("{integer}.{fraction}")
+            }
         }
         _ => value.into(),
     }
@@ -297,4 +318,19 @@ pub fn wire_collections(ui: &MainWindow) {
         ui.set_references(ModelRc::new(VecModel::from(items)));
         ui.global::<OutputState>().set_can_email(false);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decimal_text;
+
+    #[test]
+    fn normalizes_german_decimal_and_thousands_grouping() {
+        assert_eq!(decimal_text("12,345"), "12.345");
+        assert_eq!(decimal_text("1.250,00"), "1250.00");
+        assert_eq!(decimal_text("1.234.567,89"), "1234567.89");
+        assert_eq!(decimal_text("-1.250,50"), "-1250.50");
+        assert_eq!(decimal_text("1.23,45"), "1.23,45");
+        assert_eq!(decimal_text("80.50"), "80.50");
+    }
 }

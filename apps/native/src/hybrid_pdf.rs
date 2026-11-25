@@ -1,7 +1,11 @@
 //! Preserve source pages, require embedded fonts, attach exact CII bytes, then let
 //! independent validators decide PDF/A-3B and Factur-X compliance before saving.
+use flate2::read::ZlibDecoder;
 use lopdf::{Dictionary, Document, Object, Stream, StringFormat, dictionary};
 use std::collections::BTreeMap;
+use std::io::Read;
+
+const MAX_EMBEDDED_BYTES: usize = 20 * 1024 * 1024;
 
 fn resolved<'a>(doc: &'a Document, value: &'a Object) -> Result<&'a Object, String> {
     doc.dereference(value)
@@ -53,15 +57,48 @@ fn font_embedded(doc: &Document, font: &Dictionary, depth: usize) -> bool {
         })
 }
 
+fn is_plain_flate(stream: &Stream) -> bool {
+    if stream.dict.has(b"DecodeParms") {
+        return false;
+    }
+    match stream.dict.get(b"Filter").ok() {
+        Some(Object::Name(name)) => name == b"FlateDecode",
+        Some(Object::Array(items)) if items.len() == 1 => {
+            items[0].as_name().ok() == Some(b"FlateDecode")
+        }
+        _ => false,
+    }
+}
+
 fn stream_bytes(doc: &Document, value: &Object) -> Result<Vec<u8>, String> {
     let stream = resolved(doc, value)?
         .as_stream()
         .map_err(|e| e.to_string())?;
-    if stream.dict.has(b"Filter") {
-        stream.decompressed_content().map_err(|e| e.to_string())
-    } else {
-        Ok(stream.content.clone())
+    if !stream.dict.has(b"Filter") {
+        if stream.content.len() > MAX_EMBEDDED_BYTES {
+            return Err("Der eingebettete Anhang überschreitet 20 MB.".into());
+        }
+        return Ok(stream.content.clone());
     }
+    if is_plain_flate(stream) {
+        let mut bytes = Vec::new();
+        ZlibDecoder::new(stream.content.as_slice())
+            .take(MAX_EMBEDDED_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() > MAX_EMBEDDED_BYTES {
+            return Err("Der eingebettete Anhang überschreitet 20 MB.".into());
+        }
+        return Ok(bytes);
+    }
+    if stream.content.len() > MAX_EMBEDDED_BYTES {
+        return Err("Der eingebettete Anhang überschreitet 20 MB.".into());
+    }
+    let bytes = stream.decompressed_content().map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_EMBEDDED_BYTES {
+        return Err("Der eingebettete Anhang überschreitet 20 MB.".into());
+    }
+    Ok(bytes)
 }
 
 fn filename(spec: &Dictionary) -> Result<String, String> {
@@ -155,7 +192,10 @@ pub fn prepare_hybrid_pdf(source: &[u8], cii: &[u8]) -> Result<Vec<u8>, String> 
                 || lower == "xrechnung.xml"
                 || lower.contains("zugferd")
                 || head.contains("CrossIndustryInvoice")
-                || head.contains("<Invoice");
+                || head.contains("<Invoice")
+                || head.contains(":Invoice")
+                || head.contains("<CreditNote")
+                || head.contains(":CreditNote");
             if invoice_like {
                 if lower != "factur-x.xml" || bytes != cii || identical.is_some() {
                     return Err("Die PDF enthält bereits andere maschinenlesbare Rechnungsdaten. Diese werden nicht überschrieben oder verdoppelt.".into());

@@ -51,32 +51,18 @@ jobs:
         run: python scripts/fetch-validators.py
       - name: XML- und PDF-Ausgaben unabhängig prüfen
         run: cargo test -p druckwandel-native --locked --test external_validators -- --ignored
-      - name: Windows-Druckerpaket übernehmen
+      - name: .NET für Windows-Drucker bereitstellen
         if: runner.os == 'Windows' && inputs.package
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          gh release download v0.3.5 --pattern 'Druckwandel-0.3.5-x64-Setup.exe' --dir old-release
-          if ($LASTEXITCODE -ne 0) {throw 'Download fehlgeschlagen.'}
-          $setup = Resolve-Path old-release/Druckwandel-0.3.5-x64-Setup.exe
-          if ((Get-FileHash $setup -Algorithm SHA256).Hash -ne '0B46ADB704563CBEC79B6C1AEDE5C16D1A59CA0DB57A055382C15A697EA6091A') {throw 'Falsche Setup-Prüfsumme.'}
-          & 'C:\Program Files\7-Zip\7z.exe' x -y '-oold-extracted' $setup
-          if ($LASTEXITCODE -ne 0) {throw 'Entpacken fehlgeschlagen.'}
-          $package = @(Get-ChildItem old-extracted -Recurse -Filter Printer.msix)
-          if ($package.Count -ne 1) {throw 'Druckerpaket nicht eindeutig.'}
-          New-Item -ItemType Directory -Force artifacts/printer | Out-Null
-          foreach ($name in @('Printer.msix','PrinterCertificate.cer','WindowsAppRuntime.msix')) {
-            Copy-Item (Join-Path $package[0].DirectoryName $name) artifacts/printer/
-          }
-      - name: Windows-Installer bauen
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Windows-Installer (App + Drucker) bauen
         if: runner.os == 'Windows' && inputs.package
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
           if ($LASTEXITCODE -ne 0) {throw 'NSIS-Installation fehlgeschlagen.'}
-          ./scripts/build-windows-installer.ps1 -SkipChecks -PrinterPackagePath artifacts/printer/Printer.msix -PrinterDependencyPath artifacts/printer/WindowsAppRuntime.msix -PrinterCertificatePath artifacts/printer/PrinterCertificate.cer
+          ./scripts/build-windows-installer.ps1 -SkipChecks
       - name: Installer-Protokollregistrierung prüfen
         if: runner.os == 'Windows' && inputs.package
         shell: pwsh

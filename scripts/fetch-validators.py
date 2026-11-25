@@ -77,6 +77,15 @@ def remove_obsolete_jars(current):
             print(f"Removed obsolete validator: {candidate.name}", flush=True)
 
 
+def java_download(system, arch):
+    target = f"{system}-{arch}"
+    downloads = MANIFEST["java"]["downloads"]
+    if target not in downloads:
+        raise ValueError(f"Unsupported platform for pinned JRE: {target}")
+    entry = downloads[target]
+    return target, entry["url"], entry["sha256"]
+
+
 def main():
     checksums = {}
     for tool, url in [
@@ -98,8 +107,9 @@ def main():
         replace_tree(scenarios.parent, ROOT / "kosit" / "xrechnung")
         system = {"Darwin": "mac", "Windows": "windows", "Linux": "linux"}[platform.system()]
         arch = "aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "x64"
+        target, jre_url, jre_sha256 = java_download(system, arch)
         archive = temporary / ("jre.zip" if system == "windows" else "jre.tar.gz")
-        download(f"https://api.adoptium.net/v3/binary/latest/21/ga/{system}/{arch}/jre/hotspot/normal/eclipse?project=jdk", archive, checksums, f"jre/{system}-{arch}")
+        download(jre_url, archive, checksums, f"jre/{target}", jre_sha256)
         unpack(archive, temporary / "runtime")
         java = next((temporary / "runtime").rglob("java.exe" if system == "windows" else "java"))
         replace_tree(java.parent.parent, ROOT / "jre")

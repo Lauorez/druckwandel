@@ -9,7 +9,11 @@ OutFile "${OUTPUT}"
 InstallDir "$PROGRAMFILES64\Druckwandel"
 InstallDirRegKey HKLM "Software\Druckwandel" "InstallLocation"
 RequestExecutionLevel admin
+!ifdef UNCOMPRESSED
+SetCompress off
+!else
 SetCompressor /SOLID lzma
+!endif
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_COMPONENTSPAGE_NODESC
@@ -55,13 +59,18 @@ FunctionEnd
 Section "Druckwandel" SEC_APP
   SectionIn RO
   SetRegView 64
-  ; Replace a previous installer before writing new files. /UPDATE retains the
-  ; installed printer. The immutable legacy branch contains the old implementation.
+  ; Replace a previous machine-wide installer before writing new files. /UPDATE
+  ; retains the installed printer. Never execute an unprivileged HKCU uninstall
+  ; string while elevated as administrator.
   ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "UninstallString"
   ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "InstallLocation"
   ${If} $R7 == ""
-    ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "UninstallString"
-    ReadRegStr $R6 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "InstallLocation"
+    ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "UninstallString"
+    ${If} $R5 != ""
+      MessageBox MB_ICONSTOP "Es wurde eine ältere benutzerbezogene Installation gefunden. Bitte entfernen Sie diese zuerst über die Windows-Apps-Einstellungen und starten Sie die Einrichtung erneut." /SD IDOK
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
   ${EndIf}
   ${If} $R6 == ""
     StrCpy $R6 $INSTDIR
@@ -80,26 +89,38 @@ Section "Druckwandel" SEC_APP
   File "${PAYLOAD}\LICENSE"
   File "${PAYLOAD}\THIRD-PARTY-NOTICES.md"
   File "${PAYLOAD}\AssertSessionAccount.ps1"
-  File "${PAYLOAD}\RemovePrinter.ps1"
   SetOutPath "$INSTDIR\resources\validators"
   File /r "${PAYLOAD}\resources\validators\*"
   SetOutPath "$INSTDIR\resources\ocr"
   File /r "${PAYLOAD}\resources\ocr\*"
 !ifdef WITH_PRINTER
   SetOutPath "$PLUGINSDIR\printer"
-  File "${PAYLOAD}\InstallPrinter.ps1"
   File "${PAYLOAD}\Printer.msix"
   File "${PAYLOAD}\WindowsAppRuntime.msix"
 !ifdef DEV_CERTIFICATE
   File "${PAYLOAD}\PrinterCertificate.cer"
-  nsExec::ExecToStack /TIMEOUT=300000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\printer\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\printer\Printer.msix" -DependencyPath "$PLUGINSDIR\printer\WindowsAppRuntime.msix" -CertificatePath "$PLUGINSDIR\printer\PrinterCertificate.cer"'
-!else
-  nsExec::ExecToStack /TIMEOUT=300000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\printer\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\printer\Printer.msix" -DependencyPath "$PLUGINSDIR\printer\WindowsAppRuntime.msix"'
-!endif
+  nsExec::ExecToStack /TIMEOUT=60000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop';$$c=[Security.Cryptography.X509Certificates.X509Certificate2]::new('$PLUGINSDIR\printer\PrinterCertificate.cer');$$s=[Security.Cryptography.X509Certificates.X509Store]::new('TrustedPeople','LocalMachine');$$s.Open('ReadWrite');try{$$s.Add($$c)}finally{$$s.Close()}"`
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Der Drucker konnte nicht eingerichtet werden. Details: $TEMP\Druckwandel-Installation.log$\r$\n$1" /SD IDOK
+    MessageBox MB_ICONSTOP "Das Druckerzertifikat konnte nicht hinterlegt werden.$\r$\n$1" /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+!endif
+  nsExec::ExecToStack /TIMEOUT=240000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop';Import-Module (Join-Path $$PSHOME 'Modules\Appx\Appx.psd1') -Force;Import-Module (Join-Path $$PSHOME 'Modules\PrintManagement\PrintManagement.psd1') -Force;if(@(Get-PrintJob -PrinterName 'E-Rechnung' -EA SilentlyContinue).Count -gt 0){throw 'Aktiver Druckauftrag läuft.'};Get-AppxPackage -Name 'ERechnung.VirtualPrinter.PoC'|Remove-AppxPackage -EA SilentlyContinue;Add-AppxPackage -Path '$PLUGINSDIR\printer\Printer.msix' -DependencyPath '$PLUGINSDIR\printer\WindowsAppRuntime.msix' -ForceApplicationShutdown -ForceUpdateFromAnyVersion"`
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP "Der Drucker konnte nicht eingerichtet werden.$\r$\n$1" /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+  nsExec::ExecToStack /TIMEOUT=60000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop';Import-Module (Join-Path $$PSHOME 'Modules\PrintManagement\PrintManagement.psd1') -Force;$$d=(Get-Date).AddSeconds(45);while(-not(Get-Printer -Name 'E-Rechnung' -EA SilentlyContinue) -and (Get-Date) -lt $$d){Start-Sleep -Milliseconds 500};if(-not(Get-Printer -Name 'E-Rechnung' -EA SilentlyContinue)){throw 'Drucker E-Rechnung wurde nicht bereitgestellt.'}"`
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP "Der Drucker wurde nicht rechtzeitig bereitgestellt.$\r$\n$1" /SD IDOK
     SetErrorLevel 1
     Abort
   ${EndIf}
@@ -159,7 +180,7 @@ FunctionEnd
 Section "Uninstall"
 !ifdef WITH_PRINTER
   ${If} $IsUpdate != 1
-    nsExec::ExecToStack /TIMEOUT=120000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\RemovePrinter.ps1"'
+    nsExec::ExecToStack /TIMEOUT=120000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop';Import-Module (Join-Path $$PSHOME 'Modules\Appx\Appx.psd1') -Force;Import-Module (Join-Path $$PSHOME 'Modules\PrintManagement\PrintManagement.psd1') -Force;if(@(Get-PrintJob -PrinterName 'E-Rechnung' -EA SilentlyContinue).Count -gt 0){throw 'Aktiver Druckauftrag läuft.'};foreach($$n in 'Druckwandel.VirtualPrinter','ERechnung.VirtualPrinter.PoC'){Get-AppxPackage -Name $$n|Remove-AppxPackage}"`
     Pop $0
     Pop $1
     ${If} $0 != 0
@@ -167,6 +188,9 @@ Section "Uninstall"
       SetErrorLevel 1
       Abort
     ${EndIf}
+    nsExec::ExecToStack /TIMEOUT=60000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$s=[Security.Cryptography.X509Certificates.X509Store]::new('TrustedPeople','LocalMachine');$$s.Open('ReadWrite');try{$$s.Certificates|Where-Object{$$_.Subject -eq 'CN=ERechnung Development' -and $$_.Issuer -eq 'CN=ERechnung Development'}|ForEach-Object{$$s.Remove($$_)}}finally{$$s.Close()}"`
+    Pop $0
+    Pop $1
   ${EndIf}
 !endif
   ReadRegStr $0 HKCU "Software\Classes\erechnung-review\shell\open\command" ""
@@ -187,7 +211,6 @@ Section "Uninstall"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD-PARTY-NOTICES.md"
   Delete "$INSTDIR\AssertSessionAccount.ps1"
-  Delete "$INSTDIR\RemovePrinter.ps1"
   RMDir /r "$INSTDIR\resources\validators"
   RMDir /r "$INSTDIR\resources\ocr"
   RMDir "$INSTDIR\resources"

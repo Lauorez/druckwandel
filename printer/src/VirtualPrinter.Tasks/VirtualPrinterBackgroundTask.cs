@@ -12,10 +12,20 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
 {
     private BackgroundTaskDeferral? taskDeferral;
     private IppPrintDevice? printer;
+    private int deferralCompleted;
+
+    private void CompleteDeferralOnce()
+    {
+        if (Interlocked.Exchange(ref deferralCompleted, 1) == 0)
+        {
+            taskDeferral?.Complete();
+        }
+    }
 
     public void Run(IBackgroundTaskInstance taskInstance)
     {
         taskDeferral = taskInstance.GetDeferral();
+        taskInstance.Canceled += (_, _) => CompleteDeferralOnce();
         try
         {
             // NativeAOT returns TriggerDetails as a bare IInspectable. The explicit
@@ -24,7 +34,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
                 ProjectVirtualPrinterTrigger(taskInstance.TriggerDetails);
             if (triggerDetails is null)
             {
-                taskDeferral.Complete();
+                CompleteDeferralOnce();
                 return;
             }
 
@@ -35,7 +45,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         }
         catch
         {
-            taskDeferral.Complete();
+            CompleteDeferralOnce();
             throw;
         }
     }
@@ -128,14 +138,25 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
         {
             if (store is not null && job is not null)
             {
-                PrintJobStatus failureStatus = job.Status == PrintJobStatus.PdfConversionStarted
-                    ? PrintJobStatus.PdfConversionFailed
-                    : PrintJobStatus.JobFailed;
-                job = store.Transition(job, failureStatus, exception.Message);
-
-                if (failureStatus != PrintJobStatus.JobFailed)
+                try
                 {
-                    store.Transition(job, PrintJobStatus.JobFailed, exception.Message);
+                    PrintJobStatus failureStatus = job.Status == PrintJobStatus.PdfConversionStarted
+                        ? PrintJobStatus.PdfConversionFailed
+                        : PrintJobStatus.JobFailed;
+                    job = store.Transition(job, failureStatus, exception.Message);
+
+                    if (failureStatus != PrintJobStatus.JobFailed)
+                    {
+                        store.Transition(job, PrintJobStatus.JobFailed, exception.Message);
+                    }
+                }
+                catch (IOException)
+                {
+                    // Recording failure state must not escape async void or block job completion.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Recording failure state must not escape async void or block job completion.
                 }
             }
         }
@@ -163,7 +184,7 @@ public sealed class VirtualPrinterBackgroundTask : IBackgroundTask
             }
             finally
             {
-                taskDeferral?.Complete();
+                CompleteDeferralOnce();
             }
         }
     }

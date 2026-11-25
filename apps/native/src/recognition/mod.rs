@@ -295,11 +295,15 @@ impl RecognitionResult {
             party.address.country_code = value(&format!("{prefix}CountryCode"));
             party.vat_id = opt(&format!("{prefix}VatId"));
         }
-        invoice.seller.contact = Some(Contact {
+        let seller_contact = Contact {
             name: opt("sellerContact"),
             phone: opt("sellerPhone"),
             email: opt("sellerEmail"),
-        });
+        };
+        invoice.seller.contact = (seller_contact.name.is_some()
+            || seller_contact.phone.is_some()
+            || seller_contact.email.is_some())
+        .then_some(seller_contact);
         if let Some(email) = opt("sellerEmail") {
             invoice.seller.electronic_address = Some(ElectronicAddress {
                 value: email,

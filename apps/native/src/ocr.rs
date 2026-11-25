@@ -202,7 +202,7 @@ pub fn read_pages(
             std::thread::sleep(Duration::from_millis(40));
         };
         if !status.success() {
-            let log = limited_text(&log_path, 4096).unwrap_or_default();
+            let log = limited_lossy_text(&log_path, 4096).unwrap_or_default();
             return Err(format!(
                 "OCR fehlgeschlagen. Bitte Sprachpaket prüfen: {}",
                 log.trim()
@@ -234,18 +234,21 @@ pub fn read_pages(
 }
 
 fn limited_text(path: &Path, maximum: u64) -> Result<String, String> {
+    let bytes = crate::file_io::read_limited(path, maximum)
+        .map_err(|_| "OCR-Ausgabe überschreitet die Größenbegrenzung.".to_string())?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+
+fn limited_lossy_text(path: &Path, maximum: u64) -> Result<String, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
-    if file.metadata().map_err(|e| e.to_string())?.len() > maximum {
-        return Err("OCR-Ausgabe überschreitet die Größenbegrenzung.".into());
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err("OCR-Ausgabe ist keine reguläre Datei.".into());
     }
-    let mut text = String::new();
-    file.take(maximum + 1)
-        .read_to_string(&mut text)
+    let mut bytes = Vec::new();
+    file.take(maximum)
+        .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;
-    if text.len() as u64 > maximum {
-        return Err("OCR-Ausgabe ist zu groß.".into());
-    }
-    Ok(text)
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 pub fn parse_tsv(

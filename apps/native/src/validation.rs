@@ -159,10 +159,11 @@ impl ValidatorBundle {
                     .is_some_and(|name| name.to_string_lossy().ends_with("-report.xml"))
             })
             .ok_or_else(|| {
-                let mut details = String::new();
+                let mut raw = Vec::new();
                 if let Ok(file) = File::open(&log_path) {
-                    let _ = file.take(8192).read_to_string(&mut details);
+                    let _ = file.take(8192).read_to_end(&mut raw);
                 }
+                let details = String::from_utf8_lossy(&raw);
                 format!(
                     "KoSIT hat keinen Prüfbericht erzeugt (Exit-Code: {:?}): {}",
                     status.code(),
@@ -172,7 +173,8 @@ impl ValidatorBundle {
         if fs::metadata(&report_path).map_err(|e| e.to_string())?.len() > MAX_REPORT_BYTES {
             return Err("Der KoSIT-Prüfbericht ist zu groß.".into());
         }
-        let report = fs::read_to_string(report_path).map_err(|e| e.to_string())?;
+        let report_bytes = crate::file_io::read_limited(&report_path, MAX_REPORT_BYTES)?;
+        let report = String::from_utf8_lossy(&report_bytes);
         let doc = roxmltree::Document::parse(&report)
             .map_err(|e| format!("KoSIT-Prüfbericht ist beschädigt: {e}"))?;
         let root = doc
@@ -279,7 +281,7 @@ impl ValidatorBundle {
             .arg("--disable-file-logging");
         let (success, _) = run_java(command, work.path())?;
         if !success
-            || fs::read(&extracted)
+            || crate::file_io::read_limited(&extracted, MAX_XML_BYTES as u64)
                 .map_err(|e| format!("Mustang konnte die Rechnungsdaten nicht auslesen: {e}"))?
                 != expected_xml
         {
@@ -336,13 +338,9 @@ fn run_java(mut command: Command, work: &Path) -> Result<(bool, String), String>
         }
         thread::sleep(Duration::from_millis(50));
     };
-    if fs::metadata(&log_path).map_err(|e| e.to_string())?.len() > MAX_REPORT_BYTES {
-        return Err("Prüfbericht ist zu groß.".into());
-    }
-    Ok((
-        status.success(),
-        fs::read_to_string(log_path).map_err(|e| e.to_string())?,
-    ))
+    let raw = crate::file_io::read_limited(&log_path, MAX_REPORT_BYTES)
+        .map_err(|_| "Prüfbericht ist zu groß.".to_string())?;
+    Ok((status.success(), String::from_utf8_lossy(&raw).into_owned()))
 }
 
 fn report_fragment<'a>(output: &'a str, root: &str) -> Result<&'a str, String> {
@@ -351,7 +349,7 @@ fn report_fragment<'a>(output: &'a str, root: &str) -> Result<&'a str, String> {
         .ok_or("Maschinenlesbarer Prüfbericht fehlt.")?;
     let closing = format!("</{root}>");
     let end = output[start..]
-        .find(&closing)
+        .rfind(&closing)
         .ok_or("Prüfbericht ist unvollständig.")?;
     Ok(&output[start..start + end + closing.len()])
 }
@@ -450,5 +448,12 @@ mod tests {
             .is_err()
         );
         assert!(evaluate_verapdf(true, "<report><validationReport isCompliant=\"true\" flavour=\"3b\"/><batchSummary failedToParse=\"1\"/></report>").is_err());
+        assert!(
+            evaluate_mustang(
+                true,
+                "<validation><error>Literal </validation> inside log</error><summary status=\"invalid\"/></validation>"
+            )
+            .is_err()
+        );
     }
 }

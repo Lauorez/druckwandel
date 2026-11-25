@@ -42,15 +42,17 @@ cargo run -p druckwandel-native --bin druckwandel-zugferd -- entwurf.json quelle
 
 ## Installer und CI
 
-[GitHub Actions](https://github.com/Lauorez/druckwandel/actions/workflows/native-slint.yml) prüft Rust, Schemaerkennung und beide Ausgabeformate unter Windows und macOS. Ein manueller Workflow-Lauf mit `package=true` baut zusätzlich die Installer als Artefakte. Unter Windows wird dafür das vorhandene signierte Druckerpaket aus dem bisherigen Release wiederverwendet.
+[GitHub Actions](https://github.com/Lauorez/druckwandel/actions/workflows/native-slint.yml) prüft Rust, Schemaerkennung und beide Ausgabeformate unter Windows und macOS. Ein manueller Workflow-Lauf mit `package=true` baut zusätzlich die Installer als Artefakte: unter Windows als ein gemeinsames Setup mit aktueller Druckwandel-App und aktuellem .NET-Drucker, unter macOS als DMG ohne Drucker.
 
-Lokal:
+Lokal (Windows – App + Drucker):
 
 ```powershell
 python scripts/fetch-validators.py
 python scripts/fetch-ocr.py
-./scripts/build-windows-installer.ps1 -PrinterPackagePath <Printer.msix> -PrinterDependencyPath <WindowsAppRuntime.msix> -PrinterCertificatePath <PrinterCertificate.cer>
+./scripts/build-windows-installer.ps1
 ```
+
+Lokal (macOS – ohne Drucker):
 
 ```sh
 python3 scripts/fetch-validators.py

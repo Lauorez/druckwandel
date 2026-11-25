@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$PackageRoot,
     [string]$CertificatePath,
@@ -43,7 +43,7 @@ if (-not (Test-Path $CertificatePath)) {
     throw "Development-Zertifikat nicht gefunden: $CertificatePath"
 }
 
-if (Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC") {
+if (Get-AppxPackage -Name "Druckwandel.VirtualPrinter") {
     throw "Das Paket ist bereits installiert. Der Smoke-Test verändert keine bestehende Installation."
 }
 if (Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue) {
@@ -162,7 +162,7 @@ try {
     }
 
     Add-AppxPackage @installParameters
-    $installedPackage = Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC"
+    $installedPackage = Get-AppxPackage -Name "Druckwandel.VirtualPrinter"
     if (-not $installedPackage) {
         throw "Add-AppxPackage meldete keinen Fehler, das Paket ist aber nicht registriert."
     }
@@ -260,7 +260,7 @@ try {
 } finally {
     try {
         if (-not $installedPackage) {
-            $installedPackage = Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC"
+            $installedPackage = Get-AppxPackage -Name "Druckwandel.VirtualPrinter"
         }
         if ($installedPackage) {
             if ($runPrintTest) {

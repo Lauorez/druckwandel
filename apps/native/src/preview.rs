@@ -5,8 +5,6 @@ use hayro::{
 };
 use sha2::{Digest, Sha256};
 use std::{
-    fs::File,
-    io::Read,
     path::PathBuf,
     sync::{
         Arc, Condvar, Mutex,
@@ -179,6 +177,9 @@ fn render_request(
     cached: &mut Option<CachedDocument>,
 ) -> Result<PreviewFrame, String> {
     let metadata = std::fs::metadata(&request.path).map_err(|e| e.to_string())?;
+    if !metadata.is_file() {
+        return Err("Die Quelle ist keine reguläre PDF-Datei.".into());
+    }
     if metadata.len() > MAX_PDF_BYTES {
         return Err("PDF überschreitet 100 MB.".into());
     }
@@ -191,12 +192,7 @@ fn render_request(
     });
     if !hit {
         *cached = None;
-        let mut bytes = Vec::new();
-        File::open(&request.path)
-            .map_err(|e| e.to_string())?
-            .take(MAX_PDF_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
+        let bytes = crate::file_io::read_limited(&request.path, MAX_PDF_BYTES)?;
         let document = PreviewDocument::from_bytes(bytes, &request.hash)?;
         *cached = Some(CachedDocument {
             path: request.path.clone(),

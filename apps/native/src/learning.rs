@@ -12,8 +12,6 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::File,
-    io::Read,
     io::Write,
     path::Path,
     str::FromStr,
@@ -105,18 +103,12 @@ impl Default for ProfileStore {
 
 impl ProfileStore {
     pub fn load(root: &Path) -> Result<Self, String> {
-        let file = match File::open(root.join("learning-profiles.json")) {
-            Ok(file) => file,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
-            Err(e) => return Err(e.to_string()),
-        };
-        if file.metadata().map_err(|e| e.to_string())?.len() > 10 * 1024 * 1024 {
-            return Err("Lernprofile sind zu groß.".into());
+        let path = root.join("learning-profiles.json");
+        if !path.exists() {
+            return Ok(Self::default());
         }
-        let mut bytes = vec![];
-        file.take(10 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
+        let bytes = crate::file_io::read_limited(&path, 10 * 1024 * 1024)
+            .map_err(|_| "Lernprofile sind zu groß oder ungültig.".to_string())?;
         let store: Self = serde_json::from_slice(&bytes)
             .map_err(|e| format!("Lernprofile konnten nicht geladen werden: {e}"))?;
         store.validate()?;
@@ -291,9 +283,26 @@ impl ProfileStore {
                     .iter()
                     .find(|p| p.page == line.page)
                     .ok_or("Unbekannte Seite.")?;
+                if !page.width.is_finite()
+                    || !page.height.is_finite()
+                    || page.width <= 0.0
+                    || page.height <= 0.0
+                {
+                    continue;
+                }
                 let tokens = &line.tokens[start..end];
                 let first = &tokens[0].bounds;
                 let last = &tokens[tokens.len() - 1].bounds;
+                let x = (first.x / page.width).clamp(0.0, 1.0);
+                let y = (first.y / page.height).clamp(0.0, 1.0);
+                let width = ((last.x + last.width - first.x) / page.width).clamp(0.0, 1.0);
+                let height = (first.height / page.height).clamp(0.0, 1.0);
+                let right = line.tokens.get(end).map_or(1.0, |t| {
+                    ((last.x + last.width + t.bounds.x) / 2.0 / page.width).clamp(0.0, 1.0)
+                });
+                if ![x, y, width, height, right].iter().all(|v| v.is_finite()) || right <= x {
+                    continue;
+                }
                 let prefix = line.tokens[..start]
                     .iter()
                     .rev()
@@ -310,14 +319,12 @@ impl ProfileStore {
                     scope: scope.clone(),
                     page: page.page,
                     region: BoundingBox {
-                        x: (first.x / page.width).clamp(0.0, 1.0),
-                        y: (first.y / page.height).clamp(0.0, 1.0),
-                        width: ((last.x + last.width - first.x) / page.width).clamp(0.0, 1.0),
-                        height: (first.height / page.height).clamp(0.0, 1.0),
+                        x,
+                        y,
+                        width,
+                        height,
                     },
-                    right: line.tokens.get(end).map_or(1.0, |t| {
-                        ((last.x + last.width + t.bounds.x) / 2.0 / page.width).clamp(0.0, 1.0)
-                    }),
+                    right,
                     prefix,
                 });
             }
@@ -370,7 +377,13 @@ impl ProfileStore {
             if !rule.enabled || !rule.scope.matches(&context) {
                 continue;
             }
-            let Some(page) = request.pages.iter().find(|p| p.page == rule.page) else {
+            let Some(page) = request.pages.iter().find(|p| {
+                p.page == rule.page
+                    && p.width.is_finite()
+                    && p.height.is_finite()
+                    && p.width > 0.0
+                    && p.height > 0.0
+            }) else {
                 continue;
             };
             let candidate = lines
@@ -498,6 +511,7 @@ fn anchors(request: &RecognitionRequest) -> BTreeSet<String> {
     request
         .pages
         .iter()
+        .filter(|page| page.width.is_finite() && page.width > 0.0)
         .flat_map(|page| {
             page.tokens
                 .iter()
@@ -644,7 +658,13 @@ fn learn_tables(
         let Some((line, start, end)) = locate(lines, "text", &item.name) else {
             continue;
         };
-        let Some(page) = request.pages.iter().find(|p| p.page == line.page) else {
+        let Some(page) = request.pages.iter().find(|p| {
+            p.page == line.page
+                && p.width.is_finite()
+                && p.height.is_finite()
+                && p.width > 0.0
+                && p.height > 0.0
+        }) else {
             continue;
         };
         let Some(qty) = decimal(&item.quantity) else {
@@ -660,7 +680,8 @@ fn learn_tables(
         }) else {
             continue;
         };
-        let center = |t: &SourceToken| (t.bounds.x + t.bounds.width / 2.0) / page.width;
+        let center =
+            |t: &SourceToken| ((t.bounds.x + t.bounds.width / 2.0) / page.width).clamp(0.0, 1.0);
         let Some(q) = (end..line.tokens.len())
             .find(|i| numeric(&line.tokens[*i].text).as_deref() == Some(&qty))
         else {
@@ -681,14 +702,22 @@ fn learn_tables(
         }) else {
             continue;
         };
+        let row_y = (line.tokens[start].bounds.y / page.height).clamp(0.0, 1.0);
+        let cols = [
+            center(&line.tokens[start]),
+            center(&line.tokens[q]),
+            center(&line.tokens[p]),
+            center(&line.tokens[t]),
+        ];
+        if !row_y.is_finite()
+            || !cols.iter().all(|v| v.is_finite())
+            || !cols.windows(2).all(|v| v[0] < v[1])
+        {
+            continue;
+        }
         rows.entry(page.page).or_default().push((
-            [
-                center(&line.tokens[start]),
-                center(&line.tokens[q]),
-                center(&line.tokens[p]),
-                center(&line.tokens[t]),
-            ],
-            line.tokens[start].bounds.y / page.height,
+            cols,
+            row_y,
             item.tax.clone(),
             item.unit_code.clone(),
         ));
@@ -701,12 +730,22 @@ fn learn_tables(
             let columns = std::array::from_fn(|i| {
                 rows.iter().map(|r| r.0[i]).sum::<f64>() / rows.len() as f64
             });
+            let start_y = rows.iter().map(|r| r.1).fold(1.0, f64::min);
+            if !start_y.is_finite()
+                || !(0.0..=1.0).contains(&start_y)
+                || !columns
+                    .iter()
+                    .all(|v| v.is_finite() && (0.0..=1.0).contains(v))
+                || !columns.windows(2).all(|v| v[0] < v[1])
+            {
+                return None;
+            }
             Some(TableRule {
                 id: uuid::Uuid::new_v4().to_string(),
                 enabled: true,
                 scope: scope.clone(),
                 page,
-                start_y: rows.iter().map(|r| r.1).fold(1.0, f64::min),
+                start_y,
                 columns,
                 tax: rows[0].2.clone(),
                 unit: rows[0].3.clone(),
@@ -719,7 +758,13 @@ fn read_table(
     rule: &TableRule,
     lines: &[TextLine],
 ) -> Vec<LineProposal> {
-    let Some(page) = request.pages.iter().find(|p| p.page == rule.page) else {
+    let Some(page) = request.pages.iter().find(|p| {
+        p.page == rule.page
+            && p.width.is_finite()
+            && p.height.is_finite()
+            && p.width > 0.0
+            && p.height > 0.0
+    }) else {
         return vec![];
     };
     let bounds = [

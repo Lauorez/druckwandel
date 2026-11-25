@@ -7,6 +7,7 @@ version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' apps/native/Cargo.toml | head 
 short_version="${version%%-*}"
 bundle="artifacts/macos/bundle"
 app="$bundle/Druckwandel.app"
+rm -rf "$bundle"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp target/release/druckwandel-native "$app/Contents/MacOS/Druckwandel"
 cp apps/native/assets/icon.icns "$app/Contents/Resources/icon.icns"

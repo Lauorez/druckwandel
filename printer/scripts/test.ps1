@@ -18,6 +18,6 @@ if ($IsWindows -or $PSVersionTable.PSEdition -eq "Desktop") {
         throw "Interactive print smoke sender build failed."
     }
 
-    Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC" | Format-Table Name, Version, Status
+    Get-AppxPackage -Name "Druckwandel.VirtualPrinter" | Format-Table Name, Version, Status
     Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue | Format-Table Name, DriverName, PortName
 }

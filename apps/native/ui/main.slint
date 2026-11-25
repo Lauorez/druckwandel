@@ -250,7 +250,6 @@ export component MainWindow inherits Window {
     in-out property <string> line-price;
     in-out property <string> line-tax-rate;
     in-out property <string> payment-iban;
-    in property <bool> iban-required: true;
     private property <bool> show-settings: false;
     out property <bool> settings-open: root.show-settings;
     out property <bool> sidebar-open: true;
@@ -673,6 +672,7 @@ export component MainWindow inherits Window {
                             Text { text: "Ausgabe prüfen"; font-size: 16px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
                             ActionButton {
                                 text: "Zum Formular";
+                                enabled: !OutputState.busy;
                                 clicked => { root.export-issue = ""; root.export-review-required = false; }
                             }
                         }
@@ -686,6 +686,7 @@ export component MainWindow inherits Window {
                         if root.export-review-required : ActionButton {
                             text: "Abweichung geprüft – weiter";
                             primary: true;
+                            enabled: !OutputState.busy;
                             clicked => { root.save-output(true); }
                         }
                     }

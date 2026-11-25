@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$packages = Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC"
+$packages = Get-AppxPackage -Name "Druckwandel.VirtualPrinter"
 
 if (-not $packages) {
     Write-Host "E-Rechnung Virtual Printer is not installed."

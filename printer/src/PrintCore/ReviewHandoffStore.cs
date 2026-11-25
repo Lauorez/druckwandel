@@ -84,7 +84,8 @@ public sealed class ReviewHandoffStore
 
         Span<byte> header = stackalloc byte[5];
         using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        if (stream.Read(header) != PdfSignature.Length || !header.SequenceEqual(PdfSignature))
+        if (stream.ReadAtLeast(header, PdfSignature.Length, throwOnEndOfStream: false) != PdfSignature.Length ||
+            !header.SequenceEqual(PdfSignature))
         {
             throw new InvalidDataException("Der Druckjob besitzt keinen gültigen PDF-Header.");
         }

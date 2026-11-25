@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$OutputRoot,
     [ValidateRange(1, 1440)]
@@ -19,7 +19,7 @@ if (-not $OutputRoot) {
 }
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 
-$packages = @(Get-AppxPackage -Name "ERechnung.VirtualPrinter.PoC")
+$packages = @(Get-AppxPackage -Name "Druckwandel.VirtualPrinter")
 $printers = @(Get-Printer -Name "E-Rechnung" -ErrorAction SilentlyContinue)
 $spooler = Get-Service -Name "Spooler"
 

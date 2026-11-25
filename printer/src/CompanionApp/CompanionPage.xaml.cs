@@ -74,13 +74,21 @@ public sealed partial class CompanionPage : Page
 
         bool enqueued = DispatcherQueue.TryEnqueue(async () =>
         {
-            await LoadJobAsync(sessionJob);
-
-            if (job is null)
+            try
             {
-                DocumentNameText.Text = args.Configuration.JobTitle;
-                SourceApplicationText.Text = args.Configuration.SourceAppDisplayName;
-                StatusText.Text = "Die Angaben zur gedruckten Rechnung fehlen. Bitte drucken Sie sie erneut.";
+                await LoadJobAsync(sessionJob);
+
+                if (job is null)
+                {
+                    DocumentNameText.Text = args.Configuration.JobTitle;
+                    SourceApplicationText.Text = args.Configuration.SourceAppDisplayName;
+                    StatusText.Text = "Die Angaben zur gedruckten Rechnung fehlen. Bitte drucken Sie sie erneut.";
+                }
+            }
+            catch
+            {
+                StatusText.Text = "Die Rechnung konnte nicht übernommen werden. Bitte drucken Sie sie erneut.";
+                CompleteWorkflowDeferral();
             }
         });
 

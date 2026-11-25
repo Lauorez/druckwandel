@@ -3,13 +3,14 @@ use chrono::{Duration, NaiveDate};
 use regex::Regex;
 use rust_decimal::{Decimal, RoundingStrategy};
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 pub struct SchemaRecognizer;
 fn re(pattern: &str) -> Regex {
     Regex::new(pattern).expect("static recognition pattern")
 }
 pub(crate) fn decimal(value: &str) -> Option<String> {
-    let compact = value.trim().replace(['€', '%', ' '], "");
+    let compact = value.trim().replace(['€', '%', ' ', '\u{00A0}'], "");
     let normalized = if compact.contains(',') {
         compact.replace('.', "").replace(',', ".")
     } else {
@@ -30,11 +31,16 @@ fn money(value: &str) -> Option<String> {
         })
 }
 pub(crate) fn date(value: &str) -> Option<String> {
-    if let Some(c) = re(r"\b(\d{4})-(\d{2})-(\d{2})\b").captures(value) {
+    static ISO: LazyLock<Regex> = LazyLock::new(|| re(r"\b(\d{4})-(\d{2})-(\d{2})\b"));
+    static NUMERIC: LazyLock<Regex> =
+        LazyLock::new(|| re(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b"));
+    static NAMED: LazyLock<Regex> =
+        LazyLock::new(|| re(r"(?i)\b(\d{1,2})\.?\s*([a-zäöü]+)\.?\s+(\d{4})\b"));
+    if let Some(c) = ISO.captures(value) {
         return NaiveDate::from_ymd_opt(c[1].parse().ok()?, c[2].parse().ok()?, c[3].parse().ok()?)
             .map(|date| date.to_string());
     }
-    if let Some(c) = re(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b").captures(value) {
+    if let Some(c) = NUMERIC.captures(value) {
         let mut year = c[3].parse::<i32>().ok()?;
         if year < 100 {
             year += 2000;
@@ -42,7 +48,7 @@ pub(crate) fn date(value: &str) -> Option<String> {
         return NaiveDate::from_ymd_opt(year, c[2].parse().ok()?, c[1].parse().ok()?)
             .map(|date| date.to_string());
     }
-    let c = re(r"(?i)\b(\d{1,2})\.?\s*([a-zäöü]+)\.?\s+(\d{4})\b").captures(value)?;
+    let c = NAMED.captures(value)?;
     let months = [
         "jan", "feb", "mär", "apr", "mai", "jun", "jul", "aug", "sep", "okt", "nov", "dez",
     ];
@@ -259,7 +265,7 @@ impl RecognitionProvider for SchemaRecognizer {
         classify_parties(&lines, &mut result);
         classify_tables(&lines, &mut result);
         if request.pages.iter().all(|page| page.tokens.is_empty()) {
-            result.warnings.push("Die PDF enthält keinen lesbaren Text. Bitte Daten manuell erfassen; OCR ist noch nicht angebunden.".into());
+            result.warnings.push("Die PDF enthält keinen lesbaren Text. Bitte Daten manuell erfassen oder lokale OCR in den Einstellungen aktivieren.".into());
         }
         let amounts: Option<Vec<Decimal>> = ["lineNet", "taxTotal", "taxInclusive"]
             .iter()
@@ -526,7 +532,8 @@ fn classify_tables(lines: &[crate::extraction::TextLine], result: &mut Recogniti
             );
         }
         let rate = rate.unwrap_or_default();
-        let name = re(r"^\d+[.)]?\s+").replace(c[1].trim(), "").into_owned();
+        static LINE_PREFIX: LazyLock<Regex> = LazyLock::new(|| re(r"^\d+[.)]?\s+"));
+        let name = LINE_PREFIX.replace(c[1].trim(), "").into_owned();
         let unit = match c
             .get(3)
             .map(|m| m.as_str().trim_end_matches('.').to_lowercase())

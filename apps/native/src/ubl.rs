@@ -6,13 +6,30 @@ pub const CUSTOMIZATION_ID: &str =
     "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0";
 pub const PROFILE_ID: &str = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0";
 
+pub(crate) fn non_empty(value: Option<&str>) -> Option<&str> {
+    value.filter(|value| !value.trim().is_empty())
+}
+
 pub(crate) fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&apos;"),
+            // Strip illegal XML 1.0 control characters and non-characters.
+            '\u{0}'..='\u{8}'
+            | '\u{B}'
+            | '\u{C}'
+            | '\u{E}'..='\u{1F}'
+            | '\u{FFFE}'
+            | '\u{FFFF}' => {}
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 pub(crate) fn element(name: &str, value: Option<&str>, attributes: &str) -> String {
@@ -25,7 +42,7 @@ pub(crate) fn e(name: &str, value: &str) -> String {
     element(name, Some(value), "")
 }
 pub(crate) fn optional(name: &str, value: Option<&str>) -> String {
-    element(name, value, "")
+    element(name, non_empty(value), "")
 }
 fn amount(name: &str, value: &str, currency: &str) -> String {
     element(
@@ -37,7 +54,11 @@ fn amount(name: &str, value: &str, currency: &str) -> String {
 
 fn party_xml(wrapper: &str, party: &Party) -> String {
     let mut inner = String::new();
-    if let Some(endpoint) = &party.electronic_address {
+    if let Some(endpoint) = party
+        .electronic_address
+        .as_ref()
+        .filter(|e| !e.value.trim().is_empty())
+    {
         inner.push_str(&element(
             "cbc:EndpointID",
             Some(&endpoint.value),
@@ -57,12 +78,12 @@ fn party_xml(wrapper: &str, party: &Party) -> String {
     inner.push_str("<cac:Country>");
     inner.push_str(&e("cbc:IdentificationCode", &party.address.country_code));
     inner.push_str("</cac:Country></cac:PostalAddress>");
-    if let Some(vat_id) = &party.vat_id {
+    if let Some(vat_id) = non_empty(party.vat_id.as_deref()) {
         inner.push_str("<cac:PartyTaxScheme>");
         inner.push_str(&e("cbc:CompanyID", vat_id));
         inner.push_str("<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>");
     }
-    if let Some(tax_id) = &party.tax_registration_id {
+    if let Some(tax_id) = non_empty(party.tax_registration_id.as_deref()) {
         inner.push_str("<cac:PartyTaxScheme>");
         inner.push_str(&e("cbc:CompanyID", tax_id));
         inner.push_str("<cac:TaxScheme><cbc:ID>FC</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>");
@@ -70,7 +91,11 @@ fn party_xml(wrapper: &str, party: &Party) -> String {
     inner.push_str("<cac:PartyLegalEntity>");
     inner.push_str(&e("cbc:RegistrationName", &party.name));
     inner.push_str("</cac:PartyLegalEntity>");
-    if let Some(contact) = &party.contact {
+    if let Some(contact) = party.contact.as_ref().filter(|c| {
+        non_empty(c.name.as_deref()).is_some()
+            || non_empty(c.phone.as_deref()).is_some()
+            || non_empty(c.email.as_deref()).is_some()
+    }) {
         inner.push_str("<cac:Contact>");
         inner.push_str(&optional("cbc:Name", contact.name.as_deref()));
         inner.push_str(&optional("cbc:Telephone", contact.phone.as_deref()));
@@ -181,7 +206,7 @@ fn render(invoice: &CalculatedInvoice) -> String {
     }
     xml.push_str(&party_xml("AccountingSupplierParty", &data.seller));
     xml.push_str(&party_xml("AccountingCustomerParty", &data.buyer));
-    if data.service_date.is_some() || data.delivery_address.is_some() {
+    if non_empty(data.service_date.as_deref()).is_some() || data.delivery_address.is_some() {
         xml.push_str("<cac:Delivery>");
         xml.push_str(&optional(
             "cbc:ActualDeliveryDate",
@@ -202,9 +227,9 @@ fn render(invoice: &CalculatedInvoice) -> String {
         }
         xml.push_str("</cac:Delivery>");
     }
-    if let Some(iban) = &data.payment.iban {
+    if !data.payment.means_code.trim().is_empty() {
         xml.push_str("<cac:PaymentMeans>");
-        xml.push_str(&e("cbc:PaymentMeansCode", &data.payment.means_code));
+        xml.push_str(&e("cbc:PaymentMeansCode", data.payment.means_code.trim()));
         if credit_note {
             xml.push_str(&optional("cbc:PaymentDueDate", data.due_date.as_deref()));
         }
@@ -212,17 +237,20 @@ fn render(invoice: &CalculatedInvoice) -> String {
             "cbc:PaymentID",
             data.payment.payment_reference.as_deref(),
         ));
-        xml.push_str("<cac:PayeeFinancialAccount>");
-        xml.push_str(&e("cbc:ID", iban));
-        xml.push_str(&optional("cbc:Name", data.payment.account_name.as_deref()));
-        if let Some(bic) = &data.payment.bic {
-            xml.push_str("<cac:FinancialInstitutionBranch>");
-            xml.push_str(&e("cbc:ID", bic));
-            xml.push_str("</cac:FinancialInstitutionBranch>");
+        if let Some(iban) = non_empty(data.payment.iban.as_deref()) {
+            xml.push_str("<cac:PayeeFinancialAccount>");
+            xml.push_str(&e("cbc:ID", iban));
+            xml.push_str(&optional("cbc:Name", data.payment.account_name.as_deref()));
+            if let Some(bic) = non_empty(data.payment.bic.as_deref()) {
+                xml.push_str("<cac:FinancialInstitutionBranch>");
+                xml.push_str(&e("cbc:ID", bic));
+                xml.push_str("</cac:FinancialInstitutionBranch>");
+            }
+            xml.push_str("</cac:PayeeFinancialAccount>");
         }
-        xml.push_str("</cac:PayeeFinancialAccount></cac:PaymentMeans>");
+        xml.push_str("</cac:PaymentMeans>");
     }
-    if let Some(terms) = &data.payment.terms {
+    if let Some(terms) = non_empty(data.payment.terms.as_deref()) {
         xml.push_str("<cac:PaymentTerms>");
         xml.push_str(&e("cbc:Note", terms));
         xml.push_str("</cac:PaymentTerms>");

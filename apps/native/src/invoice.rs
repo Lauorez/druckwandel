@@ -438,6 +438,12 @@ pub fn validate_en16931(input: &InvoiceInput) -> Vec<String> {
             errors.push(format!("Ländercode für {name} ist ungültig."));
         }
     }
+    if let Some(address) = &input.delivery_address
+        && (address.country_code.len() != 2
+            || !address.country_code.bytes().all(|c| c.is_ascii_uppercase()))
+    {
+        errors.push("Ländercode für die Lieferadresse ist ungültig.".into());
+    }
     if input.lines.is_empty() {
         errors.push("Mindestens eine Position ist erforderlich.".into());
     }
@@ -564,7 +570,12 @@ fn validate_tax(tax: &Tax, errors: &mut Vec<String>) {
         "Z" | "E" | "AE" | "K" if rate != Decimal::ZERO => {
             errors.push("Dieser Steuerfall benötigt 0 %.".into())
         }
-        "E" | "AE" | "K" if tax.exemption_reason.as_deref().is_none_or(str::is_empty) => {
+        "E" | "AE" | "K"
+            if tax
+                .exemption_reason
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty()) =>
+        {
             errors.push("Begründung für steuerfreie Position fehlt.".into())
         }
         "S" | "Z" | "E" | "AE" | "K" => {}

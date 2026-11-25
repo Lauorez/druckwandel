@@ -10,7 +10,7 @@
   IgnorableNamespaces="uap uap10 rescap printsupport printsupport2">
 
   <Identity
-    Name="ERechnung.VirtualPrinter.PoC"
+    Name="Druckwandel.VirtualPrinter"
     Publisher="CN=ERechnung Development"
     Version="0.1.0.12" />
 

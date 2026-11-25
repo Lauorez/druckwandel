@@ -111,3 +111,23 @@ fn profiles_read_future_values_from_sources_without_replaying_invoice_constants(
     assert_eq!(store.active().name, "Standard");
     assert!(store.delete().is_err());
 }
+
+#[test]
+fn learning_ignores_edge_and_zero_dimension_pages_without_failing_save() {
+    let (mut request, invoice) = fixture();
+    let page_width = request.pages[0].width;
+    for token in &mut request.pages[0].tokens {
+        if token.text.contains("RE-2026-0001") {
+            token.bounds.x = page_width + 50.0;
+        }
+    }
+    let mut store = ProfileStore::default();
+    let _ = store.learn(&request, &invoice);
+    let dir = tempfile::tempdir().unwrap();
+    store.save(dir.path()).unwrap();
+
+    request.pages[0].width = 0.0;
+    let mut zero_store = ProfileStore::default();
+    assert!(zero_store.learn(&request, &invoice).is_err());
+    zero_store.save(dir.path()).unwrap();
+}

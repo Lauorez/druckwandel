@@ -1,7 +1,7 @@
 //! Local preferences and reusable issuer data, independent of invoice drafts.
 use crate::invoice::{Contact, ElectronicAddress, InvoiceInput, Party};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::Path};
+use std::{io::Write, path::Path};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -44,20 +44,20 @@ fn optional(value: &str) -> Option<String> {
 impl Settings {
     pub fn load(root: &Path) -> Result<Self, String> {
         let path = root.join("settings.json");
-        let mut settings: Self = match fs::read(&path) {
-            Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|e| format!("Einstellungen sind beschädigt: {e}"))?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let appearance = fs::read(root.join("appearance.json"))
-                    .ok()
-                    .and_then(|bytes| serde_json::from_slice::<i32>(&bytes).ok())
-                    .unwrap_or(0);
-                Self {
-                    appearance,
-                    ..Self::default()
-                }
+        let mut settings: Self = if !path.exists() {
+            let appearance = crate::file_io::read_limited(&root.join("appearance.json"), 1024)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<i32>(&bytes).ok())
+                .unwrap_or(0);
+            Self {
+                appearance,
+                ..Self::default()
             }
-            Err(e) => return Err(format!("Einstellungen konnten nicht geladen werden: {e}")),
+        } else {
+            let bytes = crate::file_io::read_limited(&path, crate::file_io::MAX_DRAFT_BYTES)
+                .map_err(|e| format!("Einstellungen konnten nicht geladen werden: {e}"))?;
+            serde_json::from_slice(&bytes)
+                .map_err(|e| format!("Einstellungen sind beschädigt: {e}"))?
         };
         settings.appearance = settings.appearance.clamp(0, 2);
         settings.recognition_method = settings.recognition_method.clamp(0, 1);
@@ -92,11 +92,15 @@ impl CompanyProfile {
             vat_id: optional(&self.vat),
             tax_registration_id: optional(&self.tax_number),
             electronic_address: electronic_address(self.endpoint.clone()),
-            contact: Some(Contact {
-                name: optional(&self.contact_name),
-                phone: optional(&self.contact_phone),
-                email: optional(&self.contact_email),
-            }),
+            contact: {
+                let contact = Contact {
+                    name: optional(&self.contact_name),
+                    phone: optional(&self.contact_phone),
+                    email: optional(&self.contact_email),
+                };
+                (contact.name.is_some() || contact.phone.is_some() || contact.email.is_some())
+                    .then_some(contact)
+            },
         }
     }
 
@@ -140,15 +144,16 @@ impl CompanyProfile {
         {
             seller.electronic_address = defaults.electronic_address;
         }
-        let contact = seller.contact.get_or_insert_with(Contact::default);
-        let default = defaults.contact.unwrap_or_default();
-        for (value, default) in [
-            (&mut contact.name, default.name),
-            (&mut contact.phone, default.phone),
-            (&mut contact.email, default.email),
-        ] {
-            if value.as_deref().is_none_or(|s| s.trim().is_empty()) {
-                *value = default;
+        if let Some(default) = defaults.contact {
+            let contact = seller.contact.get_or_insert_with(Contact::default);
+            for (value, default) in [
+                (&mut contact.name, default.name),
+                (&mut contact.phone, default.phone),
+                (&mut contact.email, default.email),
+            ] {
+                if value.as_deref().is_none_or(|s| s.trim().is_empty()) {
+                    *value = default;
+                }
             }
         }
     }
@@ -157,6 +162,7 @@ impl CompanyProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn preferences_migrate_and_survive_replacement() {

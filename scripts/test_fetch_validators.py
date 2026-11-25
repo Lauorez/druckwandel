@@ -47,6 +47,22 @@ class DownloadTests(unittest.TestCase):
             self.assertEqual(target.read_bytes(), b"verified")
             self.assertEqual(checksums, {"validator": digest})
 
+    def test_java_downloads_are_pinned_with_sha256(self):
+        for system, arch in [
+            ("windows", "x64"),
+            ("mac", "aarch64"),
+            ("mac", "x64"),
+            ("linux", "x64"),
+            ("linux", "aarch64"),
+        ]:
+            target, url, sha256 = fetch.java_download(system, arch)
+            self.assertEqual(target, f"{system}-{arch}")
+            self.assertTrue(url.startswith("https://github.com/adoptium/temurin21-binaries/releases/download/"))
+            self.assertEqual(len(sha256), 64)
+            int(sha256, 16)
+        with self.assertRaises(ValueError):
+            fetch.java_download("windows", "riscv64")
+
 
 if __name__ == "__main__":
     unittest.main()

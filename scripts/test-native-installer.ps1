@@ -3,7 +3,8 @@
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path -Parent $PSScriptRoot
 Set-Location $workspace
-./scripts/build-windows-installer.ps1 -SkipChecks -SkipBuild -AppOnly
+# This package stays on the runner, so compression only adds build time.
+./scripts/build-windows-installer.ps1 -SkipChecks -SkipBuild -AppOnly -Uncompressed
 if ($LASTEXITCODE -ne 0) {throw 'Testinstaller-Build fehlgeschlagen.'}
 $setup = Get-ChildItem artifacts/windows/*-AppOnly-Setup.exe | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 $installDirectory = Join-Path $env:TEMP 'Druckwandel-Installer-Test'

@@ -1,12 +1,35 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-09-11",
+  "checkedAt": "2026-11-25",
   "java": {
     "vendor": "Eclipse Temurin",
     "version": "21",
+    "release": "jdk-21.0.13.1+2",
     "relativePath": "jre/bin/java",
     "license": "GPL-2.0-with-Classpath-exception",
-    "source": "https://adoptium.net/"
+    "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.13.1%2B2",
+    "downloads": {
+      "windows-x64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_x64_windows_hotspot_21.0.13.1_2.zip",
+        "sha256": "e15ee1e54a5a3b38027a09cedfa87bc3348d7dd3ce50866dd3d9671d7fffc6c1"
+      },
+      "mac-aarch64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.13.1_2.tar.gz",
+        "sha256": "848feb1906c7de79de4f8391636042193fbd46eff86e26299506c4656f62c260"
+      },
+      "mac-x64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_x64_mac_hotspot_21.0.13.1_2.tar.gz",
+        "sha256": "10cee6ba4cd83fd4613a3f0bb3ef9dddd68c68d5f3ccfcc7e456707c9e1eafe0"
+      },
+      "linux-x64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_x64_linux_hotspot_21.0.13.1_2.tar.gz",
+        "sha256": "18f44fab9065217f3ba61d0eef8a7b5f3c3713aa7293001b0d4ac10ede3850f0"
+      },
+      "linux-aarch64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13.1%2B2/OpenJDK21U-jre_aarch64_linux_hotspot_21.0.13.1_2.tar.gz",
+        "sha256": "52bc58323d9266538a6361a3cf8365fc1186dd9510d7f33f623681c4aabb7e72"
+      }
+    }
   },
   "kosit": {
     "engineVersion": "1.6.3",

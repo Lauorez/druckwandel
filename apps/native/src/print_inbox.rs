@@ -128,6 +128,7 @@ pub fn import_job(workspace: &Workspace, job: &PrintJob) -> Result<Document, Str
         file.write_all(&serde_json::to_vec_pretty(&acknowledgement).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
         fs::rename(&temporary, &target).map_err(|e| e.to_string())
     })();
     let _ = fs::remove_file(&temporary);

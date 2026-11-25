@@ -156,7 +156,6 @@ fn set_form(window: &MainWindow, invoice: &InvoiceInput) {
             .unwrap_or_default()
             .into(),
     );
-    window.set_iban_required(["58", "59"].contains(&invoice.payment.means_code.as_str()));
     window.set_seller_endpoint(
         invoice
             .seller
@@ -319,6 +318,8 @@ fn show_document(
 ) {
     window.set_selected_document_id(document.id.clone().into());
     window.set_selected_name(document.name.clone().into());
+    // Clear hash before changing path so preview fires once with the matching pair.
+    window.set_selected_hash("".into());
     window.set_selected_path(document.path.to_string_lossy().into_owned().into());
     window.set_selected_hash(document.sha256.clone().into());
     window.set_source_has_xml(source_has_xml);
@@ -558,26 +559,30 @@ fn recognized_total_differences(
     .collect()
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let root = workspace_root()?;
-    let workspace = Rc::new(Workspace::new(root.clone())?);
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+fn acquire_instance_lock(path: &std::path::Path) -> Result<Option<std::fs::File>, std::io::Error> {
     let instance_file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
-        .open(root.join("app.lock"))?;
-    match fs2::FileExt::try_lock_exclusive(&instance_file) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-            workspace.enqueue_handoff(&arguments)?;
-            return Ok(());
-        }
-        Err(error) => return Err(error.into()),
+        .open(path)?;
+    match instance_file.try_lock() {
+        Ok(()) => Ok(Some(instance_file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(error)) => Err(error),
     }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let root = workspace_root()?;
+    let workspace = Rc::new(Workspace::new(root.clone())?);
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let Some(_instance_file) = acquire_instance_lock(&root.join("app.lock"))? else {
+        workspace.enqueue_handoff(&arguments)?;
+        return Ok(());
+    };
     let (output_sender, output_receiver) =
-        std::sync::mpsc::channel::<Result<SavedOutput, String>>();
+        std::sync::mpsc::channel::<(String, Result<SavedOutput, String>)>();
     let settings_result = Settings::load(&root);
     let settings_error = settings_result.as_ref().err().cloned();
     let settings = Rc::new(RefCell::new(settings_result.unwrap_or_default()));
@@ -749,6 +754,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let preferences = Rc::clone(&settings);
     window.on_apply_company(move || {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
         let Some(id) = selected.borrow().clone() else {
             return;
         };
@@ -779,7 +787,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weak = window.as_weak();
     window.on_open_source(move || {
         let Some(window) = weak.upgrade() else { return };
-        let path = PathBuf::from(window.get_selected_path().as_str());
+        let raw = window.get_selected_path();
+        if raw.trim().is_empty() {
+            return;
+        }
+        let path = PathBuf::from(raw.as_str());
         #[cfg(target_os = "macos")]
         let result = std::process::Command::new("open").arg(&path).spawn();
         #[cfg(target_os = "windows")]
@@ -803,6 +815,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saved = Rc::clone(&saved_output);
     window.on_import_pdf(move || {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
         if let Err(error) = save_current(&window, &store, &selected, &draft) {
             window.set_status_text(
                 format!("Entwurf konnte nicht gespeichert werden: {error}").into(),
@@ -841,6 +856,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saved = Rc::clone(&saved_output);
     window.on_import_print_job(move || {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
         match print_inbox::pending_jobs(&store) {
             Ok(jobs) if jobs.is_empty() => {
                 window.set_status_text("Keine neuen Druckaufträge im Druckeingang.".into());
@@ -875,7 +893,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saved = Rc::clone(&saved_output);
     window.on_select_document(move |index| {
         let Some(window) = weak.upgrade() else { return };
-        let Some(document) = selection_list.borrow().get(index as usize).cloned() else {
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
+        let Ok(index) = usize::try_from(index) else {
+            return;
+        };
+        let Some(document) = selection_list.borrow().get(index).cloned() else {
             return;
         };
         if selected.borrow().as_ref() == Some(&document.id) {
@@ -899,8 +923,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let draft = Rc::clone(&current_draft);
     window.on_select_line(move |index| {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
+        let Ok(line_index) = usize::try_from(index) else {
+            return;
+        };
         let invoice = collect_form(&window, draft.borrow().clone());
-        let Some(line) = invoice.lines.get(index as usize) else {
+        let Some(line) = invoice.lines.get(line_index) else {
             return;
         };
         window.set_selected_line(index);
@@ -913,6 +943,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let draft = Rc::clone(&current_draft);
     window.on_add_line(move || {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
         let mut invoice = collect_form(&window, draft.borrow().clone());
         let mut line = InvoiceInput::blank().lines.remove(0);
         line.id = (invoice.lines.len() + 1).to_string();
@@ -928,11 +961,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let draft = Rc::clone(&current_draft);
     window.on_remove_line(move || {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
         let mut invoice = collect_form(&window, draft.borrow().clone());
         if invoice.lines.len() <= 1 {
             return;
         }
-        let index = (window.get_selected_line() as usize).min(invoice.lines.len() - 1);
+        let Ok(selected_line) = usize::try_from(window.get_selected_line()) else {
+            return;
+        };
+        let index = selected_line.min(invoice.lines.len() - 1);
         invoice.lines.remove(index);
         for (index, line) in invoice.lines.iter_mut().enumerate() {
             line.id = (index + 1).to_string();
@@ -951,6 +990,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let draft = Rc::clone(&current_draft);
     window.on_save_draft(move || {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
         let Some(id) = selected.borrow().clone() else {
             return;
         };
@@ -974,6 +1016,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saved = Rc::clone(&saved_output);
     window.on_save_output(move |reviewed| {
         let Some(window) = weak.upgrade() else { return };
+        if window.global::<OutputState>().get_busy() {
+            return;
+        }
         let reviewed = reviewed && window.get_export_review_required();
         let Some(id) = selected.borrow().clone() else {
             return;
@@ -1050,6 +1095,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window.global::<OutputState>().set_can_email(false);
         window.global::<OutputState>().set_busy(true);
         let sender = output_sender.clone();
+        let exported_id = id.clone();
         std::thread::spawn(move || {
             let result = ValidatorBundle::discover().and_then(|bundle| {
                 // Recheck at export time, including XML-only exports. Recognition
@@ -1063,7 +1109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     save_xrechnung(invoice, &path, &bundle)
                 }
             });
-            let _ = sender.send(result);
+            let _ = sender.send((exported_id, result));
         });
     });
 
@@ -1140,18 +1186,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::time::Duration::from_millis(500),
         move || {
             let Some(window) = weak.upgrade() else { return };
-            if let Ok(result) = output_receiver.try_recv() {
+            if let Ok((exported_id, result)) = output_receiver.try_recv() {
                 window.global::<OutputState>().set_busy(false);
-                match result {
-                    Ok(output) => {
-                        window.set_status_text(
-                            format!("Geprüfte Ausgabe gespeichert: {}", output.path().display())
+                if selected.borrow().as_deref() == Some(exported_id.as_str()) {
+                    match result {
+                        Ok(output) => {
+                            window.set_status_text(
+                                format!(
+                                    "Geprüfte Ausgabe gespeichert: {}",
+                                    output.path().display()
+                                )
                                 .into(),
-                        );
-                        *saved.borrow_mut() = Some(output);
-                        window.global::<OutputState>().set_can_email(true);
+                            );
+                            *saved.borrow_mut() = Some(output);
+                            window.global::<OutputState>().set_can_email(true);
+                        }
+                        Err(error) => show_export_issue(&window, error),
                     }
-                    Err(error) => show_export_issue(&window, error),
                 }
             }
             if !window.global::<OutputState>().get_busy() {
@@ -1211,6 +1262,17 @@ mod tests {
             serde_json::to_value(output).unwrap(),
             serde_json::to_value(input).unwrap()
         );
+    }
+
+    #[test]
+    fn instance_lock_detects_contention_on_second_handle() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.lock");
+        let first = acquire_instance_lock(&path).unwrap();
+        assert!(first.is_some());
+        assert!(acquire_instance_lock(&path).unwrap().is_none());
+        drop(first);
+        assert!(acquire_instance_lock(&path).unwrap().is_some());
     }
 
     #[test]

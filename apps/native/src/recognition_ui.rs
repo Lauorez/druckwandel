@@ -248,13 +248,12 @@ pub fn wire(
         let invoice=collect_form(&window,current_draft.borrow().clone()); let root=root.clone();
         let path=PathBuf::from(window.get_selected_path().as_str()); let hash=window.get_selected_hash().to_string();
         spawn(&window,learning_sender.clone(),move || Completion::Learned((|| {
-            let store=Workspace::new(root.clone())?;
-            let request=store.load_recognition_source(&id)?.ok_or("Bitte zuerst ‚Fehlende Felder erkennen‘ ausführen, damit aktuelle Fundstellen verfügbar sind.")?;
-            if std::fs::metadata(&path).map_err(|e|e.to_string())?.len()>100*1024*1024{return Err("PDF überschreitet 100 MB.".into());}
-            use sha2::{Digest,Sha256};
-            let bytes=std::fs::read(&path).map_err(|e|e.to_string())?;
-            if bytes.len()>100*1024*1024 || request.document_sha256!=hash || format!("{:x}",Sha256::digest(&bytes))!=hash {return Err("Die Quelle wurde verändert. Erkennung erneut starten.".into());}
-            let mut profiles=ProfileStore::load(&root)?;
+            let store = Workspace::new(root.clone())?;
+            let request = store.load_recognition_source(&id)?.ok_or("Bitte zuerst ‚Fehlende Felder erkennen‘ ausführen, damit aktuelle Fundstellen verfügbar sind.")?;
+            if request.document_sha256 != hash || read_verified_pdf(&path, &hash).is_err() {
+                return Err("Die Quelle wurde verändert. Erkennung erneut starten.".into());
+            }
+            let mut profiles = ProfileStore::load(&root)?;
             let message=profiles.learn(&request,&invoice)?; profiles.save(&root)?; Ok(message)
         })()));
     });

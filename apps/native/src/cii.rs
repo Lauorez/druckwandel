@@ -1,7 +1,7 @@
 use crate::invoice::{
     AllowanceCharge, InvoiceInput, Party, calculate, preceding, validate_en16931,
 };
-use crate::ubl::{e, element, escape, optional};
+use crate::ubl::{e, element, escape, non_empty, optional};
 
 fn date(tag: &str, value: &str) -> String {
     element(tag, Some(&value.replace('-', "")), " format=\"102\"")
@@ -9,16 +9,20 @@ fn date(tag: &str, value: &str) -> String {
 
 fn party(tag: &str, party: &Party) -> String {
     let mut xml = e("ram:Name", &party.name);
-    if let Some(contact) = &party.contact {
+    if let Some(contact) = party.contact.as_ref().filter(|c| {
+        non_empty(c.name.as_deref()).is_some()
+            || non_empty(c.phone.as_deref()).is_some()
+            || non_empty(c.email.as_deref()).is_some()
+    }) {
         xml += "<ram:DefinedTradeContact>";
         xml += &optional("ram:PersonName", contact.name.as_deref());
-        if let Some(phone) = &contact.phone {
+        if let Some(phone) = non_empty(contact.phone.as_deref()) {
             xml += &format!(
                 "<ram:TelephoneUniversalCommunication>{}</ram:TelephoneUniversalCommunication>",
                 e("ram:CompleteNumber", phone)
             );
         }
-        if let Some(email) = &contact.email {
+        if let Some(email) = non_empty(contact.email.as_deref()) {
             xml += &format!(
                 "<ram:EmailURIUniversalCommunication>{}</ram:EmailURIUniversalCommunication>",
                 e("ram:URIID", email)
@@ -33,7 +37,11 @@ fn party(tag: &str, party: &Party) -> String {
     xml += &e("ram:CityName", &party.address.city);
     xml += &e("ram:CountryID", &party.address.country_code);
     xml += "</ram:PostalTradeAddress>";
-    if let Some(endpoint) = &party.electronic_address {
+    if let Some(endpoint) = party
+        .electronic_address
+        .as_ref()
+        .filter(|e| !e.value.trim().is_empty())
+    {
         xml += &format!(
             "<ram:URIUniversalCommunication>{}</ram:URIUniversalCommunication>",
             element(
@@ -43,13 +51,13 @@ fn party(tag: &str, party: &Party) -> String {
             )
         );
     }
-    if let Some(vat) = &party.vat_id {
+    if let Some(vat) = non_empty(party.vat_id.as_deref()) {
         xml += &format!(
             "<ram:SpecifiedTaxRegistration>{}</ram:SpecifiedTaxRegistration>",
             element("ram:ID", Some(vat), " schemeID=\"VA\"")
         );
     }
-    if let Some(id) = &party.tax_registration_id {
+    if let Some(id) = non_empty(party.tax_registration_id.as_deref()) {
         xml += &format!(
             "<ram:SpecifiedTaxRegistration>{}</ram:SpecifiedTaxRegistration>",
             element("ram:ID", Some(id), " schemeID=\"FC\"")
@@ -148,7 +156,7 @@ pub fn generate_cii(input: InvoiceInput) -> Result<String, String> {
             e("ram:CountryID", &address.country_code)
         );
     }
-    if let Some(value) = &data.service_date {
+    if let Some(value) = non_empty(data.service_date.as_deref()) {
         xml += &format!(
             "<ram:ActualDeliverySupplyChainEvent><ram:OccurrenceDateTime>{}</ram:OccurrenceDateTime></ram:ActualDeliverySupplyChainEvent>",
             date("udt:DateTimeString", value)
@@ -162,14 +170,14 @@ pub fn generate_cii(input: InvoiceInput) -> Result<String, String> {
     xml += &e("ram:InvoiceCurrencyCode", &data.currency);
     xml += "<ram:SpecifiedTradeSettlementPaymentMeans>";
     xml += &e("ram:TypeCode", &data.payment.means_code);
-    if let Some(iban) = &data.payment.iban {
+    if let Some(iban) = non_empty(data.payment.iban.as_deref()) {
         xml += &format!(
             "<ram:PayeePartyCreditorFinancialAccount>{}{}</ram:PayeePartyCreditorFinancialAccount>",
             e("ram:IBANID", iban),
             optional("ram:AccountName", data.payment.account_name.as_deref())
         );
     }
-    if let Some(bic) = &data.payment.bic {
+    if let Some(bic) = non_empty(data.payment.bic.as_deref()) {
         xml += &format!(
             "<ram:PayeeSpecifiedCreditorFinancialInstitution>{}</ram:PayeeSpecifiedCreditorFinancialInstitution>",
             e("ram:BICID", bic)
@@ -209,10 +217,12 @@ pub fn generate_cii(input: InvoiceInput) -> Result<String, String> {
     for adjustment in &data.allowances {
         xml += &allowance(adjustment, true);
     }
-    if data.payment.terms.is_some() || data.due_date.is_some() {
+    if non_empty(data.payment.terms.as_deref()).is_some()
+        || non_empty(data.due_date.as_deref()).is_some()
+    {
         xml += "<ram:SpecifiedTradePaymentTerms>";
         xml += &optional("ram:Description", data.payment.terms.as_deref());
-        if let Some(due) = &data.due_date {
+        if let Some(due) = non_empty(data.due_date.as_deref()) {
             xml += &format!(
                 "<ram:DueDateDateTime>{}</ram:DueDateDateTime>",
                 date("udt:DateTimeString", due)

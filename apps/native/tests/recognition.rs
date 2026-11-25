@@ -138,6 +138,15 @@ fn unknown_or_ambiguous_tax_rates_require_manual_entry() {
         );
     }
 }
+
+#[test]
+fn schema_recognizer_handles_nbsp_amounts() {
+    let request = synthetic(&[vec![("Nettobetrag: 1.250,50\u{00A0}€", 0.0)]]);
+    let result = RecognitionRegistry::default()
+        .recognize(RecognitionMethod::Schema, &request)
+        .unwrap();
+    assert_eq!(result.fields["lineNet"].value, "1250.50");
+}
 struct WrongDocument;
 impl RecognitionProvider for WrongDocument {
     fn method(&self) -> RecognitionMethod {
