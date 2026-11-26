@@ -22,8 +22,9 @@ use super::{
     CONTRACT_VERSION, FieldProposal, LineProposal, RecognitionMethod, RecognitionProvider,
     RecognitionRequest, RecognitionResult,
 };
-use crate::extraction::{TextLine, reconstruct_lines};
+use crate::extraction::{DocumentPage, TextLine, reconstruct_lines};
 use crate::invoice::{AllowanceCharge, InvoiceLine, Tax};
+use crate::ocr::OcrSettings;
 use crate::secrets::{ApiKey, SecretStore};
 use rust_decimal::{Decimal, RoundingStrategy};
 use serde::Deserialize;
@@ -329,14 +330,25 @@ impl WSystemClient {
         api_key: &ApiKey,
         pdf_bytes: &[u8],
     ) -> Result<ExtractResponse, String> {
+        self.extract_pdf_detailed(api_key, pdf_bytes)
+            .map_err(ExtractError::into_message)
+    }
+
+    fn extract_pdf_detailed(
+        &self,
+        api_key: &ApiKey,
+        pdf_bytes: &[u8],
+    ) -> Result<ExtractResponse, ExtractError> {
         if pdf_bytes.len() < 5 || &pdf_bytes[..5] != b"%PDF-" {
-            return Err("Die Datei ist keine gültige PDF-Rechnung.".into());
+            return Err(ExtractError::Other(
+                "Die Datei ist keine gültige PDF-Rechnung.".into(),
+            ));
         }
         if pdf_bytes.len() as u64 > MAX_WSYSTEM_PDF_BYTES {
-            return Err(
+            return Err(ExtractError::Other(
                 "Die PDF-Datei überschreitet das W-System-Limit von 10 MB. Bitte Schemaerkennung verwenden."
                     .into(),
-            );
+            ));
         }
 
         let client_request_id = format!("dw-{}", Uuid::new_v4());
@@ -352,7 +364,9 @@ impl WSystemClient {
             .header("User-Agent", &Self::user_agent())
             .content_type("application/pdf")
             .send(pdf_bytes)
-            .map_err(|error| map_transport_error(error, api_key, &client_request_id))?;
+            .map_err(|error| {
+                ExtractError::Other(map_transport_error(error, api_key, &client_request_id))
+            })?;
 
         let status = response.status().as_u16();
         let header_request_id = header_str(&response, "x-request-id");
@@ -360,22 +374,34 @@ impl WSystemClient {
         let units_remaining = header_u64(&response, "x-units-remaining");
         let idempotent_replayed = header_str(&response, "idempotent-replayed")
             .is_some_and(|v| v.eq_ignore_ascii_case("true"));
-        let body = read_bounded_body(response, MAX_EXTRACT_RESPONSE_BYTES, api_key)?;
+        let body = read_bounded_body(response, MAX_EXTRACT_RESPONSE_BYTES, api_key)
+            .map_err(ExtractError::Other)?;
 
         if !(200..300).contains(&status) {
-            return Err(format_api_error(
+            let formatted = format_api_error(
                 status,
                 &body,
                 header_request_id.as_deref().or(Some(&client_request_id)),
                 api_key,
-            ));
+            );
+            let is_no_text_layer = status == 422
+                && serde_json::from_slice::<Value>(&body)
+                    .ok()
+                    .and_then(|v| extract_error_code(&v))
+                    .as_deref()
+                    == Some("no_text_layer");
+            return Err(if is_no_text_layer {
+                ExtractError::NoTextLayer(formatted)
+            } else {
+                ExtractError::Other(formatted)
+            });
         }
 
         let payload: ExtractPayload = serde_json::from_slice(&body).map_err(|_| {
-            format_with_request_id(
+            ExtractError::Other(format_with_request_id(
                 "W System lieferte eine unerwartete Antwort für /einvoice/extract.",
                 header_request_id.as_deref().or(Some(&client_request_id)),
-            )
+            ))
         })?;
 
         let request_id = header_request_id
@@ -392,11 +418,25 @@ impl WSystemClient {
     }
 }
 
+enum ExtractError {
+    NoTextLayer(String),
+    Other(String),
+}
+
+impl ExtractError {
+    fn into_message(self) -> String {
+        match self {
+            Self::NoTextLayer(msg) | Self::Other(msg) => msg,
+        }
+    }
+}
+
 /// Optional `RecognitionProvider` backed by W System Cloud (`POST /einvoice/extract`).
 pub struct WSystemRecognizer {
     client: WSystemClient,
     secrets: Arc<dyn SecretStore>,
     consent_accepted: bool,
+    ocr_settings: OcrSettings,
     last_units_remaining: Arc<Mutex<Option<u64>>>,
 }
 
@@ -410,8 +450,14 @@ impl WSystemRecognizer {
             client,
             secrets,
             consent_accepted,
+            ocr_settings: OcrSettings::default(),
             last_units_remaining: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn with_ocr_settings(mut self, ocr_settings: OcrSettings) -> Self {
+        self.ocr_settings = ocr_settings;
+        self
     }
 
     pub fn last_units_remaining(&self) -> Option<u64> {
@@ -440,12 +486,252 @@ impl RecognitionProvider for WSystemRecognizer {
         })?;
         let pdf_bytes =
             crate::file_io::read_verified_pdf(&request.source_pdf, &request.document_sha256)?;
-        let response = self.client.extract_pdf(&api_key, &pdf_bytes)?;
+
+        let mut extra_warnings = Vec::new();
+        let response = if has_ocr_tokens(&request.pages) {
+            let ocr_pdf = build_ocr_text_pdf(&request.pages)?;
+            extra_warnings.push(
+                "Diese PDF hatte keine vollständige Textebene; der Text wurde lokal per OCR extrahiert und als temporäre Text-PDF an W System übermittelt. Original-PDF bleibt unverändert."
+                    .into(),
+            );
+            self.client.extract_pdf(&api_key, &ocr_pdf)?
+        } else {
+            match self.client.extract_pdf_detailed(&api_key, &pdf_bytes) {
+                Ok(resp) => resp,
+                Err(ExtractError::NoTextLayer(_)) => {
+                    let forced_ocr = OcrSettings {
+                        enabled: true,
+                        languages: self.ocr_settings.languages.clone(),
+                    };
+                    let (ocr_pages, ocr_warnings) = crate::ocr::read_pages(
+                        &pdf_bytes,
+                        &request.document_sha256,
+                        &forced_ocr,
+                    )
+                    .map_err(|ocr_err| {
+                        format!(
+                            "Diese PDF enthält keine Textebene für W System und der lokale OCR-Fallback ist fehlgeschlagen: {ocr_err}"
+                        )
+                    })?;
+                    let ocr_pdf = build_ocr_text_pdf(&ocr_pages)?;
+                    extra_warnings.extend(ocr_warnings);
+                    extra_warnings.push(
+                        "W System meldete fehlende Textebene (Scan); der Text wurde lokal per OCR extrahiert und erneut an W System übermittelt. Original-PDF bleibt unverändert."
+                            .into(),
+                    );
+                    self.client.extract_pdf(&api_key, &ocr_pdf)?
+                }
+                Err(ExtractError::Other(msg)) => return Err(msg),
+            }
+        };
+
         if let Ok(mut guard) = self.last_units_remaining.lock() {
             *guard = response.units_remaining;
         }
-        Ok(map_extract_response(request, &response))
+        let mut result = map_extract_response(request, &response);
+        result.warnings.extend(extra_warnings);
+        Ok(result)
     }
+}
+
+/// Returns `true` when at least one page contains tokens produced by local OCR.
+pub fn has_ocr_tokens(pages: &[DocumentPage]) -> bool {
+    pages
+        .iter()
+        .any(|page| page.tokens.iter().any(|token| token.id.contains("-ocr")))
+}
+
+/// Build an ephemeral in-memory PDF carrying the reconstructed OCR/native text lines
+/// so W System `/einvoice/extract` can read scanned invoices without modifying the
+/// original PDF on disk. Uses WinAnsiEncoding (Windows-1252) so German umlauts and
+/// the Euro symbol survive PDF text extraction intact.
+pub fn build_ocr_text_pdf(pages: &[DocumentPage]) -> Result<Vec<u8>, String> {
+    use lopdf::{
+        Dictionary, Document, Object, Stream,
+        content::{Content, Operation},
+    };
+
+    let all_lines = reconstruct_lines(pages);
+    if all_lines.is_empty() {
+        return Err(
+            "Lokale OCR konnte keinen auslesbaren Text aus dieser PDF extrahieren. Bitte manuell erfassen."
+                .into(),
+        );
+    }
+
+    let mut lines_by_page = BTreeMap::<u32, Vec<&TextLine>>::new();
+    for line in &all_lines {
+        lines_by_page.entry(line.page).or_default().push(line);
+    }
+
+    let mut doc = Document::with_version("1.4");
+    let pages_id = doc.new_object_id();
+    let font_id = doc.add_object(Dictionary::from_iter([
+        ("Type", Object::Name(b"Font".to_vec())),
+        ("Subtype", Object::Name(b"Type1".to_vec())),
+        ("BaseFont", Object::Name(b"Helvetica".to_vec())),
+        ("Encoding", Object::Name(b"WinAnsiEncoding".to_vec())),
+    ]));
+    let resources_id = doc.add_object(Dictionary::from_iter([(
+        "Font",
+        Object::Dictionary(Dictionary::from_iter([("F1", Object::Reference(font_id))])),
+    )]));
+
+    let mut page_ids = Vec::new();
+    let page_numbers: Vec<u32> = if pages.is_empty() {
+        lines_by_page.keys().copied().collect()
+    } else {
+        pages.iter().map(|p| p.page).collect()
+    };
+
+    for page_num in page_numbers {
+        let Some(page_lines) = lines_by_page.get(&page_num) else {
+            continue;
+        };
+        let (width, height) = pages
+            .iter()
+            .find(|p| p.page == page_num)
+            .map(|p| {
+                let w = if p.width.is_finite() && p.width > 100.0 {
+                    p.width
+                } else {
+                    595.0
+                };
+                let h = if p.height.is_finite() && p.height > 100.0 {
+                    p.height
+                } else {
+                    842.0
+                };
+                (w, h)
+            })
+            .unwrap_or((595.0, 842.0));
+
+        // Lay out reconstructed lines cleanly top-to-bottom so any PDF text extractor
+        // reads each line in reading order without overlapping glyphs.
+        let margin_x = 36.0_f64;
+        let top_y = (height - 36.0).max(72.0);
+        let available_h = (top_y - 36.0).max(100.0);
+        let line_count = page_lines.len().max(1) as f64;
+        let line_step = (available_h / line_count).clamp(8.0, 14.0);
+        let font_size = (line_step * 0.78).clamp(6.5, 10.5);
+
+        let mut ops = Vec::with_capacity(page_lines.len() * 3 + 4);
+        ops.push(Operation::new("BT", vec![]));
+        ops.push(Operation::new(
+            "Tf",
+            vec![Object::Name(b"F1".to_vec()), Object::Real(font_size as f32)],
+        ));
+        for (idx, line) in page_lines.iter().enumerate() {
+            let encoded = encode_winansi(&line.text);
+            if encoded.is_empty() {
+                continue;
+            }
+            let y = (top_y - (idx as f64) * line_step).max(18.0);
+            ops.push(Operation::new(
+                "Tm",
+                vec![
+                    Object::Real(1.0),
+                    Object::Real(0.0),
+                    Object::Real(0.0),
+                    Object::Real(1.0),
+                    Object::Real(margin_x as f32),
+                    Object::Real(y as f32),
+                ],
+            ));
+            ops.push(Operation::new(
+                "Tj",
+                vec![Object::String(encoded, lopdf::StringFormat::Literal)],
+            ));
+        }
+        ops.push(Operation::new("ET", vec![]));
+
+        let content_bytes = Content { operations: ops }
+            .encode()
+            .map_err(|e| format!("OCR-Text-PDF konnte nicht erzeugt werden: {e}"))?;
+        let content_id = doc.add_object(Stream::new(Dictionary::new(), content_bytes));
+        let page_id = doc.add_object(Dictionary::from_iter([
+            ("Type", Object::Name(b"Page".to_vec())),
+            ("Parent", Object::Reference(pages_id)),
+            (
+                "MediaBox",
+                Object::Array(vec![
+                    Object::Real(0.0),
+                    Object::Real(0.0),
+                    Object::Real(width as f32),
+                    Object::Real(height as f32),
+                ]),
+            ),
+            ("Resources", Object::Reference(resources_id)),
+            ("Contents", Object::Reference(content_id)),
+        ]));
+        page_ids.push(Object::Reference(page_id));
+    }
+
+    if page_ids.is_empty() {
+        return Err(
+            "Lokale OCR konnte keinen auslesbaren Text aus dieser PDF extrahieren. Bitte manuell erfassen."
+                .into(),
+        );
+    }
+
+    let count = page_ids.len() as i64;
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(Dictionary::from_iter([
+            ("Type", Object::Name(b"Pages".to_vec())),
+            ("Kids", Object::Array(page_ids)),
+            ("Count", Object::Integer(count)),
+        ])),
+    );
+    let catalog_id = doc.add_object(Dictionary::from_iter([
+        ("Type", Object::Name(b"Catalog".to_vec())),
+        ("Pages", Object::Reference(pages_id)),
+    ]));
+    doc.trailer.set("Root", catalog_id);
+
+    let mut out = Vec::new();
+    doc.save_to(&mut out)
+        .map_err(|e| format!("OCR-Text-PDF konnte nicht serialisiert werden: {e}"))?;
+    Ok(out)
+}
+
+fn encode_winansi(text: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\u{0020}'..='\u{007E}' => out.push(ch as u8),
+            '\u{00A0}' => out.push(b' '),
+            '\u{00A1}'..='\u{00FF}' => out.push(ch as u8),
+            '\u{20AC}' => out.push(0x80), // €
+            '\u{201A}' => out.push(0x82), // ‚
+            '\u{0192}' => out.push(0x83), // ƒ
+            '\u{201E}' => out.push(0x84), // „
+            '\u{2026}' => out.push(0x85), // …
+            '\u{2020}' => out.push(0x86), // †
+            '\u{2021}' => out.push(0x87), // ‡
+            '\u{2030}' => out.push(0x89), // ‰
+            '\u{0160}' => out.push(0x8A), // Š
+            '\u{2039}' => out.push(0x8B), // ‹
+            '\u{0152}' => out.push(0x8C), // Œ
+            '\u{017D}' => out.push(0x8E), // Ž
+            '\u{2018}' => out.push(0x91), // ‘
+            '\u{2019}' => out.push(0x92), // ’
+            '\u{201C}' => out.push(0x93), // “
+            '\u{201D}' => out.push(0x94), // ”
+            '\u{2022}' => out.push(0x95), // •
+            '\u{2013}' => out.push(0x96), // –
+            '\u{2014}' => out.push(0x97), // —
+            '\u{2122}' => out.push(0x99), // ™
+            '\u{0161}' => out.push(0x9A), // š
+            '\u{203A}' => out.push(0x9B), // ›
+            '\u{0153}' => out.push(0x9C), // œ
+            '\u{017E}' => out.push(0x9E), // ž
+            '\u{0178}' => out.push(0x9F), // Ÿ
+            '\t' | '\n' | '\r' => out.push(b' '),
+            _ => out.push(b' '),
+        }
+    }
+    out
 }
 
 /// Map a W System `/einvoice/extract` response to Druckwandel's `RecognitionResult`.

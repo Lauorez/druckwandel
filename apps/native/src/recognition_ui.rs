@@ -479,12 +479,14 @@ pub(crate) fn wire_with_wsystem(
                                 .into(),
                         );
                     }
-                    let native_only = druckwandel_native::ocr::OcrSettings {
-                        enabled: false,
-                        languages: options.languages,
+                    let ocr_for_wsystem = druckwandel_native::ocr::OcrSettings {
+                        enabled: true,
+                        languages: options.languages.clone(),
                     };
-                    let request = RecognitionRequest::from_pdf_with_ocr(source, &hash, &native_only)?;
-                    let provider = WSystemRecognizer::new(client, secrets, true);
+                    let request =
+                        RecognitionRequest::from_pdf_with_ocr(source, &hash, &ocr_for_wsystem)?;
+                    let provider = WSystemRecognizer::new(client, secrets, true)
+                        .with_ocr_settings(ocr_for_wsystem);
                     let mut registry = RecognitionRegistry::default();
                     let remaining_tracker = Arc::new(std::sync::Mutex::new(None));
                     let tracked_provider = TrackedWSystem {

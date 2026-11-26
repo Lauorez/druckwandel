@@ -1,12 +1,13 @@
 use druckwandel_native::{
-    extraction::read_document,
+    extraction::{BoundingBox, DocumentPage, SourceToken, read_document, read_document_bytes},
     file_io::sha256_hex,
     invoice::{InvoiceInput, calculate, validate, validate_en16931},
     recognition::{
         CONTRACT_VERSION, RecognitionMethod, RecognitionRegistry, RecognitionRequest, fill_missing,
         wsystem::{
             ExtractPayload, ExtractResponse, MAX_WSYSTEM_PDF_BYTES, WSYSTEM_BILLING_URL,
-            WSystemClient, WSystemRecognizer, map_extract_response,
+            WSystemClient, WSystemRecognizer, build_ocr_text_pdf, has_ocr_tokens,
+            map_extract_response,
         },
     },
     secrets::{ApiKey, MemorySecretStore},
@@ -878,4 +879,164 @@ fn maps_live_verified_extract_and_usage_contract() {
     assert!(summary.contains("7920 von 8000 Einheiten"));
     assert!(summary.contains("ca. 99 Rechnungen à 80 Einheiten"));
     let _ = server.join().unwrap();
+}
+
+#[test]
+fn ocr_text_pdf_preserves_german_text_and_is_sent_to_wsystem_for_scans() {
+    let (mut request, raw_pdf_bytes) = fixture_request();
+    assert!(!has_ocr_tokens(&request.pages));
+
+    // Simulate a scanned invoice whose text was extracted locally via Tesseract OCR.
+    let ocr_pages = vec![DocumentPage {
+        page: 1,
+        width: 595.0,
+        height: 842.0,
+        tokens: vec![
+            SourceToken {
+                id: "p1-ocr0".into(),
+                page: 1,
+                text: "Musterstraße".into(),
+                bounds: BoundingBox {
+                    x: 40.0,
+                    y: 40.0,
+                    width: 80.0,
+                    height: 12.0,
+                },
+            },
+            SourceToken {
+                id: "p1-ocr1".into(),
+                page: 1,
+                text: "Österreich".into(),
+                bounds: BoundingBox {
+                    x: 130.0,
+                    y: 40.0,
+                    width: 70.0,
+                    height: 12.0,
+                },
+            },
+            SourceToken {
+                id: "p1-ocr2".into(),
+                page: 1,
+                text: "RE-SCAN-2026".into(),
+                bounds: BoundingBox {
+                    x: 40.0,
+                    y: 64.0,
+                    width: 90.0,
+                    height: 12.0,
+                },
+            },
+            SourceToken {
+                id: "p1-ocr3".into(),
+                page: 1,
+                text: "1.071,00".into(),
+                bounds: BoundingBox {
+                    x: 40.0,
+                    y: 88.0,
+                    width: 60.0,
+                    height: 12.0,
+                },
+            },
+            SourceToken {
+                id: "p1-ocr4".into(),
+                page: 1,
+                text: "€".into(),
+                bounds: BoundingBox {
+                    x: 105.0,
+                    y: 88.0,
+                    width: 10.0,
+                    height: 12.0,
+                },
+            },
+        ],
+    }];
+    assert!(has_ocr_tokens(&ocr_pages));
+
+    let ocr_pdf = build_ocr_text_pdf(&ocr_pages).unwrap();
+    assert!(ocr_pdf.starts_with(b"%PDF-"));
+    let parsed_pages = read_document_bytes(&ocr_pdf).unwrap();
+    let extracted_text: String = parsed_pages
+        .iter()
+        .flat_map(|p| p.tokens.iter().map(|t| t.text.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        extracted_text.contains("Musterstraße")
+            && extracted_text.contains("Österreich")
+            && extracted_text.contains("RE-SCAN-2026")
+            && extracted_text.contains("1.071,00")
+            && extracted_text.contains('€'),
+        "OCR text PDF must preserve German umlauts and Euro symbol: '{extracted_text}'"
+    );
+
+    request.pages = ocr_pages;
+    let response_json = serde_json::json!({
+        "status": "draft_for_review",
+        "review_required": true,
+        "format": "xrechnung",
+        "invoice": {
+            "invoice_number": "RE-SCAN-2026",
+            "issue_date": "2026-11-26",
+            "currency": "EUR",
+            "seller": {
+                "name": "Scan GmbH",
+                "street": "Musterstraße 1",
+                "city": "Wien",
+                "postal_code": "1010",
+                "country": "AT"
+            }
+        },
+        "fields": [
+            {"path": "invoice_number", "value": "RE-SCAN-2026", "confidence": 0.96, "checks": ["found_in_pdf_text"]}
+        ],
+        "disclaimer": "AI-extracted draft for review."
+    })
+    .to_string();
+
+    let (base_url, hits, server) = spawn_mock_server(vec![MockReply {
+        status: 200,
+        reason: "OK",
+        headers: vec![
+            ("Content-Type", "application/json".into()),
+            ("X-Request-Id", "req_ocr_scan_1".into()),
+        ],
+        body: response_json,
+    }]);
+
+    let secrets = Arc::new(MemorySecretStore::with_key(
+        ApiKey::parse("wsk_ocr_scan_key").unwrap(),
+    ));
+    let client = WSystemClient::with_base_url(base_url).unwrap();
+    let recognizer = WSystemRecognizer::new(client, secrets, true);
+    let mut registry = RecognitionRegistry::default();
+    registry.register(Box::new(recognizer)).unwrap();
+
+    let result = registry
+        .recognize(RecognitionMethod::WSystem, &request)
+        .unwrap();
+    let captured = server.join().unwrap();
+
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+    assert_eq!(captured[0].target, "/einvoice/extract?format=xrechnung");
+    assert!(captured[0].body.starts_with(b"%PDF-"));
+    assert_ne!(
+        captured[0].body, raw_pdf_bytes,
+        "scanned PDF must send ephemeral OCR text PDF instead of textless raw bytes"
+    );
+    let sent_pages = read_document_bytes(&captured[0].body).unwrap();
+    let sent_text: String = sent_pages
+        .iter()
+        .flat_map(|p| p.tokens.iter().map(|t| t.text.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(sent_text.contains("RE-SCAN-2026"));
+
+    assert_eq!(result.fields["invoiceNumber"].value, "RE-SCAN-2026");
+    // OCR tokens cap confidence at 80% through RecognitionRegistry.
+    assert!(result.fields["invoiceNumber"].confidence <= 0.80);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("OCR") && w.contains("W System"))
+    );
 }

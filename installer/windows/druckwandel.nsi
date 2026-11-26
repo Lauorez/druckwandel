@@ -15,6 +15,8 @@ SetCompress off
 SetCompressor /SOLID lzma
 !endif
 !define MUI_ABORTWARNING
+!define MUI_ICON "${PAYLOAD}\icon.ico"
+!define MUI_UNICON "${PAYLOAD}\icon.ico"
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_COMPONENTSPAGE_NODESC
 !insertmacro MUI_PAGE_COMPONENTS
@@ -152,17 +154,18 @@ Section "Druckwandel" SEC_APP
   WriteRegStr HKCU "Software\Classes\erechnung-review\shell\open\command" "" '"$INSTDIR\Druckwandel.exe" "%1"'
   WriteRegStr HKLM "Software\Druckwandel" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "DisplayName" "Druckwandel"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "DisplayIcon" "$INSTDIR\Druckwandel.exe,0"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Druckwandel" "UninstallString" '"$INSTDIR\uninstall.exe"'
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"
-  CreateShortcut "$SMPROGRAMS\Druckwandel.lnk" "$INSTDIR\Druckwandel.exe"
+  CreateShortcut "$SMPROGRAMS\Druckwandel.lnk" "$INSTDIR\Druckwandel.exe" "" "$INSTDIR\Druckwandel.exe" 0
 SectionEnd
 
 Section /o "Desktopverknüpfung erstellen" SEC_DESKTOP
   ClearErrors
-  CreateShortcut "$DESKTOP\Druckwandel.lnk" "$INSTDIR\Druckwandel.exe"
+  CreateShortcut "$DESKTOP\Druckwandel.lnk" "$INSTDIR\Druckwandel.exe" "" "$INSTDIR\Druckwandel.exe" 0
   ${IfNot} ${Errors}
     WriteRegDWORD HKCU "Software\Druckwandel" "DesktopShortcut" 1
   ${EndIf}
