@@ -1,6 +1,6 @@
 # Mitwirken
 
-Entwickelt wird auf `development` in Rust und Slint; `main` dient als Release-Branch. Der eingefrorene Legacy-Branch bleibt unverändert.
+Entwickelt wird auf `development` in Rust und Slint; `main` dient als Release-Branch.
 
 ## Voraussetzungen und Prüfungen
 

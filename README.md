@@ -1,27 +1,23 @@
 <p align="center"><img src="apps/native/assets/app-icon.svg" alt="Druckwandel" width="96"></p>
 <h1 align="center">Druckwandel</h1>
 
-Desktop-Anwendung in **Rust und Slint** für Windows und macOS. PDF-Rechnungen übernehmen, erkannte Daten prüfen, XRechnung oder ZUGFeRD erzeugen, speichern und per Systemfreigabe an ein Mailprogramm übergeben.
+Desktop-Anwendung in **Rust und Slint** für Windows und macOS: PDF-Rechnungen übernehmen, Daten am Original prüfen, **XRechnung (UBL)** oder **ZUGFeRD/Factur-X (PDF/A-3B)** erzeugen und per Systemfreigabe weitergeben.
 
-Version 0.4.0 ist die erste Veröffentlichung der neuen Rust-/Slint-Anwendung. Die 0.3.x-Downloads gehören zur bisherigen Tauri-Anwendung. Ihr Quellcode liegt im Branch [legacy/tauri-0.3.5](https://github.com/Lauorez/druckwandel/tree/legacy/tauri-0.3.5).
+## Funktionen
 
-## Umfang
+- **Import & Vorschau**: PDF-Import, eingebettete lokale PDF-Vorschau, lokale SQLite-Entwürfe und Windows-Druckeingang (`erechnung-review://`).
+- **Erkennung**: Lokale Schemaerkennung in Rust mit Fundstellen, lokaler Tesseract-OCR für Scans und Lernprofilen; optionale Cloud-Erkennung über **W System** (eigener API-Schlüssel im System-Schlüsselbund, ausdrückliche Freigabe) sowie vorbereiteter Vertrag für eine spätere lokale KI. Alle Vorschläge bleiben prüfpflichtige Entwürfe ([Erkennungsarchitektur](docs/recognition.md)).
+- **Rechnungsformular & Export**: Unterstützt Rechnungen, Gutschriften, Korrekturen, Teil-/Anzahlungs-/Schlussrechnungen, Steuerfälle, Rabatte/Zuschläge und Rechnungsbezüge. Ausgaben werden vor dem Speichern offline geprüft (KoSIT, Mustang, veraPDF); „Per E-Mail senden“ gibt nur unveränderte, geprüfte Dateien frei.
+- **Installer**: Windows-Setup inkl. virtuellem .NET-Drucker; macOS-App als DMG.
 
-- PDF-Import und Windows-Druckeingang mit lokalen SQLite-Entwürfen.
-- Schemaerkennung in Rust: PDF-Text mit Fundstellen, Feldregeln, Adress- und Tabellenerkennung; Vorschläge mit Konfidenz und Warnungen.
-- Auswahl einer später ergänzbaren **lokalen KI-Erkennung** (das separate KI-Projekt ist hier nicht enthalten) sowie einer **optionalen Cloud-Erkennung über W System** mit eigenem API-Schlüssel im System-Schlüsselbund und ausdrücklicher Freigabe. Standardmäßig werden keine Rechnungen übertragen. [Erkennungsarchitektur](docs/recognition.md).
-- Bearbeitbare Rechnungsdaten und mehrere Positionen.
-- XRechnung (UBL) und ZUGFeRD/Factur-X EN 16931 (CII in PDF/A-3B), mit unabhängig geprüften Ausgabebytes.
-- „Per E-Mail senden“ erst nach erfolgreichem Speichern; Änderungen sperren die Freigabe erneut. Der Nutzer wählt das Mailziel und versendet selbst.
-- Windows-Installer mit bestehendem .NET-Drucker und `erechnung-review://`-Protokollhandler; macOS-App als DMG.
+## Branches
 
-Archiv, Buchungsexport, DATEV-Belegpakete und Backup-Oberfläche sind entfernt. Ein späterer DATEV-Belegupload ist im [Produktplan](docs/planning/slint-rust-umstieg.md) beschrieben.
-
-Die eingebettete PDF-Vorschau rendert lokal in Rust mit Seitenwechsel und Zoom. Unternehmensvorlage, Darstellung und Erkennungsmodus stehen in den Einstellungen (Zahnrad). Das Rechnungsformular unterstützt die bisherigen elf Exportfälle einschließlich Steuerbefreiung, Rabatten/Zuschlägen, Rechnungsbezügen sowie Anzahlungs- und Schlussrechnung. Lokale OCR für Scans und verwaltbare Lernprofile ergänzen die Erkennung. Automatische Erkennung liefert Vorschläge; sachliche Richtigkeit und Übereinstimmung mit dem Beleg müssen geprüft werden.
+- **`development`** – laufende Entwicklung
+- **`main`** – Release-Stand
 
 ## Entwicklung
 
-Rust-Version siehe `rust-toolchain.toml`. Python 3.12+ wird zum Laden der unabhängigen Prüfer benötigt. Auf Windows kommen MSVC Build Tools hinzu, zum Bauen des Installers außerdem NSIS. Der Drucker bleibt ein eigenes .NET-Projekt.
+Voraussetzungen: Rust (`rust-toolchain.toml`), Python 3.12+ für lokale Prüfer/OCR, unter Windows zusätzlich MSVC Build Tools (und NSIS für den Installer) sowie .NET 10 für den Drucker.
 
 ```sh
 cargo run -p druckwandel-native --locked
@@ -32,34 +28,7 @@ python3 scripts/fetch-validators.py
 cargo test --locked --test external_validators -- --ignored
 ```
 
-Das Prüfpaket muss auf dem Zielbetriebssystem geladen werden: Es enthält eine plattformspezifische Java-Laufzeit und wird offline ausgeführt. [Werkzeuge und Lizenzen](resources/validators/README.md).
-
-```sh
-cargo run -p druckwandel-native --bin druckwandel-recognize -- quelle.pdf
-cargo run -p druckwandel-native --bin druckwandel-xml -- entwurf.json rechnung.xml
-cargo run -p druckwandel-native --bin druckwandel-zugferd -- entwurf.json quelle.pdf rechnung.pdf
-```
-
-## Installer und CI
-
-[GitHub Actions](https://github.com/Lauorez/druckwandel/actions/workflows/native-slint.yml) prüft Rust, Schemaerkennung und beide Ausgabeformate unter Windows und macOS. Ein manueller Workflow-Lauf mit `package=true` baut zusätzlich die Installer als Artefakte: unter Windows als ein gemeinsames Setup mit aktueller Druckwandel-App und aktuellem .NET-Drucker, unter macOS als DMG ohne Drucker.
-
-Lokal (Windows – App + Drucker):
-
-```powershell
-python scripts/fetch-validators.py
-python scripts/fetch-ocr.py
-./scripts/build-windows-installer.ps1
-```
-
-Lokal (macOS – ohne Drucker):
-
-```sh
-python3 scripts/fetch-validators.py
-sh scripts/build-macos-installer.sh
-```
-
-Der Windows-Installer registriert `erechnung-review://print-job/<UUID>` für die Slint-EXE. Eine zweite gestartete Instanz übergibt ihre Argumente an die laufende App. Die Deinstallation entfernt nur die eigene Protokollzuordnung und die installierten Dateien; lokale Entwürfe bleiben erhalten. Einrichtung und Entfernung des Druckers benötigen Administratorrechte im selben Benutzerkonto. Unsignierte Entwicklungsinstaller sind keine Produktionsfreigabe.
+CLI-Helfer (`druckwandel-recognize`, `druckwandel-xml`, `druckwandel-zugferd`) sowie lokale Installer-Skripte (`scripts/build-windows-installer.ps1`, `scripts/build-macos-installer.sh`) liegen im Repository. Weitere Details stehen unter [docs/](docs/README.md) und [resources/validators/](resources/validators/README.md).
 
 ## Verzeichnisse
 
@@ -67,8 +36,9 @@ Der Windows-Installer registriert `erechnung-review://print-job/<UUID>` für die
 | --- | --- |
 | `apps/native/` | Rust-Fachkern, Slint-Oberfläche, Tests |
 | `resources/validators/` | Manifest und lokale Java-Prüfer |
-| `installer/windows/` | Eigenständiges NSIS-Setup, Druckerinstallation |
-| `printer/` | Windows-Print-Support-Komponente in .NET NativeAOT |
-| `docs/` | Produktplan und technische Verträge |
+| `resources/ocr/` | Manifest für lokale Windows-OCR |
+| `installer/windows/` | NSIS-Setup und Druckerinstallation |
+| `printer/` | Virtueller Windows-Drucker (.NET NativeAOT) |
+| `docs/` | Architektur, Produktplan und Audits |
 
-Der Projektquellcode steht unter MIT. Slint und weitere Komponenten haben eigene Lizenzbedingungen; siehe [Drittanbieterhinweise](THIRD-PARTY-NOTICES.md).
+Quellcode unter [MIT](LICENSE). Lizenzen eingebundener Komponenten siehe [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

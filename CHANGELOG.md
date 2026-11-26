@@ -18,12 +18,10 @@
 - ZUGFeRD als Standardausgabe, Ausgabeaktionen unter dem Formular und sichtbare Pflichtfeldmarkierungen.
 - Einstellungen mit Reitern für Unternehmensvorlage, Darstellung, Erkennungsmodus und Über-Informationen; maximierter Start und anpassbare Darstellung ohne Größenänderung beim Seitenwechsel.
 
-- Rust/Slint als einzige App auf `main`; bisheriger Stand im gesperrten Branch `legacy/tauri-0.3.5`.
+- Rust/Slint als einzige Desktop-Anwendung.
 - PDF-Import, Entwürfe und Schemaerkennung mit Fundstellen in Rust.
 - Gemeinsamer Erkennungsvertrag und reservierte Auswahl für einen späteren lokalen KI-Adapter aus einem separaten Projekt.
 - XRechnung und ZUGFeRD mit KoSIT, Mustang und veraPDF; bytegleiche eingebettete XML-Datei und unveränderte PDF-Seiten.
 - Eigenständiger Windows-Installer mit Drucker und Protokollhandler, macOS-App-Bundle und DMG.
 - E-Mail-Weitergabe der unveränderten gespeicherten Ausgabe.
 - Archiv, Buchungsexport, Backup-Oberfläche und frühere Web-Buildkette entfernt.
-
-Frühere Änderungen stehen im [Legacy-Changelog](https://github.com/Lauorez/druckwandel/blob/legacy/tauri-0.3.5/CHANGELOG.md).
