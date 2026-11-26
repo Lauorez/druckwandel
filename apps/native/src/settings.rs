@@ -11,6 +11,24 @@ pub struct Settings {
     pub company: CompanyProfile,
     pub ocr: crate::ocr::OcrSettings,
     pub wsystem: WSystemSettings,
+    pub updates: UpdateSettings,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct UpdateSettings {
+    /// Automatically check GitHub Releases for newer versions on startup (24h cooldown).
+    pub auto_check: bool,
+    pub last_checked_unix: Option<i64>,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            last_checked_unix: None,
+        }
+    }
 }
 
 /// Non-secret preferences for optional W System cloud recognition.
@@ -197,8 +215,31 @@ mod tests {
         assert!(!loaded.wsystem.auto_recognize);
         assert!(!loaded.ocr.enabled);
         assert_eq!(loaded.ocr.languages, "eng");
+        assert!(loaded.updates.auto_check);
+        assert_eq!(loaded.updates.last_checked_unix, None);
         let raw_json = fs::read_to_string(root.path().join("settings.json")).unwrap();
         assert!(!raw_json.contains("api_key"));
+
+        // Migrate legacy settings.json without the `updates` field.
+        fs::write(
+            root.path().join("settings.json"),
+            r#"{"appearance":1,"recognition_method":0,"company":{"name":"Alt GmbH"}}"#,
+        )
+        .unwrap();
+        let migrated = Settings::load(root.path()).unwrap();
+        assert_eq!(migrated.appearance, 1);
+        assert_eq!(migrated.company.name, "Alt GmbH");
+        assert!(migrated.updates.auto_check);
+        assert_eq!(migrated.updates.last_checked_unix, None);
+
+        let mut updated = migrated;
+        updated.updates.auto_check = false;
+        updated.updates.last_checked_unix = Some(1_764_000_000);
+        updated.save(root.path()).unwrap();
+        let reloaded = Settings::load(root.path()).unwrap();
+        assert!(!reloaded.updates.auto_check);
+        assert_eq!(reloaded.updates.last_checked_unix, Some(1_764_000_000));
+
         fs::write(root.path().join("settings.json"), b"invalid").unwrap();
         assert!(Settings::load(root.path()).is_err());
     }

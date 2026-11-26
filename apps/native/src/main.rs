@@ -20,6 +20,7 @@ mod extended_form;
 #[cfg(test)]
 mod form_tests;
 mod recognition_ui;
+mod update_ui;
 
 fn set_company_form(window: &MainWindow, company: &CompanyProfile) {
     window.set_company_name(company.name.clone().into());
@@ -754,6 +755,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &saved_output,
         &settings,
     );
+    let _update_ui = update_ui::wire(&window, &workspace, &current_id, &current_draft, &settings);
     window.set_status_text("PDF importieren oder gespeicherten Entwurf auswählen.".into());
 
     let weak = window.as_weak();

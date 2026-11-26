@@ -8,7 +8,7 @@ Desktop-Anwendung in **Rust und Slint** für Windows und macOS: PDF-Rechnungen �
 - **Import & Vorschau**: PDF-Import, eingebettete lokale PDF-Vorschau, lokale SQLite-Entwürfe und Windows-Druckeingang (`erechnung-review://`).
 - **Erkennung**: Lokale Schemaerkennung in Rust mit Fundstellen, lokaler Tesseract-OCR für Scans und Lernprofilen; optionale Cloud-Erkennung über **W System** (eigener API-Schlüssel im System-Schlüsselbund, ausdrückliche Freigabe) sowie vorbereiteter Vertrag für eine spätere lokale KI. Alle Vorschläge bleiben prüfpflichtige Entwürfe ([Erkennungsarchitektur](docs/recognition.md)).
 - **Rechnungsformular & Export**: Unterstützt Rechnungen, Gutschriften, Korrekturen, Teil-/Anzahlungs-/Schlussrechnungen, Steuerfälle, Rabatte/Zuschläge und Rechnungsbezüge. Ausgaben werden vor dem Speichern offline geprüft (KoSIT, Mustang, veraPDF); „Per E-Mail senden“ gibt nur unveränderte, geprüfte Dateien frei.
-- **Installer**: Windows-Setup inkl. virtuellem .NET-Drucker; macOS-App als DMG.
+- **Installer & Updates**: Windows-Setup inkl. virtuellem .NET-Drucker, macOS-App als DMG sowie anonyme, Ed25519- und SHA-256-geprüfte Auto-Updates über GitHub Releases (in den Einstellungen unter „Über“ abschaltbar).
 
 ## Branches
 

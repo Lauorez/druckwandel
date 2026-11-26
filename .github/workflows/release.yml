@@ -1,0 +1,182 @@
+name: Release (Windows + macOS + Update-Manifest)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release-Tag (z. B. v0.5.0; leer = v<Cargo-Version>)
+        type: string
+        required: false
+        default: ''
+      draft:
+        description: GitHub Release zunächst als Entwurf anlegen
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92.0"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: 'true'
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Version gegen Release-Tag prüfen
+        shell: bash
+        run: |
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' apps/native/Cargo.toml | head -n 1)"
+          expected_tag="v${cargo_version}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+              echo "Tag '${GITHUB_REF_NAME}' stimmt nicht mit apps/native/Cargo.toml ('${expected_tag}') überein." >&2
+              exit 1
+            fi
+          elif [[ -n "${{ inputs.tag }}" && "${{ inputs.tag }}" != "${expected_tag}" ]]; then
+            echo "Eingabe-Tag '${{ inputs.tag }}' stimmt nicht mit apps/native/Cargo.toml ('${expected_tag}') überein." >&2
+            exit 1
+          fi
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy -p druckwandel-native --all-targets --locked -- -D warnings
+      - run: cargo test -p druckwandel-native --locked
+      - name: Lokale Windows-OCR bereitstellen und Scans prüfen
+        if: runner.os == 'Windows'
+        run: |
+          python scripts/fetch-ocr.py
+          cargo test -p druckwandel-native --locked --test ocr -- --ignored
+      - name: Python-Skript-Tests prüfen
+        run: python -m unittest discover -s scripts -p "test_*.py"
+      - name: Offline-Prüfer laden
+        run: python scripts/fetch-validators.py
+      - name: XML- und PDF-Ausgaben unabhängig prüfen
+        run: cargo test -p druckwandel-native --locked --test external_validators -- --ignored
+      - name: .NET für Windows-Drucker bereitstellen
+        if: runner.os == 'Windows'
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Windows-Installer (App + Drucker) bauen
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) {throw 'NSIS-Installation fehlgeschlagen.'}
+          ./scripts/build-windows-installer.ps1 -SkipChecks
+      - name: Installer-Protokollregistrierung prüfen
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-native-installer.ps1
+      - name: macOS-App und DMG bauen
+        if: runner.os == 'macOS'
+        run: sh scripts/build-macos-installer.sh
+      - name: Windows-Artefakte hochladen
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: |
+            artifacts/windows/Druckwandel-*-Setup.exe
+            artifacts/windows/Druckwandel-*-Setup.exe.sha256
+          if-no-files-found: error
+      - name: macOS-Artefakte hochladen
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-macos
+          path: |
+            artifacts/macos/*.dmg
+            artifacts/macos/*.dmg.sha256
+          if-no-files-found: error
+
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-windows
+          path: artifacts/windows
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-macos
+          path: artifacts/macos
+      - name: Update-Manifest erzeugen und mit Ed25519 signieren
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+        run: |
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' apps/native/Cargo.toml | head -n 1)"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ inputs.tag }}" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="v${version}"
+          fi
+          echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${tag}" >> "$GITHUB_ENV"
+          python3 scripts/build-update-manifest.py \
+            --version "${version}" \
+            --tag "${tag}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --artifacts-dir artifacts \
+            --output-dir artifacts/release \
+            --expected-public-key-file apps/native/src/updater.rs
+      - name: GitHub Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_flags=()
+          if [[ "${{ inputs.draft }}" == "true" ]]; then
+            release_flags+=(--draft)
+          fi
+          if [[ "${RELEASE_VERSION}" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          shopt -s nullglob
+          files=(
+            artifacts/windows/Druckwandel-*-Setup.exe
+            artifacts/windows/Druckwandel-*-Setup.exe.sha256
+            artifacts/macos/*.dmg
+            artifacts/macos/*.dmg.sha256
+            artifacts/release/latest.json
+            artifacts/release/latest.json.sig
+          )
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "Keine Release-Dateien gefunden." >&2
+            exit 1
+          fi
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${files[@]}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" "${files[@]}" \
+              --title "Druckwandel ${RELEASE_VERSION}" \
+              --generate-notes \
+              "${release_flags[@]}"
+          fi

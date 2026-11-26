@@ -20,16 +20,35 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_TEXT "Druckwandel jetzt starten"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchAppAsUser
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "German"
 Var PowerShell
 Var IsUpdate
+Var AutoUpdate
+Var WaitPid
 
 Function .onInit
   SetRegView 64
   SetShellVarContext current
+  StrCpy $AutoUpdate 0
+  StrCpy $WaitPid ""
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/AUTOUPDATE" $1
+  ${IfNot} ${Errors}
+    StrCpy $AutoUpdate 1
+  ${EndIf}
+  ClearErrors
+  ${GetOptions} $0 "/WAITPID=" $1
+  ${IfNot} ${Errors}
+    StrCpy $WaitPid $1
+  ${EndIf}
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "Druckwandel benötigt Windows x64."
     Abort
@@ -59,6 +78,7 @@ FunctionEnd
 Section "Druckwandel" SEC_APP
   SectionIn RO
   SetRegView 64
+  Call WaitForAppExit
   ; Replace a previous machine-wide installer before writing new files. /UPDATE
   ; retains the installed printer. Never execute an unprivileged HKCU uninstall
   ; string while elevated as administrator.
@@ -153,6 +173,44 @@ Function RestoreDesktopShortcutSelection
   ${If} $0 == 1
   ${AndIf} ${FileExists} "$DESKTOP\Druckwandel.lnk"
     !insertmacro SelectSection ${SEC_DESKTOP}
+  ${EndIf}
+FunctionEnd
+
+Function WaitForAppExit
+  ${If} $WaitPid != ""
+    IntCmp $WaitPid 0 wait_done wait_done
+    ; OpenProcess(SYNCHRONIZE = 0x00100000, bInheritHandle = 0, dwProcessId = $WaitPid)
+    System::Call 'kernel32::OpenProcess(i 0x00100000, i 0, i $WaitPid) p .r0'
+    ${If} $0 != 0
+      DetailPrint "Warte auf das Beenden von Druckwandel (PID $WaitPid) ..."
+      System::Call 'kernel32::WaitForSingleObject(p r0, i 15000) i .r1'
+      System::Call 'kernel32::CloseHandle(p r0)'
+      Sleep 300
+    ${EndIf}
+  ${EndIf}
+  wait_done:
+FunctionEnd
+
+Function LaunchAppAsUser
+  ; Relaunch through explorer.exe so Druckwandel runs in the normal (non-elevated) user context.
+  ${If} ${FileExists} "$INSTDIR\Druckwandel.exe"
+    Exec '"$WINDIR\explorer.exe" "$INSTDIR\Druckwandel.exe"'
+  ${EndIf}
+FunctionEnd
+
+Function FinishPageShow
+  ; Keep normal manual installation identical; only show & pre-select restart during /AUTOUPDATE.
+  ${If} $AutoUpdate != 1
+    ${NSD_Uncheck} $mui.FinishPage.Run
+    ShowWindow $mui.FinishPage.Run 0 ; SW_HIDE
+  ${EndIf}
+FunctionEnd
+
+Function .onInstSuccess
+  ; In silent /AUTOUPDATE runs the finish page is skipped, so relaunch here.
+  ${If} ${Silent}
+  ${AndIf} $AutoUpdate == 1
+    Call LaunchAppAsUser
   ${EndIf}
 FunctionEnd
 

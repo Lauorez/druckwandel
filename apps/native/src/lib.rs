@@ -12,6 +12,7 @@ pub mod recognition;
 pub mod secrets;
 pub mod settings;
 pub mod ubl;
+pub mod updater;
 pub mod validation;
 pub mod workspace;
 
