@@ -123,13 +123,13 @@ pub fn set_fields(ui: &MainWindow, invoice: &InvoiceInput) {
         i32::from(invoice.prepayment_invoice)
     });
     ui.set_service_date(text(&invoice.service_date));
-    ui.set_currency(invoice.currency.clone().into());
+    ui.set_currency(invoice.currency.trim().to_uppercase().into());
     ui.set_prepaid_amount(text(&invoice.prepaid_amount));
     ui.set_payment_terms(text(&invoice.payment.terms));
     ui.set_payment_bic(text(&invoice.payment.bic));
     ui.set_payment_account(text(&invoice.payment.account_name));
     ui.set_payment_reference(text(&invoice.payment.payment_reference));
-    ui.set_payment_means(invoice.payment.means_code.clone().into());
+    ui.set_payment_means(invoice.payment.means_code.trim().into());
     ui.set_invoice_notes(invoice.notes.join("\n").into());
     ui.set_buyer_vat(text(&invoice.buyer.vat_id));
     ui.set_document_adjustments(ModelRc::new(VecModel::from(
@@ -193,7 +193,11 @@ pub fn collect_fields(ui: &MainWindow, invoice: &mut InvoiceInput) {
 }
 
 pub fn set_line(ui: &MainWindow, line: Option<&InvoiceLine>) {
-    ui.set_line_unit(line.map(|x| x.unit_code.clone()).unwrap_or_default().into());
+    ui.set_line_unit(
+        line.map(|x| x.unit_code.trim().to_uppercase())
+            .unwrap_or_default()
+            .into(),
+    );
     ui.set_line_description(line.map(|x| text(&x.description)).unwrap_or_default());
     ui.set_line_tax_category(
         line.map(|x| x.tax.category_code.clone())

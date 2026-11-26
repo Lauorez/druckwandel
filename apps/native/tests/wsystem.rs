@@ -5,8 +5,8 @@ use druckwandel_native::{
     recognition::{
         CONTRACT_VERSION, RecognitionMethod, RecognitionRegistry, RecognitionRequest, fill_missing,
         wsystem::{
-            ExtractPayload, ExtractResponse, MAX_WSYSTEM_PDF_BYTES, WSystemClient,
-            WSystemRecognizer, map_extract_response,
+            ExtractPayload, ExtractResponse, MAX_WSYSTEM_PDF_BYTES, WSYSTEM_BILLING_URL,
+            WSystemClient, WSystemRecognizer, map_extract_response,
         },
     },
     secrets::{ApiKey, MemorySecretStore},
@@ -681,4 +681,201 @@ fn guards_reject_missing_consent_missing_key_tampered_pdf_and_oversized_pdf() {
         .extract_pdf(&ApiKey::parse("wsk_guard_key").unwrap(), &oversized)
         .unwrap_err();
     assert!(err.contains("10 MB"));
+}
+
+#[test]
+fn maps_live_verified_extract_and_usage_contract() {
+    assert_eq!(
+        WSYSTEM_BILLING_URL,
+        "https://api.wsystem.dev/billing/druckwandel"
+    );
+
+    let (request, _) = fixture_request();
+    // Exact sanitized response shape verified against live POST /einvoice/extract?format=xrechnung
+    let payload: ExtractPayload = serde_json::from_str(
+        r#"{
+            "status": "draft_for_review",
+            "review_required": true,
+            "format": "xrechnung",
+            "pages": 1,
+            "document_kind": "invoice",
+            "invoice": {
+                "format": "xrechnung",
+                "invoice_number": "RE-2026-0001",
+                "issue_date": "2026-08-20",
+                "currency": "EUR",
+                "seller": {
+                    "name": "Muster Elektro GmbH",
+                    "vat_id": "DE123456789",
+                    "street": "Werkstraße 1",
+                    "city": "Berlin",
+                    "postal_code": "10115",
+                    "country": "DE",
+                    "email": "rechnung@muster.invalid",
+                    "phone": "+49 30 123456",
+                    "contact_name": "Erika Muster"
+                },
+                "buyer": {
+                    "name": "Beispiel Bau AG",
+                    "street": "Kundenweg 9",
+                    "city": "Hamburg",
+                    "postal_code": "20095",
+                    "country": "DE"
+                },
+                "lines": [
+                    {
+                        "description": "Montagestunde",
+                        "quantity": 2.5,
+                        "unit": "HUR",
+                        "unit_price": 80.0,
+                        "vat_category": "S",
+                        "vat_rate": 19.0
+                    },
+                    {
+                        "description": "Kabel",
+                        "quantity": 3.0,
+                        "unit": "MTR",
+                        "unit_price": 12.35,
+                        "vat_category": "S",
+                        "vat_rate": 19.0
+                    }
+                ],
+                "due_date": "2026-09-03",
+                "delivery_date": "2026-08-19",
+                "buyer_reference": "04011000-12345-03",
+                "payment": {
+                    "iban": "DE02120300000000202051",
+                    "means_code": "58",
+                    "terms": "Zahlbar ohne Abzug innerhalb von 14 Tagen."
+                }
+            },
+            "vat_breakdown": [
+                {
+                    "vat_category": "S",
+                    "vat_rate": 19.0,
+                    "taxable_amount": 237.04,
+                    "tax_amount": 45.04,
+                    "exemption_reason_text": null,
+                    "exemption_reason_code": null
+                }
+            ],
+            "fields": [
+                {"path": "invoice_number", "value": "RE-2026-0001", "confidence": 0.95, "checks": ["found_in_pdf_text"]},
+                {"path": "seller.vat_id", "value": "DE123456789", "confidence": 0.95, "checks": ["found_in_pdf_text", "vat_id_format_ok"]},
+                {"path": "lines.0.description", "value": "Montagestunde", "confidence": 0.95, "checks": ["found_in_pdf_text"]},
+                {"path": "lines.0.quantity", "value": 2.5, "confidence": 0.9, "checks": ["totals_match_printed"]},
+                {"path": "lines.1.unit_price", "value": 12.35, "confidence": 0.95, "checks": ["found_in_pdf_text", "totals_match_printed"]},
+                {"path": "payment.iban", "value": "DE02120300000000202051", "confidence": 0.95, "checks": ["found_in_pdf_text", "iban_checksum_ok"]}
+            ],
+            "review": {
+                "low_confidence": [],
+                "min_confidence": 0.85,
+                "model_uncertainties": ["Unit price of line 2 may have 3 decimal places"],
+                "input_error": null,
+                "blocked": null
+            },
+            "arithmetic_check": {
+                "all_match": true,
+                "rows": [
+                    {"check": "lines.0: quantity x unit price = line net", "computed": "200.00", "printed": "200.0", "match": true},
+                    {"check": "lines.1: quantity x unit price = line net", "computed": "37.05", "printed": "37.04", "match": true},
+                    {"check": "sum of line nets (BT-106/109)", "computed": "237.05", "printed": "237.04", "match": true},
+                    {"check": "VAT total (BT-110)", "computed": "45.04", "printed": "45.04", "match": true},
+                    {"check": "total with VAT (BT-112)", "computed": "282.09", "printed": "282.08", "match": true},
+                    {"check": "amount due (BT-115)", "computed": "282.09", "printed": "282.08", "match": true}
+                ],
+                "note": "1-cent rounding difference tolerated"
+            },
+            "totals": {
+                "currency": "EUR",
+                "line_total": "237.05",
+                "vat_total": "45.04",
+                "total_with_vat": "282.09",
+                "payable": "282.09"
+            },
+            "validation": {
+                "valid": false,
+                "errors": [
+                    {
+                        "rule_id": "PEPPOL-EN16931-R010",
+                        "message": "Buyer electronic address MUST be provided"
+                    }
+                ]
+            },
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Invoice xmlns=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2\" xmlns:cac=\"urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2\" xmlns:cbc=\"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2\"><cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID=\"EUR\">237.05</cbc:LineExtensionAmount><cbc:TaxInclusiveAmount currencyID=\"EUR\">282.09</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID=\"EUR\">282.09</cbc:PayableAmount></cac:LegalMonetaryTotal></Invoice>",
+            "disclaimer": "AI-extracted draft for review."
+        }"#,
+    )
+    .unwrap();
+
+    let result = map_extract_response(
+        &request,
+        &ExtractResponse {
+            payload,
+            request_id: Some("dw-live-shape-1".into()),
+            units_used: Some(80),
+            units_remaining: Some(7920),
+            idempotent_replayed: false,
+        },
+    );
+
+    // Document-level printed totals must win over per-line arithmetic rows (200.00) and computed XML (237.05 / 282.09).
+    assert_eq!(result.fields["lineNet"].value, "237.04");
+    assert_eq!(result.fields["taxTotal"].value, "45.04");
+    assert_eq!(result.fields["taxInclusive"].value, "282.08");
+    assert_eq!(result.fields["payable"].value, "282.08");
+    assert!(
+        result.fields["sellerVatId"]
+            .source_text
+            .contains("USt-IdNr.-Format gültig")
+    );
+    assert!(
+        result.fields["iban"]
+            .source_text
+            .contains("IBAN-Prüfsumme gültig")
+    );
+    assert_eq!(result.lines.len(), 2);
+    assert_eq!(result.lines[0].line.name, "Montagestunde");
+    assert_eq!(result.lines[1].line.name, "Kabel");
+    assert!(
+        result.lines[0]
+            .source_text
+            .contains("mit gedruckten Summen abgeglichen")
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("Unsicherheiten") && w.contains("3 decimal places"))
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("1-cent rounding difference tolerated"))
+    );
+
+    // Verify live /billing/usage payload shape including period and unit_weights.
+    let key = ApiKey::parse("wsk_live_shape_key").unwrap();
+    let (base_url, _, server) = spawn_mock_server(vec![MockReply {
+        status: 200,
+        reason: "OK",
+        headers: vec![
+            ("Content-Type", "application/json".into()),
+            ("X-Request-ID", "dw-live-usage-1".into()),
+        ],
+        body: r#"{"plan":"partner","quota":8000,"used":80,"remaining":7920,"period":"2026-11","unit_weights":{"/einvoice/extract":80}}"#.into(),
+    }]);
+    let client = WSystemClient::with_base_url(base_url).unwrap();
+    let usage = client.check_usage(&key).unwrap();
+    assert_eq!(usage.plan.as_deref(), Some("partner"));
+    assert_eq!(usage.period.as_deref(), Some("2026-11"));
+    assert_eq!(usage.extract_unit_weight, Some(80));
+    assert_eq!(usage.remaining, Some(7920));
+    let summary = usage.summary();
+    assert!(summary.contains("Tarif: partner"));
+    assert!(summary.contains("Zeitraum: 2026-11"));
+    assert!(summary.contains("7920 von 8000 Einheiten"));
+    assert!(summary.contains("ca. 99 Rechnungen à 80 Einheiten"));
+    let _ = server.join().unwrap();
 }

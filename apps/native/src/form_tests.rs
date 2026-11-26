@@ -150,10 +150,11 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
         },
     );
     ui.set_service_date("2026-08-18".into());
-    ui.set_currency("CHF".into());
+    ui.set_currency(" chf ".into());
+    ui.set_payment_means(" 30 ".into());
     ui.set_seller_country("AT".into());
     ui.set_buyer_country(" sg ".into());
-    ui.set_line_unit("HUR".into());
+    ui.set_line_unit(" hur ".into());
     ui.set_line_price("80,50".into());
     ui.set_line_tax_rate("18,5".into());
     let edited = collect_form(&ui, input);
@@ -170,10 +171,19 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
     store.save_invoice(&document.id, &edited).unwrap();
     let saved = store.load_invoice(&document.id).unwrap();
     assert_eq!(saved.currency, "CHF");
+    assert_eq!(saved.payment.means_code, "30");
     assert_eq!(saved.seller.address.country_code, "AT");
     assert_eq!(saved.buyer.address.country_code, "SG");
     assert_eq!(saved.service_date.as_deref(), Some("2026-08-18"));
     assert_eq!(saved.lines[0].unit_code, "HUR");
+    // Custom fallback values outside the preset dropdown lists must also roundtrip cleanly.
+    ui.set_currency(" brl ".into());
+    ui.set_payment_means(" 55 ".into());
+    ui.set_line_unit(" xro ".into());
+    let custom_codes = collect_form(&ui, saved.clone());
+    assert_eq!(custom_codes.currency, "BRL");
+    assert_eq!(custom_codes.payment.means_code, "55");
+    assert_eq!(custom_codes.lines[0].unit_code, "XRO");
     assert_eq!(saved.lines[0].net_unit_price, "80.50");
     assert_eq!(saved.lines[1].net_unit_price, "12.345");
     assert_eq!(saved.lines[0].tax.rate, "18.5");
@@ -243,6 +253,11 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
         !ui.get_recognition_running(),
         "background recognition must complete"
     );
+    assert!(
+        ui.get_recognition_notice().contains("prüfen"),
+        "recognition must trigger a review popup notice"
+    );
+    ui.set_recognition_notice("".into());
     assert_eq!(ui.get_invoice_number().as_str(), "MANUELL-BEHALTEN");
     let source = store
         .load_recognition_source(&document.id)
@@ -402,6 +417,12 @@ fn extended_invoice_form_preserves_export_cases_and_persists_collection_edits() 
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(!ui.get_recognition_running());
+    assert!(
+        ui.get_recognition_notice().contains("W System Cloud")
+            && ui.get_recognition_notice().contains("prüfen"),
+        "W System recognition must trigger a review popup notice"
+    );
+    ui.set_recognition_notice("".into());
     assert_eq!(ui.get_invoice_number().as_str(), "MANUELL-BEHALTEN");
     assert_eq!(ui.get_buyer_name().as_str(), "Cloud Empfänger GmbH");
     assert!(ui.get_recognition_text().contains("req_ui_extract"));

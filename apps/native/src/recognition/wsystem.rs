@@ -6,13 +6,17 @@
 //! - https://wsystem.dev/pdf-to-xrechnung
 //! - https://wsystem.dev/docs
 //! - https://api.wsystem.dev/einvoice/sample
+//! - Live verification against `GET /billing/usage` and
+//!   `POST /einvoice/extract?format=xrechnung` on 2026-11-26.
 //!
-//! OpenAPI contract gap (explicitly documented):
-//! Both `POST /einvoice/extract` and `GET /billing/usage` currently declare
+//! Note on OpenAPI schema:
+//! Both `POST /einvoice/extract` and `GET /billing/usage` declare
 //! `responses.200.content["application/json"].schema = {}` in OpenAPI.
-//! The mapper therefore supports the documented `fields[]` array, an optional
-//! `/einvoice/create`-shaped invoice object (`invoice` / `draft` / `extracted`),
-//! and optional UBL 2.1 `xml` fallback without inventing unverified fields.
+//! Live verification confirmed top-level `invoice`, 0-based `fields[]`,
+//! `vat_breakdown[]`, `totals`, `review` (`low_confidence`, `model_uncertainties`,
+//! `input_error`, `blocked`), `arithmetic_check` (per-line + BT-106/110/112/115
+//! rows), `validation`, and UBL 2.1 `xml`. The mapper handles all of these and
+//! keeps defensive fallbacks (`draft`/`extracted`, 1-based `fields[]`, XML).
 
 use super::{
     CONTRACT_VERSION, FieldProposal, LineProposal, RecognitionMethod, RecognitionProvider,
@@ -32,6 +36,7 @@ use uuid::Uuid;
 
 pub const WSYSTEM_API_BASE: &str = "https://api.wsystem.dev";
 pub const WSYSTEM_FREE_KEY_URL: &str = "https://api.wsystem.dev/account/free-key?ref=druckwandel";
+pub const WSYSTEM_BILLING_URL: &str = "https://api.wsystem.dev/billing/druckwandel";
 pub const WSYSTEM_DPA_URL: &str = "https://wsystem.dev/legal/dpa";
 pub const WSYSTEM_DOCS_URL: &str = "https://wsystem.dev/pdf-to-xrechnung";
 pub const MAX_WSYSTEM_PDF_BYTES: u64 = 10 * 1024 * 1024;
@@ -48,26 +53,35 @@ pub struct UsageInfo {
     pub quota: Option<u64>,
     pub used: Option<u64>,
     pub remaining: Option<u64>,
+    pub period: Option<String>,
+    pub extract_unit_weight: Option<u64>,
     pub request_id: Option<String>,
 }
 
 impl UsageInfo {
     pub fn summary(&self) -> String {
+        let weight = self
+            .extract_unit_weight
+            .filter(|&w| w > 0)
+            .unwrap_or(UNITS_PER_EXTRACTION);
         let mut parts = vec!["API-Schlüssel gültig".to_owned()];
         if let Some(plan) = &self.plan {
             parts.push(format!("Tarif: {plan}"));
         }
+        if let Some(period) = &self.period {
+            parts.push(format!("Zeitraum: {period}"));
+        }
         match (self.remaining, self.quota) {
             (Some(remaining), Some(quota)) => {
-                let est = remaining / UNITS_PER_EXTRACTION;
+                let est = remaining / weight;
                 parts.push(format!(
-                    "{remaining} von {quota} Einheiten verfügbar (ca. {est} Rechnungen à {UNITS_PER_EXTRACTION} Einheiten)"
+                    "{remaining} von {quota} Einheiten verfügbar (ca. {est} Rechnungen à {weight} Einheiten)"
                 ));
             }
             (Some(remaining), None) => {
-                let est = remaining / UNITS_PER_EXTRACTION;
+                let est = remaining / weight;
                 parts.push(format!(
-                    "{remaining} Einheiten verfügbar (ca. {est} Rechnungen à {UNITS_PER_EXTRACTION} Einheiten)"
+                    "{remaining} Einheiten verfügbar (ca. {est} Rechnungen à {weight} Einheiten)"
                 ));
             }
             (None, Some(quota)) => {
@@ -107,6 +121,10 @@ pub struct ExtractPayload {
     #[serde(default)]
     pub validation: Option<ExtractValidation>,
     #[serde(default)]
+    pub vat_breakdown: Vec<VatBreakdownEntry>,
+    #[serde(default)]
+    pub totals: Option<Value>,
+    #[serde(default)]
     pub xml: Option<String>,
     #[serde(default)]
     pub disclaimer: Option<String>,
@@ -118,6 +136,16 @@ pub struct ExtractPayload {
     pub extracted: Option<Value>,
     #[serde(default)]
     pub request_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct VatBreakdownEntry {
+    #[serde(default)]
+    pub vat_category: Option<String>,
+    #[serde(default)]
+    pub exemption_reason_text: Option<String>,
+    #[serde(default)]
+    pub exemption_reason_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -136,6 +164,10 @@ pub struct ExtractReview {
     #[serde(default)]
     pub low_confidence: Vec<String>,
     #[serde(default)]
+    pub model_uncertainties: Vec<Value>,
+    #[serde(default)]
+    pub input_error: Option<String>,
+    #[serde(default)]
     pub blocked: Option<String>,
 }
 
@@ -145,6 +177,8 @@ pub struct ArithmeticCheck {
     pub all_match: Option<bool>,
     #[serde(default)]
     pub rows: Vec<ArithmeticRow>,
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -259,6 +293,12 @@ impl WSystemClient {
             .or_else(|| json_string(json.get("request_id")))
             .or(Some(client_request_id));
         let plan = json_string(json.get("plan")).or_else(|| json_string(json.get("tier")));
+        let period = json_string(json.get("period"));
+        let extract_unit_weight = json
+            .get("unit_weights")
+            .and_then(Value::as_object)
+            .and_then(|weights| json_u64(weights.get("/einvoice/extract")))
+            .filter(|&w| w > 0);
         let quota = json_u64(json.get("quota"))
             .or_else(|| json_u64(json.get("monthly_quota")))
             .or_else(|| json_u64(json.get("units_limit")));
@@ -278,6 +318,8 @@ impl WSystemClient {
             quota,
             used,
             remaining,
+            period,
+            extract_unit_weight,
             request_id,
         })
     }
@@ -433,6 +475,33 @@ pub fn map_extract_response(
         .and_then(Value::as_object);
 
     let mut exemption_reasons = HashMap::<String, String>::new();
+    let mut exemption_reason_codes = HashMap::<String, String>::new();
+    for entry in &payload.vat_breakdown {
+        if let Some(cat) = entry
+            .vat_category
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_uppercase)
+        {
+            if let Some(reason) = entry
+                .exemption_reason_text
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                exemption_reasons.insert(cat.clone(), reason.to_owned());
+            }
+            if let Some(code) = entry
+                .exemption_reason_code
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                exemption_reason_codes.insert(cat, code.to_owned());
+            }
+        }
+    }
     let mut partial_lines = BTreeMap::<usize, PartialLine>::new();
 
     // 1. Read structured `/einvoice/create`-shaped invoice object if present.
@@ -492,9 +561,12 @@ pub fn map_extract_response(
     // 3. Build normalized `LineProposal`s from collected line entries.
     let mut missing_tax_warning = false;
     for (position, (_, partial)) in partial_lines.into_iter().enumerate() {
-        if let Some((line_proposal, missing_tax)) =
-            partial.into_line_proposal(position + 1, &exemption_reasons, &text_lines)
-        {
+        if let Some((line_proposal, missing_tax)) = partial.into_line_proposal(
+            position + 1,
+            &exemption_reasons,
+            &exemption_reason_codes,
+            &text_lines,
+        ) {
             if missing_tax {
                 missing_tax_warning = true;
             }
@@ -508,12 +580,8 @@ pub fn map_extract_response(
         );
     }
 
-    // 4. Optional UBL 2.1 XML fallback if structured fields or lines are still missing.
-    if let Some(xml) = payload.xml.as_deref().filter(|s| !s.trim().is_empty()) {
-        ingest_ubl_xml_fallback(xml, &text_lines, &mut result);
-    }
-
-    // 5. Connect W System arithmetic_check to Druckwandel warnings and printed totals.
+    // 4. Connect W System arithmetic_check printed totals BEFORE XML/computed fallbacks so
+    // Druckwandel's export total check compares against the actual printed PDF totals.
     if let Some(arith) = &payload.arithmetic_check {
         for row in &arith.rows {
             if let Some(printed) = value_to_money(&row.printed)
@@ -551,9 +619,29 @@ pub fn map_extract_response(
                     .into(),
             );
         }
+        if let Some(note) = arith
+            .note
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            result
+                .warnings
+                .push(format!("W System Rechenhinweis: {note}"));
+        }
     }
 
-    // 6. Surface status, review notices, validation findings, disclaimer, and metadata.
+    // 5. Fallback to top-level `totals` object if printed totals were not populated.
+    if let Some(totals) = payload.totals.as_ref().and_then(Value::as_object) {
+        ingest_totals_if_missing(totals, &text_lines, &mut result);
+    }
+
+    // 6. Optional UBL 2.1 XML fallback if structured fields or lines are still missing.
+    if let Some(xml) = payload.xml.as_deref().filter(|s| !s.trim().is_empty()) {
+        ingest_ubl_xml_fallback(xml, &text_lines, &mut result);
+    }
+
+    // 7. Surface status, review notices, validation findings, disclaimer, and metadata.
     if payload.status.as_deref() == Some("needs_review_amounts") {
         result.warnings.push(
             "W System Status ‚needs_review_amounts‘: Beträge weichen von den gedruckten Summen ab. Alle Werte bitte sorgfältig prüfen."
@@ -570,6 +658,15 @@ pub fn map_extract_response(
                 .warnings
                 .push(format!("W System Prüfhinweis: {}", blocked.trim()));
         }
+        if let Some(input_error) = review
+            .input_error
+            .as_deref()
+            .filter(|text| !text.trim().is_empty())
+        {
+            result
+                .warnings
+                .push(format!("W System Eingabehinweis: {}", input_error.trim()));
+        }
         if !review.low_confidence.is_empty() {
             let labels = review
                 .low_confidence
@@ -580,6 +677,19 @@ pub fn map_extract_response(
             result.warnings.push(format!(
                 "W System markiert folgende Felder mit niedriger Konfidenz zur Prüfung: {labels}."
             ));
+        }
+        if !review.model_uncertainties.is_empty() {
+            let notes = review
+                .model_uncertainties
+                .iter()
+                .filter_map(format_uncertainty)
+                .collect::<Vec<_>>()
+                .join("; ");
+            if !notes.is_empty() {
+                result.warnings.push(format!(
+                    "W System meldet Unsicherheiten bei der Extraktion: {notes}"
+                ));
+            }
         }
     }
     if let Some(validation) = &payload.validation
@@ -726,6 +836,7 @@ impl PartialLine {
         self,
         id: usize,
         exemption_reasons: &HashMap<String, String>,
+        exemption_reason_codes: &HashMap<String, String>,
         text_lines: &[TextLine],
     ) -> Option<(LineProposal, bool)> {
         let (name, description) = match (self.name, self.description) {
@@ -777,11 +888,14 @@ impl PartialLine {
         let exemption_reason = self
             .exemption_reason
             .or_else(|| exemption_reasons.get(&tax_category).cloned());
+        let exemption_reason_code = self
+            .exemption_reason_code
+            .or_else(|| exemption_reason_codes.get(&tax_category).cloned());
         let tax = Tax {
             category_code: tax_category,
             rate: tax_rate,
             exemption_reason,
-            exemption_reason_code: self.exemption_reason_code,
+            exemption_reason_code,
         };
 
         let mut allowances = self.allowances;
@@ -944,7 +1058,10 @@ fn ingest_structured_invoice(
     if let Some(totals) = inv.get("totals").and_then(Value::as_object) {
         insert_scalar(
             "lineNet",
-            totals.get("line_net").or_else(|| totals.get("net_total")),
+            totals
+                .get("line_net")
+                .or_else(|| totals.get("line_total"))
+                .or_else(|| totals.get("net_total")),
         );
         insert_scalar(
             "taxTotal",
@@ -954,6 +1071,7 @@ fn ingest_structured_invoice(
             "taxInclusive",
             totals
                 .get("tax_inclusive")
+                .or_else(|| totals.get("total_with_vat"))
                 .or_else(|| totals.get("gross_total")),
         );
         insert_scalar(
@@ -1217,7 +1335,7 @@ fn ingest_ubl_xml_fallback(xml: &str, text_lines: &[TextLine], result: &mut Reco
                 partial.net_unit_price = crate::recognition::schema::decimal(&amt);
             }
             if let Some((line_proposal, _)) =
-                partial.into_line_proposal(idx, &HashMap::new(), text_lines)
+                partial.into_line_proposal(idx, &HashMap::new(), &HashMap::new(), text_lines)
             {
                 result.lines.push(line_proposal);
                 idx += 1;
@@ -1431,7 +1549,10 @@ fn annotate_source(base: &str, checks: &[String]) -> String {
         .iter()
         .map(|check| match check.as_str() {
             "found_in_pdf_text" => "im PDF-Text bestätigt",
+            "totals_match_printed" => "mit gedruckten Summen abgeglichen",
             "totals_mismatch" => "Summenabweichung",
+            "vat_id_format_ok" => "USt-IdNr.-Format gültig",
+            "iban_checksum_ok" => "IBAN-Prüfsumme gültig",
             "country_guessed" => "Land geschätzt",
             "ubl_xml_fallback" => "aus UBL-XML",
             other => other,
@@ -1441,13 +1562,64 @@ fn annotate_source(base: &str, checks: &[String]) -> String {
     format!("{base} · W System: {labels}")
 }
 
+fn ingest_totals_if_missing(
+    totals: &serde_json::Map<String, Value>,
+    text_lines: &[TextLine],
+    result: &mut RecognitionResult,
+) {
+    let empty_checks: &[String] = &[];
+    for (target_key, raw) in [
+        (
+            "lineNet",
+            totals
+                .get("line_net")
+                .or_else(|| totals.get("line_total"))
+                .or_else(|| totals.get("net_total")),
+        ),
+        (
+            "taxTotal",
+            totals.get("tax_total").or_else(|| totals.get("vat_total")),
+        ),
+        (
+            "taxInclusive",
+            totals
+                .get("tax_inclusive")
+                .or_else(|| totals.get("total_with_vat"))
+                .or_else(|| totals.get("gross_total")),
+        ),
+        (
+            "payable",
+            totals.get("payable").or_else(|| totals.get("amount_due")),
+        ),
+    ] {
+        if result.fields.contains_key(target_key) {
+            continue;
+        }
+        if let Some(val) = raw
+            && let Some(normalized) = normalize_field_value(target_key, val)
+        {
+            result.fields.insert(
+                target_key.to_owned(),
+                build_field_proposal(target_key, normalized, 0.85, empty_checks, text_lines),
+            );
+        }
+    }
+}
+
 fn arithmetic_row_total_key(check_name: &str) -> Option<&'static str> {
-    let lower = check_name.to_lowercase();
-    if lower.contains("bt-106") || lower.contains("bt-109") || lower.contains("line net") {
+    let lower = check_name.trim().to_lowercase();
+    if lower.starts_with("lines.") || lower.starts_with("line ") {
+        return None;
+    }
+    if lower.contains("bt-106") || lower.contains("bt-109") || lower.contains("sum of line net") {
         Some("lineNet")
-    } else if lower.contains("bt-110") || lower.contains("vat") || lower.contains("tax total") {
+    } else if lower.contains("bt-110") || lower.contains("vat total") || lower.contains("tax total")
+    {
         Some("taxTotal")
-    } else if lower.contains("bt-112") || lower.contains("gross") || lower.contains("tax inclusive")
+    } else if lower.contains("bt-112")
+        || lower.contains("total with vat")
+        || lower.contains("gross")
+        || lower.contains("tax inclusive")
     {
         Some("taxInclusive")
     } else if lower.contains("bt-115") || lower.contains("payable") || lower.contains("amount due")
@@ -1455,6 +1627,25 @@ fn arithmetic_row_total_key(check_name: &str) -> Option<&'static str> {
         Some("payable")
     } else {
         None
+    }
+}
+
+fn format_uncertainty(value: &Value) -> Option<String> {
+    if let Some(s) = value.as_str() {
+        return (!s.trim().is_empty()).then(|| s.trim().to_owned());
+    }
+    let obj = value.as_object()?;
+    let field = json_string(obj.get("field").or_else(|| obj.get("path")));
+    let reason = json_string(
+        obj.get("reason")
+            .or_else(|| obj.get("message"))
+            .or_else(|| obj.get("note")),
+    );
+    match (field, reason) {
+        (Some(f), Some(r)) => Some(format!("{}: {r}", format_wsystem_path_label(&f))),
+        (None, Some(r)) => Some(r),
+        (Some(f), None) => Some(format_wsystem_path_label(&f)),
+        (None, None) => None,
     }
 }
 
@@ -1653,7 +1844,7 @@ fn format_api_error(
                 .to_owned()
         }
         (402, Some("paid_plan_required")) => {
-            "Das kostenlose W-System-Testkontingent (3 Extraktionen/Monat) ist aufgebraucht (HTTP 402). Für weitere Extraktionen ist ein kostenpflichtiger W-System-Tarif erforderlich; es wurden keine Kosten berechnet."
+            "Das kostenlose W-System-Testkontingent (3 Extraktionen/Monat) ist aufgebraucht (HTTP 402). Pay-as-you-go (0,15 €/Rechnung, kein Abo) lässt sich unter Einstellungen → Erkennung aktivieren; es wurden keine Kosten berechnet."
                 .to_owned()
         }
         (402, _) => {
@@ -1774,10 +1965,13 @@ mod tests {
             quota: Some(500),
             used: Some(231),
             remaining: Some(269),
+            period: Some("2026-11".into()),
+            extract_unit_weight: Some(80),
             request_id: Some("req_123".into()),
         };
         let summary = usage.summary();
         assert!(summary.contains("Tarif: free"));
+        assert!(summary.contains("Zeitraum: 2026-11"));
         assert!(summary.contains("269 von 500 Einheiten"));
         assert!(summary.contains("ca. 3 Rechnungen"));
         assert!(summary.contains("req_123"));

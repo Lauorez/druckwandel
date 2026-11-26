@@ -5,7 +5,8 @@ use druckwandel_native::{
     recognition::{
         RecognitionRegistry, RecognitionRequest, RecognitionResult,
         wsystem::{
-            UsageInfo, WSYSTEM_DPA_URL, WSYSTEM_FREE_KEY_URL, WSystemClient, WSystemRecognizer,
+            UsageInfo, WSYSTEM_BILLING_URL, WSYSTEM_DPA_URL, WSYSTEM_FREE_KEY_URL, WSystemClient,
+            WSystemRecognizer,
         },
     },
     secrets::{ApiKey, OsSecretStore, SecretStore},
@@ -41,7 +42,7 @@ pub fn source_text(request: &RecognitionRequest) -> String {
 }
 
 fn open_allowed_url(url: &str) -> Result<(), String> {
-    if url != WSYSTEM_FREE_KEY_URL && url != WSYSTEM_DPA_URL {
+    if url != WSYSTEM_FREE_KEY_URL && url != WSYSTEM_BILLING_URL && url != WSYSTEM_DPA_URL {
         return Err("Nicht freigegebene URL.".into());
     }
     #[cfg(target_os = "macos")]
@@ -351,6 +352,14 @@ fn wire_wsystem_settings(
     });
 
     let weak = window.as_weak();
+    window.on_open_wsystem_billing(move || {
+        let Some(window) = weak.upgrade() else { return };
+        if let Err(error) = open_allowed_url(WSYSTEM_BILLING_URL) {
+            window.set_settings_status(error.into());
+        }
+    });
+
+    let weak = window.as_weak();
     window.on_open_wsystem_dpa(move || {
         let Some(window) = weak.upgrade() else { return };
         if let Err(error) = open_allowed_url(WSYSTEM_DPA_URL) {
@@ -637,6 +646,14 @@ pub(crate) fn wire_with_wsystem(
                         window.global::<OutputState>().set_can_email(false);
                         window.set_source_text(source_text(&request).into());
                         window.set_recognition_text(result.review_text().into());
+                        window.set_recognition_notice(
+                            if is_wsystem {
+                                "Die Rechnungsdaten wurden über W System Cloud erkannt. Bitte prüfen Sie alle Felder, Beträge, Steuersätze und Positionen sorgfältig anhand der Original-PDF, bevor Sie die E-Rechnung erstellen oder versenden."
+                            } else {
+                                "Die Rechnungsdaten wurden automatisch aus der PDF erkannt. Bitte prüfen Sie alle Felder, Beträge, Steuersätze und Positionen sorgfältig anhand der Original-PDF, bevor Sie die E-Rechnung erstellen oder versenden."
+                            }
+                            .into(),
+                        );
                         window.set_status_text(
                             if is_wsystem {
                                 "W System Cloud-Erkennung abgeschlossen. Alle Vorschläge, Zahlen und Positionen bitte am Original prüfen."

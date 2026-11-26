@@ -237,6 +237,507 @@ component CountryField inherits VerticalBox {
     }
 }
 
+global CurrencyCodes {
+    out property <[string]> labels: [
+        "– Währung wählen –",
+        "EUR – Euro",
+        "CHF – Schweizer Franken",
+        "USD – US-Dollar",
+        "GBP – Britisches Pfund",
+        "PLN – Polnischer Złoty",
+        "CZK – Tschechische Krone",
+        "DKK – Dänische Krone",
+        "SEK – Schwedische Krone",
+        "NOK – Norwegische Krone",
+        "HUF – Ungarischer Forint",
+        "RON – Rumänischer Leu",
+        "BGN – Bulgarischer Lew",
+        "CAD – Kanadischer Dollar",
+        "AUD – Australischer Dollar",
+        "JPY – Japanischer Yen",
+        "CNY – Chinesischer Yuan",
+        "TRY – Türkische Lira",
+        "Sonstiges (ISO-Code)",
+    ];
+    out property <int> custom-index: 18;
+
+    public pure function index-of(code: string) -> int {
+        if code == "" { return 0; }
+        if code == "EUR" { return 1; }
+        if code == "CHF" { return 2; }
+        if code == "USD" { return 3; }
+        if code == "GBP" { return 4; }
+        if code == "PLN" { return 5; }
+        if code == "CZK" { return 6; }
+        if code == "DKK" { return 7; }
+        if code == "SEK" { return 8; }
+        if code == "NOK" { return 9; }
+        if code == "HUF" { return 10; }
+        if code == "RON" { return 11; }
+        if code == "BGN" { return 12; }
+        if code == "CAD" { return 13; }
+        if code == "AUD" { return 14; }
+        if code == "JPY" { return 15; }
+        if code == "CNY" { return 16; }
+        if code == "TRY" { return 17; }
+        return -1;
+    }
+
+    public pure function code-at(index: int) -> string {
+        if index == 1 { return "EUR"; }
+        if index == 2 { return "CHF"; }
+        if index == 3 { return "USD"; }
+        if index == 4 { return "GBP"; }
+        if index == 5 { return "PLN"; }
+        if index == 6 { return "CZK"; }
+        if index == 7 { return "DKK"; }
+        if index == 8 { return "SEK"; }
+        if index == 9 { return "NOK"; }
+        if index == 10 { return "HUF"; }
+        if index == 11 { return "RON"; }
+        if index == 12 { return "BGN"; }
+        if index == 13 { return "CAD"; }
+        if index == 14 { return "AUD"; }
+        if index == 15 { return "JPY"; }
+        if index == 16 { return "CNY"; }
+        if index == 17 { return "TRY"; }
+        return "";
+    }
+}
+
+component CurrencyField inherits VerticalBox {
+    callback edited();
+    in property <string> label: "Währung (ISO)";
+    in property <bool> required: false;
+    in-out property <string> value;
+    private property <bool> custom-selected: false;
+    private property <bool> missing: root.required && FieldRules.is-blank(root.value);
+    private property <int> matched-index: CurrencyCodes.index-of(root.value);
+    private property <bool> show-custom: root.custom-selected || (root.value != "" && root.matched-index < 0);
+    private property <int> picker-index: root.show-custom ? CurrencyCodes.custom-index : root.matched-index >= 0 ? root.matched-index : 0;
+
+    changed value => {
+        if CurrencyCodes.index-of(root.value) >= 0 {
+            root.custom-selected = false;
+        }
+    }
+
+    padding: 0px;
+    vertical-stretch: 0;
+    spacing: 6px;
+
+    HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: root.label + (root.required ? " *" : "");
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing && !root.show-custom ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            ComboBox {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                accessible-label: root.label + (root.missing ? ", Pflichtfeld fehlt" : "");
+                model: CurrencyCodes.labels;
+                current-index: root.picker-index;
+                enabled: !OutputState.busy;
+                selected => {
+                    if self.current-index == CurrencyCodes.custom-index {
+                        if CurrencyCodes.index-of(root.value) > 0 {
+                            root.value = "";
+                        }
+                        root.custom-selected = true;
+                    } else {
+                        root.custom-selected = false;
+                        root.value = CurrencyCodes.code-at(self.current-index);
+                    }
+                    OutputState.can-email = false;
+                    root.edited();
+                }
+            }
+        }
+    }
+
+    if root.show-custom : HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: "ISO-Code (3 Buchst.)";
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            LineEdit {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                text <=> root.value;
+                placeholder-text: "z. B. AED, INR, ZAR";
+                accessible-label: root.label + " ISO-Code";
+                enabled: !OutputState.busy;
+                edited => {
+                    OutputState.can-email = false;
+                    root.edited();
+                }
+            }
+        }
+    }
+}
+
+global PaymentMeansCodes {
+    out property <[string]> labels: [
+        "– Zahlungsart wählen –",
+        "58 – SEPA-Überweisung",
+        "30 – Überweisung",
+        "59 – SEPA-Lastschrift",
+        "49 – Lastschrift",
+        "10 – Barzahlung",
+        "48 – Kartenzahlung",
+        "42 – Zahlung auf Bankkonto",
+        "57 – Dauerauftrag",
+        "97 – Verrechnung zwischen Partnern",
+        "20 – Scheck",
+        "1 – Sonstige / nicht definiert",
+        "Sonstiges (Code)",
+    ];
+    out property <int> custom-index: 12;
+
+    public pure function index-of(code: string) -> int {
+        if code == "" { return 0; }
+        if code == "58" { return 1; }
+        if code == "30" { return 2; }
+        if code == "59" { return 3; }
+        if code == "49" { return 4; }
+        if code == "10" { return 5; }
+        if code == "48" { return 6; }
+        if code == "42" { return 7; }
+        if code == "57" { return 8; }
+        if code == "97" { return 9; }
+        if code == "20" { return 10; }
+        if code == "1" { return 11; }
+        return -1;
+    }
+
+    public pure function code-at(index: int) -> string {
+        if index == 1 { return "58"; }
+        if index == 2 { return "30"; }
+        if index == 3 { return "59"; }
+        if index == 4 { return "49"; }
+        if index == 5 { return "10"; }
+        if index == 6 { return "48"; }
+        if index == 7 { return "42"; }
+        if index == 8 { return "57"; }
+        if index == 9 { return "97"; }
+        if index == 10 { return "20"; }
+        if index == 11 { return "1"; }
+        return "";
+    }
+}
+
+component PaymentMeansField inherits VerticalBox {
+    callback edited();
+    in property <string> label: "Zahlungsart (Code)";
+    in property <bool> required: false;
+    in-out property <string> value;
+    private property <bool> custom-selected: false;
+    private property <bool> missing: root.required && FieldRules.is-blank(root.value);
+    private property <int> matched-index: PaymentMeansCodes.index-of(root.value);
+    private property <bool> show-custom: root.custom-selected || (root.value != "" && root.matched-index < 0);
+    private property <int> picker-index: root.show-custom ? PaymentMeansCodes.custom-index : root.matched-index >= 0 ? root.matched-index : 0;
+
+    changed value => {
+        if PaymentMeansCodes.index-of(root.value) >= 0 {
+            root.custom-selected = false;
+        }
+    }
+
+    padding: 0px;
+    vertical-stretch: 0;
+    spacing: 6px;
+
+    HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: root.label + (root.required ? " *" : "");
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing && !root.show-custom ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            ComboBox {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                accessible-label: root.label + (root.missing ? ", Pflichtfeld fehlt" : "");
+                model: PaymentMeansCodes.labels;
+                current-index: root.picker-index;
+                enabled: !OutputState.busy;
+                selected => {
+                    if self.current-index == PaymentMeansCodes.custom-index {
+                        if PaymentMeansCodes.index-of(root.value) > 0 {
+                            root.value = "";
+                        }
+                        root.custom-selected = true;
+                    } else {
+                        root.custom-selected = false;
+                        root.value = PaymentMeansCodes.code-at(self.current-index);
+                    }
+                    OutputState.can-email = false;
+                    root.edited();
+                }
+            }
+        }
+    }
+
+    if root.show-custom : HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: "Code (UNTDID 4461)";
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            LineEdit {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                text <=> root.value;
+                placeholder-text: "z. B. 31, 54, 55";
+                accessible-label: root.label + " Code";
+                enabled: !OutputState.busy;
+                edited => {
+                    OutputState.can-email = false;
+                    root.edited();
+                }
+            }
+        }
+    }
+}
+
+global UnitCodes {
+    out property <[string]> labels: [
+        "– Einheit wählen –",
+        "C62 – Stück / Einheit",
+        "H87 – Stück (einzeln)",
+        "HUR – Stunde",
+        "DAY – Tag",
+        "WEE – Woche",
+        "MON – Monat",
+        "MIN – Minute",
+        "LS – Pauschale",
+        "MTR – Meter",
+        "CMT – Zentimeter",
+        "MMT – Millimeter",
+        "KMT – Kilometer",
+        "MTK – Quadratmeter (m²)",
+        "MTQ – Kubikmeter (m³)",
+        "KGM – Kilogramm",
+        "GRM – Gramm",
+        "TNE – Tonne",
+        "LTR – Liter",
+        "MLT – Milliliter",
+        "KWH – Kilowattstunde",
+        "SET – Set / Satz",
+        "PK – Packung",
+        "XPK – Paket",
+        "XBX – Karton / Box",
+        "PR – Paar",
+        "Sonstiges (Code)",
+    ];
+    out property <int> custom-index: 26;
+
+    public pure function index-of(code: string) -> int {
+        if code == "" { return 0; }
+        if code == "C62" { return 1; }
+        if code == "H87" { return 2; }
+        if code == "HUR" { return 3; }
+        if code == "DAY" { return 4; }
+        if code == "WEE" { return 5; }
+        if code == "MON" { return 6; }
+        if code == "MIN" { return 7; }
+        if code == "LS" { return 8; }
+        if code == "MTR" { return 9; }
+        if code == "CMT" { return 10; }
+        if code == "MMT" { return 11; }
+        if code == "KMT" { return 12; }
+        if code == "MTK" { return 13; }
+        if code == "MTQ" { return 14; }
+        if code == "KGM" { return 15; }
+        if code == "GRM" { return 16; }
+        if code == "TNE" { return 17; }
+        if code == "LTR" { return 18; }
+        if code == "MLT" { return 19; }
+        if code == "KWH" { return 20; }
+        if code == "SET" { return 21; }
+        if code == "PK" { return 22; }
+        if code == "XPK" { return 23; }
+        if code == "XBX" { return 24; }
+        if code == "PR" { return 25; }
+        return -1;
+    }
+
+    public pure function code-at(index: int) -> string {
+        if index == 1 { return "C62"; }
+        if index == 2 { return "H87"; }
+        if index == 3 { return "HUR"; }
+        if index == 4 { return "DAY"; }
+        if index == 5 { return "WEE"; }
+        if index == 6 { return "MON"; }
+        if index == 7 { return "MIN"; }
+        if index == 8 { return "LS"; }
+        if index == 9 { return "MTR"; }
+        if index == 10 { return "CMT"; }
+        if index == 11 { return "MMT"; }
+        if index == 12 { return "KMT"; }
+        if index == 13 { return "MTK"; }
+        if index == 14 { return "MTQ"; }
+        if index == 15 { return "KGM"; }
+        if index == 16 { return "GRM"; }
+        if index == 17 { return "TNE"; }
+        if index == 18 { return "LTR"; }
+        if index == 19 { return "MLT"; }
+        if index == 20 { return "KWH"; }
+        if index == 21 { return "SET"; }
+        if index == 22 { return "PK"; }
+        if index == 23 { return "XPK"; }
+        if index == 24 { return "XBX"; }
+        if index == 25 { return "PR"; }
+        return "";
+    }
+}
+
+component UnitCodeField inherits VerticalBox {
+    callback edited();
+    in property <string> label: "Einheit (Code)";
+    in property <bool> required: false;
+    in-out property <string> value;
+    private property <bool> custom-selected: false;
+    private property <bool> missing: root.required && FieldRules.is-blank(root.value);
+    private property <int> matched-index: UnitCodes.index-of(root.value);
+    private property <bool> show-custom: root.custom-selected || (root.value != "" && root.matched-index < 0);
+    private property <int> picker-index: root.show-custom ? UnitCodes.custom-index : root.matched-index >= 0 ? root.matched-index : 0;
+
+    changed value => {
+        if UnitCodes.index-of(root.value) >= 0 {
+            root.custom-selected = false;
+        }
+    }
+
+    padding: 0px;
+    vertical-stretch: 0;
+    spacing: 6px;
+
+    HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: root.label + (root.required ? " *" : "");
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing && !root.show-custom ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            ComboBox {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                accessible-label: root.label + (root.missing ? ", Pflichtfeld fehlt" : "");
+                model: UnitCodes.labels;
+                current-index: root.picker-index;
+                enabled: !OutputState.busy;
+                selected => {
+                    if self.current-index == UnitCodes.custom-index {
+                        if UnitCodes.index-of(root.value) > 0 {
+                            root.value = "";
+                        }
+                        root.custom-selected = true;
+                    } else {
+                        root.custom-selected = false;
+                        root.value = UnitCodes.code-at(self.current-index);
+                    }
+                    OutputState.can-email = false;
+                    root.edited();
+                }
+            }
+        }
+    }
+
+    if root.show-custom : HorizontalBox {
+        padding: 0px;
+        spacing: 8px;
+        Text {
+            text: "Einheitencode";
+            color: root.missing ? #d54444 : Palette.foreground;
+            width: 155px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            min-height: 36px;
+            border-width: root.missing ? 2px : 0px;
+            border-color: #d54444;
+            border-radius: 5px;
+            background: transparent;
+            LineEdit {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                text <=> root.value;
+                placeholder-text: "z. B. XRO, XPA, DZN";
+                accessible-label: root.label + " Code";
+                enabled: !OutputState.busy;
+                edited => {
+                    OutputState.can-email = false;
+                    root.edited();
+                }
+            }
+        }
+    }
+}
+
 component LabeledField inherits HorizontalBox {
     callback edited();
     in property <string> label;
@@ -380,6 +881,7 @@ export component MainWindow inherits Window {
     in property <string> source-text;
     in property <bool> source-has-xml;
     in property <string> recognition-text;
+    in-out property <string> recognition-notice: "";
     in-out property <int> recognition-method: 0;
     in-out property <bool> recognition-running: false;
     in-out property <bool> ocr-enabled: true;
@@ -398,6 +900,7 @@ export component MainWindow inherits Window {
     callback delete-wsystem-key();
     callback check-wsystem-usage();
     callback open-wsystem-free-key();
+    callback open-wsystem-billing();
     callback open-wsystem-dpa();
     callback start-recognition(bool);
     callback learn-corrections();
@@ -615,12 +1118,13 @@ export component MainWindow inherits Window {
                                             wrap: word-wrap;
                                         }
                                         Text {
-                                            text: "Kosten & Schlüssel: Eigener W-System-API-Schlüssel erforderlich (gespeichert im System-Schlüsselbund, nicht in settings.json). Laut Anbieter 0,15 € je erfolgreicher Rechnung ohne Abo oder Mindestumsatz (monatlich nach Verbrauch, Fehler kostenlos; Druckwandel-Abrechnung laut Anbieter noch im Aufbau). Kostenloser Testschlüssel (3 Extraktionen/Monat) über den Empfehlungslink.";
+                                            text: "Kosten & Schlüssel: Eigener W-System-API-Schlüssel erforderlich (gespeichert im System-Schlüsselbund, nicht in settings.json). Für Druckwandel-Nutzer gilt Pay-as-you-go (0,15 € je erfolgreicher Rechnung, kein Abo, kein Mindestumsatz, monatliche Abrechnung, fehlgeschlagene Erkennungen kostenlos). Kostenloser Testschlüssel (3 Extraktionen/Monat) über den Empfehlungslink.";
                                             wrap: word-wrap;
                                         }
                                         HorizontalBox {
                                             padding: 0px;
                                             ActionButton { text: "Kostenlosen API-Schlüssel holen"; enabled: !OutputState.busy; clicked => { root.open-wsystem-free-key(); } }
+                                            ActionButton { text: "Pay-as-you-go aktivieren (0,15 €)"; enabled: !OutputState.busy; clicked => { root.open-wsystem-billing(); } }
                                             ActionButton { text: "AVV / Datenschutz (DPA) öffnen"; enabled: !OutputState.busy; clicked => { root.open-wsystem-dpa(); } }
                                         }
                                     }
@@ -868,7 +1372,7 @@ export component MainWindow inherits Window {
 
                         LabeledField { label: "Leistungsdatum"; value <=> root.service-date; }
                         Text { text: "Datumsangaben: JJJJ-MM-TT"; wrap: word-wrap; }
-                        LabeledField { label: "Währung (ISO)"; value <=> root.currency; required: true; }
+                        CurrencyField { label: "Währung (ISO)"; value <=> root.currency; required: true; }
                         Text { text: "Rechnungsart"; font-weight: 600; }
                         ComboBox {
                             model: ["Rechnung (380)", "Gutschrift (381)", "Korrekturrechnung (384)", "Teilrechnung (326)"];
@@ -904,8 +1408,7 @@ export component MainWindow inherits Window {
                         LabeledField { label: "E-Adresse"; value <=> root.buyer-endpoint; required: root.output-format == 1; }
                         Text { text: "Zahlung"; font-size: 16px; font-weight: 600; }
                         LabeledField { label: "IBAN"; value <=> root.payment-iban; required: root.payment-means == "30" || root.payment-means == "58" || root.payment-means == "59"; }
-                        LabeledField { label: "Zahlungsart (Code)"; value <=> root.payment-means; required: true; }
-                        Text { text: "58 = SEPA-Überweisung, 30 = Überweisung, 10 = Barzahlung"; wrap: word-wrap; }
+                        PaymentMeansField { label: "Zahlungsart (Code)"; value <=> root.payment-means; required: true; }
                         LabeledField { label: "BIC"; value <=> root.payment-bic; }
                         LabeledField { label: "Kontoinhaber"; value <=> root.payment-account; }
                         LabeledField { label: "Verwendungszweck"; value <=> root.payment-reference; }
@@ -935,8 +1438,7 @@ export component MainWindow inherits Window {
                         LabeledField { label: "Bezeichnung"; value <=> root.line-name; required: true; }
                         LabeledField { label: "Menge"; value <=> root.line-quantity; required: true; }
                         LabeledField { label: "Nettopreis"; value <=> root.line-price; required: true; }
-                        LabeledField { label: "Einheit (Code)"; value <=> root.line-unit; required: true; }
-                        Text { text: "C62 = Stück, HUR = Stunde, MTR = Meter, KGM = Kilogramm"; wrap: word-wrap; }
+                        UnitCodeField { label: "Einheit (Code)"; value <=> root.line-unit; required: true; }
                         LabeledField { label: "Beschreibung"; value <=> root.line-description; }
                         TaxFields { category <=> root.line-tax-category; rate <=> root.line-tax-rate; reason <=> root.line-tax-reason; reason-code <=> root.line-tax-reason-code; }
                         Text { text: "Rabatte / Zuschläge dieser Position"; font-size: 16px; font-weight: 600; }
@@ -1039,6 +1541,59 @@ export component MainWindow inherits Window {
                 : root.status-text;
             color: Palette.foreground;
             wrap: word-wrap;
+        }
+    }
+
+    if root.recognition-notice != "" : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: #00000080;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        Rectangle {
+            width: min(500px, parent.width - 48px);
+            height: dialog-content.preferred-height;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 10px;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000055;
+            drop-shadow-offset-y: 8px;
+
+            dialog-content := VerticalBox {
+                padding: 20px;
+                spacing: 14px;
+                Text {
+                    text: "Erkannte Daten bitte prüfen";
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: Palette.foreground;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: root.recognition-notice;
+                    color: Palette.foreground;
+                    wrap: word-wrap;
+                }
+                HorizontalBox {
+                    padding: 0px;
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                    ActionButton {
+                        text: "Verstanden";
+                        primary: true;
+                        clicked => { root.recognition-notice = ""; }
+                    }
+                }
+            }
         }
     }
 }

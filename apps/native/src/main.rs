@@ -295,6 +295,7 @@ fn open_document(
     set_form(window, &invoice);
     window.set_export_issue("".into());
     window.set_export_review_required(false);
+    window.set_recognition_notice("".into());
     *current_id.borrow_mut() = Some(document.id.clone());
     *current_draft.borrow_mut() = invoice;
     show_document(window, document, source_text, source_has_xml);
