@@ -3,7 +3,7 @@ name: Printer Windows build
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, development]
     paths:
       - "printer/**"
       - ".github/workflows/printer-windows-build.yml"

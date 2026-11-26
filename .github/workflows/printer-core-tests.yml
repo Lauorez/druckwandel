@@ -2,7 +2,7 @@ name: Printer core tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, development]
     paths:
       - "printer/**"
       - ".github/workflows/printer-core-tests.yml"
