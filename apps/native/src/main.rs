@@ -1233,16 +1233,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     );
     window.show()?;
-    let weak = window.as_weak();
-    slint::Timer::single_shot(std::time::Duration::ZERO, move || {
-        if let Some(window) = weak.upgrade() {
-            window.window().set_maximized(true);
-            use slint::winit_030::WinitWindowAccessor;
-            window
-                .window()
-                .with_winit_window(|native| native.set_maximized(true));
-        }
-    });
+    // Wait until winit has actually created the native window and finished its initial
+    // ShownFirstTime resize before maximizing. Setting maximized earlier (via attributes
+    // or a 0ms timer in StartCause::Init) causes Slint's ShownFirstTime resize to run on
+    // top of a WS_MAXIMIZE HWND on Windows, pinning it to the top-left corner at the
+    // preferred size and shrinking it when dragged.
+    {
+        use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEvent};
+        let maximized_once = std::rc::Rc::new(std::cell::Cell::new(false));
+        let done_event = std::rc::Rc::clone(&maximized_once);
+        let weak_event = window.as_weak();
+        window.window().on_winit_window_event(move |_win, event| {
+            if !done_event.get()
+                && let WindowEvent::Resized(size) = event
+                && size.width > 0
+                && size.height > 0
+            {
+                done_event.set(true);
+                let weak = weak_event.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.window().set_maximized(true);
+                    }
+                });
+            }
+            EventResult::Propagate
+        });
+        let done_fallback = maximized_once;
+        let weak_fallback = window.as_weak();
+        slint::Timer::single_shot(std::time::Duration::from_millis(150), move || {
+            if !done_fallback.get()
+                && let Some(window) = weak_fallback.upgrade()
+                && window.window().has_winit_window()
+            {
+                done_fallback.set(true);
+                window.window().set_maximized(true);
+            }
+        });
+    }
     window.run()?;
     Ok(())
 }
