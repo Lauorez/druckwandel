@@ -12,6 +12,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path $PSScriptRoot -Parent
 
+Push-Location $repositoryRoot
+try {
 & (Join-Path $PSScriptRoot "check-version.ps1")
 & (Join-Path $PSScriptRoot "check-environment.ps1")
 & (Join-Path $PSScriptRoot "create-dev-cert.ps1") -Password $CertificatePassword
@@ -149,3 +151,6 @@ try {
 
 Write-Host "Signed package: $($package.FullName)"
 Write-Host "Package output: $packageDirectory"
+} finally {
+    Pop-Location
+}

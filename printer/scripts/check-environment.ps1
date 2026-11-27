@@ -13,8 +13,15 @@ if ($currentBuild -lt $minimumBuild) {
     throw "Windows Build $minimumBuild oder neuer ist erforderlich. Gefunden: $currentBuild"
 }
 
-$dotnetVersion = & dotnet --version
-if ($LASTEXITCODE -ne 0 -or -not $dotnetVersion.StartsWith("10.")) {
+$printerRoot = Split-Path $PSScriptRoot -Parent
+Push-Location $printerRoot
+try {
+    $dotnetVersion = & dotnet --version
+    $dotnetExit = $LASTEXITCODE
+} finally {
+    Pop-Location
+}
+if ($dotnetExit -ne 0 -or -not $dotnetVersion.StartsWith("10.")) {
     throw ".NET SDK 10 ist erforderlich. Gefunden: $dotnetVersion"
 }
 
