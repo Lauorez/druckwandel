@@ -119,30 +119,17 @@ Section "Druckwandel" SEC_APP
   SetOutPath "$PLUGINSDIR\printer"
   File "${PAYLOAD}\Printer.msix"
   File "${PAYLOAD}\WindowsAppRuntime.msix"
+  File "${PAYLOAD}\InstallPrinter.ps1"
 !ifdef DEV_CERTIFICATE
   File "${PAYLOAD}\PrinterCertificate.cer"
-  nsExec::ExecToStack /TIMEOUT=60000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop';$$c=[Security.Cryptography.X509Certificates.X509Certificate2]::new('$PLUGINSDIR\printer\PrinterCertificate.cer');$$s=[Security.Cryptography.X509Certificates.X509Store]::new('TrustedPeople','LocalMachine');$$s.Open('ReadWrite');try{$$s.Add($$c)}finally{$$s.Close()}"`
-  Pop $0
-  Pop $1
-  ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Das Druckerzertifikat konnte nicht hinterlegt werden.$\r$\n$1" /SD IDOK
-    SetErrorLevel 1
-    Abort
-  ${EndIf}
+  nsExec::ExecToStack /TIMEOUT=300000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\printer\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\printer\Printer.msix" -DependencyPath "$PLUGINSDIR\printer\WindowsAppRuntime.msix" -CertificatePath "$PLUGINSDIR\printer\PrinterCertificate.cer"'
+!else
+  nsExec::ExecToStack /TIMEOUT=300000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\printer\InstallPrinter.ps1" -PackagePath "$PLUGINSDIR\printer\Printer.msix" -DependencyPath "$PLUGINSDIR\printer\WindowsAppRuntime.msix"'
 !endif
-  nsExec::ExecToStack /TIMEOUT=240000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop';Import-Module (Join-Path $$PSHOME 'Modules\Appx\Appx.psd1') -Force;Import-Module (Join-Path $$PSHOME 'Modules\PrintManagement\PrintManagement.psd1') -Force;if(@(Get-PrintJob -PrinterName 'E-Rechnung' -EA SilentlyContinue).Count -gt 0){throw 'Aktiver Druckauftrag läuft.'};Get-AppxPackage -Name 'ERechnung.VirtualPrinter.PoC'|Remove-AppxPackage -EA SilentlyContinue;Add-AppxPackage -Path '$PLUGINSDIR\printer\Printer.msix' -DependencyPath '$PLUGINSDIR\printer\WindowsAppRuntime.msix' -ForceApplicationShutdown -ForceUpdateFromAnyVersion"`
   Pop $0
   Pop $1
   ${If} $0 != 0
     MessageBox MB_ICONSTOP "Der Drucker konnte nicht eingerichtet werden.$\r$\n$1" /SD IDOK
-    SetErrorLevel 1
-    Abort
-  ${EndIf}
-  nsExec::ExecToStack /TIMEOUT=60000 `"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop';Import-Module (Join-Path $$PSHOME 'Modules\PrintManagement\PrintManagement.psd1') -Force;$$d=(Get-Date).AddSeconds(45);while(-not(Get-Printer -Name 'E-Rechnung' -EA SilentlyContinue) -and (Get-Date) -lt $$d){Start-Sleep -Milliseconds 500};if(-not(Get-Printer -Name 'E-Rechnung' -EA SilentlyContinue)){throw 'Drucker E-Rechnung wurde nicht bereitgestellt.'}"`
-  Pop $0
-  Pop $1
-  ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Der Drucker wurde nicht rechtzeitig bereitgestellt.$\r$\n$1" /SD IDOK
     SetErrorLevel 1
     Abort
   ${EndIf}

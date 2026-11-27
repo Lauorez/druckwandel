@@ -88,6 +88,8 @@ if (-not $AppOnly) {
     }
     Copy-Item -LiteralPath $PrinterPackagePath (Join-Path $payload 'Printer.msix') -Force
     Copy-Item -LiteralPath $PrinterDependencyPath (Join-Path $payload 'WindowsAppRuntime.msix') -Force
+    $printerInstallScript = [IO.File]::ReadAllText((Join-Path $workspace 'installer/windows/InstallPrinter.ps1'))
+    [IO.File]::WriteAllText((Join-Path $payload 'InstallPrinter.ps1'), $printerInstallScript, [Text.UTF8Encoding]::new($true))
     if ($SigningMode -eq 'Development') {
         if (-not $PrinterCertificatePath) { $PrinterCertificatePath = Join-Path $workspace 'printer\.cert\ERechnung.Dev.cer' }
         if (-not (Test-Path -LiteralPath $PrinterCertificatePath -PathType Leaf)) {
