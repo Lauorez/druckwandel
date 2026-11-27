@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.0.1
+
+- Korrigiert den maximierten Fensterstart unter Windows: Die Maximierung wird erst nach dem Anlegen und initialen Sizing des nativen Fensters ausgelöst, sodass die gesamte Arbeitsfläche genutzt wird und das Fenster beim Ziehen sauber auf `1320×760` statt `900×600` zurückkehrt.
+
 ## 1.0.0
 
 - Optionale Cloud-Erkennung über **W System** (`POST /einvoice/extract`, `GET /billing/usage`, Pay-as-you-go-Link, sichere API-Schlüssel-Speicherung im System-Schlüsselbund, ausdrückliche Datenschutz-Freigabe sowie automatischer lokaler Tesseract-OCR-Fallback für gescannte PDFs ohne Textebene).
