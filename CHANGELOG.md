@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.0.0
+
+- Optionale Cloud-Erkennung über **W System** (`POST /einvoice/extract`, `GET /billing/usage`, Pay-as-you-go-Link, sichere API-Schlüssel-Speicherung im System-Schlüsselbund, ausdrückliche Datenschutz-Freigabe sowie automatischer lokaler Tesseract-OCR-Fallback für gescannte PDFs ohne Textebene).
+- Signierte Auto-Updates (Ed25519 + SHA-256) mit Update-Prüfung unter *Einstellungen → Allgemein*, Windows-Silent-Update-Übergabe und automatisiertem GitHub-Release-Workflow für Windows und macOS.
+- Dropdown-Auswahlfelder mit „Sonstiges“-Fallback für ISO-Ländercodes, Währung (ISO 4217), Zahlungsart (UNTDID 4461) und Mengeneinheiten (UN/ECE Rec. 20) sowie modaler Prüfhinweis nach abgeschlossener Rechnungserkennung.
+- Eingebettetes Windows-Anwendungs- und Installer-Icon, zuverlässig maximierter Programmstart unter Windows sowie gepinntes Eclipse Temurin 21 JRE für die Offline-Prüfer.
+
 ## 0.4.1
 
 - Der Windows-Installer bietet eine optionale Desktopverknüpfung.

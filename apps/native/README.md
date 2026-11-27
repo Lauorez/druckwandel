@@ -15,7 +15,7 @@ Die [Erkennungsarchitektur](../../docs/recognition.md) beschreibt die lokale Sch
 
 Der Windows-Drucker verwendet weiterhin `erechnung-review://print-job/<UUID>`. `installer/windows/druckwandel.nsi` registriert die Slint-EXE. Eine Dateisperre erzwingt eine Instanz je lokalem App-Datenordner; weitere Aufrufe landen in einer lokalen SQLite-Übergabewarteschlange.
 
-Die PDF-Vorschau verwendet Hayro 0.8 direkt in Rust. Ein Hintergrund-Worker hält nur ein Dokument und rendert jeweils eine Seite; die Ausgabe ist auf 4 Millionen Pixel begrenzt. Seitenwechsel und Zoom verdrängen wartende ältere Aufträge. Vorschaubilder sind ausschließlich im RAM; Original-PDFs werden nicht verändert. Die Texterkennung und die Vorschau können unabhängig voneinander fehlschlagen.
+Die PDF-Vorschau verwendet Hayro 0.9 direkt in Rust. Ein Hintergrund-Worker hält nur ein Dokument und rendert jeweils eine Seite; die Ausgabe ist auf 4 Millionen Pixel begrenzt. Seitenwechsel und Zoom verdrängen wartende ältere Aufträge. Vorschaubilder sind ausschließlich im RAM; Original-PDFs werden nicht verändert. Die Texterkennung und die Vorschau können unabhängig voneinander fehlschlagen.
 
 Die App startet maximiert und passt Schrift, Feldbreiten und Spalten an Fenstergröße und Windows-DPI an. ZUGFeRD ist die vorausgewählte Ausgabe; Speichern und Weitergabe stehen unter dem Formular. Leere Pflichtfelder werden rot markiert, zusätzliche XRechnung-Pflichtfelder abhängig vom gewählten Format.
 

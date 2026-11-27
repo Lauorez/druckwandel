@@ -606,10 +606,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     slint::BackendSelector::new()
         .backend_name("winit".into())
         .with_winit_window_attributes_hook(move |attributes| {
-            let attributes = attributes
-                .with_transparent(false)
-                .with_theme(initial_theme)
-                .with_maximized(true);
+            let attributes = attributes.with_transparent(false).with_theme(initial_theme);
             #[cfg(target_os = "macos")]
             {
                 use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
@@ -1236,7 +1233,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     );
     window.show()?;
-    window.window().set_maximized(true);
+    let weak = window.as_weak();
+    slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+        if let Some(window) = weak.upgrade() {
+            window.window().set_maximized(true);
+            use slint::winit_030::WinitWindowAccessor;
+            window
+                .window()
+                .with_winit_window(|native| native.set_maximized(true));
+        }
+    });
     window.run()?;
     Ok(())
 }
